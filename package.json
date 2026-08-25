@@ -1,0 +1,40 @@
+{
+  "name": "three-vegetation-pipeline",
+  "version": "0.1.0",
+  "description": "A modular, data-driven vegetation pipeline for Three.js.",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "tooling/veg-compile.mjs"
+  ],
+  "bin": {
+    "veg-compile": "tooling/veg-compile.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/compiler/NodeVegCompiler.d.ts",
+      "import": "./dist/compiler/NodeVegCompiler.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "veg:compile": "tsc -p tsconfig.build.json && node --experimental-strip-types tooling/veg-compile.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify": "pnpm run typecheck && pnpm run test && pnpm run build"
+  },
+  "dependencies": {
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/three": "^0.185.4",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.11"
+  }
+}
