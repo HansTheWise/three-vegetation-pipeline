@@ -17,8 +17,8 @@
       "import": "./dist/index.js"
     },
     "./node": {
-      "types": "./dist/compiler/NodeVegCompiler.d.ts",
-      "import": "./dist/compiler/NodeVegCompiler.js"
+      "types": "./dist/offline/compiler/NodeVegCompiler.d.ts",
+      "import": "./dist/offline/compiler/NodeVegCompiler.js"
     }
   },
   "scripts": {

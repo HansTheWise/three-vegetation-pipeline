@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { VegetationExtractionConfig } from '../src/config/types.js';
-import { extractVegetation } from '../src/extractor/VegetationExtractor.js';
-import type { ModelData, ModelPrimitive } from '../src/reader/types.js';
+import type { VegetationExtractionConfig } from '../src/offline/config/types.js';
+import { extractVegetation } from '../src/offline/extractor/VegetationExtractor.js';
+import type { ModelData, ModelPrimitive } from '../src/offline/reader/types.js';
 
 describe('extractVegetation', () => {
   it('extracts a flat Z-up surface into one chunk', () => {

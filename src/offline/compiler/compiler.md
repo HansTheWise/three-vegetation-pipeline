@@ -12,7 +12,7 @@ GLB-Datei
 
 ## Schnittstellen
 
-`compileGlbToVeg` verarbeitet einen GLB-`ArrayBuffer` plattformunabhängig und liefert Dataset, VEGFILE-Bytes und einen kurzen Bericht.
+`compileGlbToVeg` verarbeitet einen GLB-`ArrayBuffer` plattformunabhängig und liefert Dataset, VEGFILE-Bytes, den reproduzierbaren Build-Fingerprint und einen kurzen Bericht.
 
 `createVegFile` ist die Node.js-Dateischnittstelle. Sie liest eine `.glb`-Datei, kompiliert sie und ersetzt die angegebene `.veg`-Datei erst, nachdem die vollständige neue Datei erfolgreich erzeugt wurde.
 
@@ -29,7 +29,7 @@ pnpm run veg:compile -- \
   --output <asset.veg>
 ```
 
-Nach erfolgreicher Erstellung werden Mesh- und Dreiecksanzahl, gespeicherte Chunks, Layerauflösungen, Seed und Dateigröße ausgegeben. Bei einem Fehler bleibt die zuvor vorhandene Ausgabedatei unverändert.
+Nach erfolgreicher Erstellung werden Mesh- und Dreiecksanzahl, gespeicherte Chunks, Layerauflösungen, Seed, Build-Fingerprint und Dateigröße ausgegeben. Bei einem Fehler bleibt die zuvor vorhandene Ausgabedatei unverändert.
 
 Unter Windows kann der Compiler auch ohne global installiertes `pnpm` gestartet werden:
 

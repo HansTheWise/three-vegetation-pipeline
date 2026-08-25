@@ -2,12 +2,13 @@ import {
   BufferGeometry,
   Float32BufferAttribute,
   Group,
+  InstancedMesh,
   Mesh,
   MeshBasicMaterial,
   Uint16BufferAttribute,
 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { ThreeGlbReader } from '../src/reader/ThreeGlbReader.js';
+import { ThreeGlbReader } from '../src/offline/reader/ThreeGlbReader.js';
 import { createMinimalGlb } from './fixtures/createMinimalGlb.js';
 
 describe('ThreeGlbReader', () => {
@@ -106,6 +107,15 @@ describe('ThreeGlbReader', () => {
       11, 20, 30,
       10, 21, 30,
     ]);
+  });
+
+  it('rejects instanced meshes instead of silently ignoring instance transforms', () => {
+    const source = createTriangleMesh('trees', 'leaves');
+    const instanced = new InstancedMesh(source.geometry, source.material, 2);
+    instanced.name = 'trees';
+
+    expect(() => new ThreeGlbReader().readObject(instanced))
+      .toThrow('Instanced mesh "trees" is not supported.');
   });
 });
 

@@ -1,11 +1,12 @@
-import type { VegetationExtractionConfig } from '../src/config/types.js';
-import type { VegWriterConfig } from '../src/writer/types.js';
+import type { VegetationExtractionConfig } from '../src/offline/config/types.js';
+import type { VegWriterConfig } from '../src/offline/writer/types.js';
 
 /**
  * Draft configuration for the I-CAKA vegetation pipeline.
  *
- * This file defines the decisions shared by the extractor and the frontend.
- * Binary serialization is added separately by the future .veg writer.
+ * This file defines the offline GLB -> .veg compilation only. Frontend render
+ * values live in icaka.vegetation.runtime.config.ts and are joined to this
+ * asset through the stable numeric layer IDs stored in the .veg file.
  */
 export const icakaVegetationConfig = {
   /** Version of this configuration shape, not the binary .veg file version. */
@@ -49,9 +50,10 @@ export const icakaVegetationConfig = {
       /**
        * "generated": The offline compiler generates the seed once and stores
        * it in the .veg file.
-       * "manual": The compiler uses manualValue exactly as configured.
+       * "manual": The compiler uses manualValue exactly as configured. I-CAKA
+       * keeps this mode enabled so repeated builds remain byte-identical.
        */
-      mode: 'generated',
+      mode: 'manual',
 
       /** Used only when mode is "manual". Zero is a valid manual seed. */
       manualValue: 0,
@@ -136,22 +138,6 @@ export const icakaVegetationConfig = {
         },
       },
     ],
-  },
-
-  /**
-   * Frontend bindings are deliberately references, not shader code inside the
-   * generated asset. The .veg layer ID stays stable while shader, placement,
-   * LOD and appearance profiles remain independently replaceable.
-   */
-  frontend: {
-    layerBindings: {
-      'campus-grass': {
-        placementProfile: 'campus-grass',
-        lodProfile: 'campus-grass',
-        shaderProfile: 'campus-grass',
-        appearanceProfile: 'campus-grass',
-      },
-    },
   },
 
   output: {

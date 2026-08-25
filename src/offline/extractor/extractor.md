@@ -45,3 +45,15 @@ maskOffset = storedChunkIndex * layer.maskResolution²
 ```
 
 Der Extractor quantisiert und packt keine Daten. Diese dateispezifischen Aufgaben übernimmt der Writer.
+
+## Heightmap-Semantik in v1
+
+Die einfache Heightmap ist ein bewusster v1-Kompromiss:
+
+- Treffen mehrere Höhenflächen dasselbe Sample, wird die höchste Höhe verwendet.
+- Samples ohne direkten Treffer werden vom nächsten vorhandenen Sample aus aufgefüllt.
+- Überhänge und mehrere vertikale Ebenen werden nicht getrennt repräsentiert.
+
+Damit bleibt jeder horizontale Punkt genau einer Höhe zugeordnet. Modelle, die
+mehrere begehbare Ebenen an derselben horizontalen Position benötigen, brauchen
+später einen erweiterten Extraktionsvertrag.

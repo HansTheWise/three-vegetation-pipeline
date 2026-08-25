@@ -1,5 +1,6 @@
 import {
   Box3,
+  InstancedMesh,
   Matrix4,
   Mesh,
   Object3D,
@@ -80,6 +81,9 @@ export class ThreeGlbReader implements ModelReader<ArrayBuffer> {
     rootWorldInverse: Matrix4,
     bounds: Box3,
   ): ModelPrimitive[] {
+    if (mesh instanceof InstancedMesh) {
+      throw new Error(`Instanced mesh "${displayName(mesh)}" is not supported.`);
+    }
     if (mesh instanceof SkinnedMesh) {
       throw new Error(`Skinned mesh "${displayName(mesh)}" is not supported.`);
     }

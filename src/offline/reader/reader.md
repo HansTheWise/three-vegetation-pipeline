@@ -12,7 +12,12 @@ GLB ArrayBuffer -> ThreeGlbReader -> ModelData
 - Sichtbare, statische Meshes und ihre Dreiecke sammeln.
 - Transformationen innerhalb der GLB-Hierarchie in das lokale Koordinatensystem der GLB-Wurzel übernehmen.
 - Positionen, Indizes, Mesh-Hierarchie, Materialnamen und Modellgrenzen bereitstellen.
-- Nicht unterstützte Geometrie wie Skinned Meshes oder aktive Morph Targets ablehnen.
+- Nicht unterstützte Geometrie wie Instanced Meshes, Skinned Meshes oder aktive Morph Targets ablehnen.
+
+Instanced Meshes werden in v1 bewusst abgelehnt. Ihre Geometrie wird nur einmal
+gespeichert und durch separate Instanzmatrizen vervielfacht. Würde der Reader sie
+wie normale Meshes behandeln, gingen diese Instanztransformationen unbemerkt
+verloren.
 
 `ModelData` enthält noch keine Chunks, Heightmaps oder Vegetationsmasken. Der Reader kennt weder Vegetationslayer noch das `.veg`-Dateiformat.
 

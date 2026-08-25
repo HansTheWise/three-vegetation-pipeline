@@ -7,3 +7,8 @@ export type VegWriterConfig = Readonly<{
   byteOrder: 'little-endian';
   heightValueBits: HeightValueBits;
 }>;
+
+export type VegFileMetadata = Readonly<{
+  /** 128-bit fingerprint derived from the source model and compiler config. */
+  buildFingerprint: Uint8Array;
+}>;

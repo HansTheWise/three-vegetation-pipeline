@@ -7,6 +7,7 @@ import type {
 import { ThreeGlbReader } from '../reader/ThreeGlbReader.js';
 import type { VegWriterConfig } from '../writer/types.js';
 import { writeVegFile } from '../writer/VegWriter.js';
+import { createBuildFingerprint, formatBuildFingerprint } from './provenance.js';
 
 export type VegCompilerConfig = VegetationExtractionConfig & Readonly<{
   output: VegWriterConfig;
@@ -28,12 +29,14 @@ export type VegCompilationReport = Readonly<{
   heightResolution: number;
   heightValueBits: 8 | 16 | 32;
   seed: number;
+  buildFingerprint: string;
   fileByteLength: number;
   layers: readonly VegCompilationLayerReport[];
 }>;
 
 export type VegCompilationResult = Readonly<{
   dataset: VegetationDataset;
+  buildFingerprint: Uint8Array;
   file: Uint8Array;
   report: VegCompilationReport;
 }>;
@@ -44,14 +47,18 @@ export async function compileGlbToVeg(
   config: VegCompilerConfig,
   options: VegetationExtractorOptions = {},
 ): Promise<VegCompilationResult> {
-  const model = await new ThreeGlbReader({
-    includeInvisibleObjects: config.source.includeInvisibleObjects,
-  }).read(source);
+  const [model, buildFingerprint] = await Promise.all([
+    new ThreeGlbReader({
+      includeInvisibleObjects: config.source.includeInvisibleObjects,
+    }).read(source),
+    createBuildFingerprint(source, config),
+  ]);
   const dataset = extractVegetation(model, config, options);
-  const file = writeVegFile(dataset, config.output);
+  const file = writeVegFile(dataset, config.output, { buildFingerprint });
 
   return {
     dataset,
+    buildFingerprint,
     file,
     report: {
       sourceMeshCount: model.sourceMeshCount,
@@ -61,6 +68,7 @@ export async function compileGlbToVeg(
       heightResolution: dataset.heightMap.resolution,
       heightValueBits: config.output.heightValueBits,
       seed: dataset.seed,
+      buildFingerprint: formatBuildFingerprint(buildFingerprint),
       fileByteLength: file.byteLength,
       layers: dataset.layers.map((layer) => ({
         id: layer.id,

@@ -11,6 +11,7 @@ export const VEG_FORMAT_VERSION = 1;
 export const VEG_HEADER_SIZE = 128;
 export const VEG_LAYER_METADATA_SIZE = 16;
 export const VEG_CHUNK_METADATA_SIZE = 8;
+export const VEG_BUILD_FINGERPRINT_SIZE = 16;
 
 export const VEG_HEADER_OFFSET = {
   magic: 0,
@@ -38,4 +39,33 @@ export const VEG_HEADER_OFFSET = {
   chunkMetadata: 96,
   heightData: 100,
   vegetationMaskData: 104,
+  buildFingerprint: 108,
+  fileChecksum: 124,
 } as const;
+
+const CRC32_TABLE = createCrc32Table();
+
+/** Calculates the VEGFILE CRC32 with its own header field treated as zero. */
+export function calculateVegChecksum(bytes: Uint8Array): number {
+  let checksum = 0xffff_ffff;
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte = index >= VEG_HEADER_OFFSET.fileChecksum
+      && index < VEG_HEADER_OFFSET.fileChecksum + 4
+      ? 0
+      : bytes[index]!;
+    checksum = CRC32_TABLE[(checksum ^ byte) & 0xff]! ^ (checksum >>> 8);
+  }
+  return (checksum ^ 0xffff_ffff) >>> 0;
+}
+
+function createCrc32Table(): Uint32Array {
+  const table = new Uint32Array(256);
+  for (let index = 0; index < table.length; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb8_8320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[index] = value >>> 0;
+  }
+  return table;
+}

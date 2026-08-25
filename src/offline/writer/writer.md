@@ -31,6 +31,7 @@ Der Header beginnt mit der acht Byte langen Signatur `VEGFILE\0`. Er enthält in
 - Anzahl gespeicherter Chunks und Layer;
 - Seed, Achsen, Einheit und Modellgrenzen;
 - Heightmap-Auflösung und Höhen-Bitbreite;
+- Build-Fingerprint und CRC32-Dateiprüfsumme;
 - absolute Offsets aller folgenden Abschnitte.
 
 Nicht verwendete Headerbytes bleiben `0` und sind für spätere Formatversionen reserviert.
@@ -65,7 +66,17 @@ Nicht verwendete Headerbytes bleiben `0` und sind für spätere Formatversionen 
 | 96 | 4 | `Uint32` | Offset von `ChunkMetadata[]` |
 | 100 | 4 | `Uint32` | Offset von `HeightData[]` |
 | 104 | 4 | `Uint32` | Offset von `VegetationMaskData[]` |
-| 108 | 20 | Bytes | reserviert, in v1 `0` |
+| 108 | 16 | Bytes | Build-Fingerprint aus GLB-Bytes und kanonischer Compiler-Config |
+| 124 | 4 | `Uint32` | CRC32-Prüfsumme der gesamten Datei; dieses Feld gilt bei der Berechnung als `0` |
+
+Der Build-Fingerprint sind die ersten 16 Bytes eines SHA-256-Werts. Seine
+Eingabe besteht aus einer festen v1-Kennung sowie den getrennten SHA-256-Werten
+der unveränderten GLB-Bytes und der kanonisch nach Schlüsseln sortierten
+Compiler-Config. Gleiche Eingaben erzeugen dadurch denselben Fingerprint.
+
+Die CRC32-Prüfsumme beschreibt dagegen die konkrete `.veg`-Datei. Der Parser
+berechnet sie erneut und lehnt beschädigte oder nachträglich veränderte Dateien
+ab. Sie ist eine Integritätsprüfung und keine kryptografische Signatur.
 
 Die Auflösung der Vegetationsmasken steht nicht im Header, weil jeder Layer eine eigene Auflösung besitzen kann. Sie wird deshalb im jeweiligen `LayerMetadata`-Eintrag gespeichert.
 
@@ -113,3 +124,7 @@ maximumHeight
 ```
 
 Die unquantisierten Höhen des Datasets werden innerhalb dieses Intervalls auf einen vorzeichenlosen `8`-, `16`- oder `32`-Bit-Wert abgebildet. Dadurch kann der spätere `.veg`-Reader die Höhe wieder aus Min, Max und dem quantisierten Wert rekonstruieren.
+
+Welche Höhe der Extractor bei überlappenden Flächen auswählt und wie er fehlende
+Samples auffüllt, ist Teil des Extraktionsvertrags und wird in
+`extractor/extractor.md` beschrieben. Der Writer verändert diese Semantik nicht.

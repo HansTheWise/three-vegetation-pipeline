@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import type { VegetationDataset } from '../src/extractor/types.js';
+import type { VegetationDataset } from '../src/offline/extractor/types.js';
 import {
+  calculateVegChecksum,
   VEG_HEADER_OFFSET,
   VEG_HEADER_SIZE,
   VEG_LAYER_METADATA_SIZE,
-} from '../src/writer/format.js';
-import type { HeightValueBits, VegWriterConfig } from '../src/writer/types.js';
-import { writeVegFile } from '../src/writer/VegWriter.js';
+} from '../src/offline/writer/format.js';
+import type { HeightValueBits, VegWriterConfig } from '../src/offline/writer/types.js';
+import { writeVegFile } from '../src/offline/writer/VegWriter.js';
+
+const TEST_BUILD_FINGERPRINT = Uint8Array.from({ length: 16 }, (_, index) => index);
 
 describe('writeVegFile', () => {
   it('writes the VEGFILE v1 header, sections and differently sized layer masks', () => {
-    const file = writeVegFile(createDataset(), createWriterConfig(16));
+    const file = writeVegFile(createDataset(), createWriterConfig(16), createFileMetadata());
     const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
 
     expect(String.fromCharCode(...file.subarray(0, 8))).toBe('VEGFILE\0');
@@ -27,6 +30,11 @@ describe('writeVegFile', () => {
     expect(view.getUint8(VEG_HEADER_OFFSET.horizontalAxisY)).toBe(1);
     expect(view.getUint8(VEG_HEADER_OFFSET.heightValueBits)).toBe(16);
     expect(view.getUint16(VEG_HEADER_OFFSET.heightResolution, true)).toBe(2);
+    expect([
+      ...file.subarray(VEG_HEADER_OFFSET.buildFingerprint, VEG_HEADER_OFFSET.fileChecksum),
+    ]).toEqual([...TEST_BUILD_FINGERPRINT]);
+    expect(view.getUint32(VEG_HEADER_OFFSET.fileChecksum, true))
+      .toBe(calculateVegChecksum(file));
 
     expect(view.getUint32(VEG_HEADER_OFFSET.layerMetadata, true)).toBe(128);
     expect(view.getUint32(VEG_HEADER_OFFSET.chunkLookup, true)).toBe(160);
@@ -63,7 +71,7 @@ describe('writeVegFile', () => {
   ] as const)(
     'quantizes height samples with %i bits',
     (bits, expected, expectedMaskOffset, expectedFileSize) => {
-      const file = writeVegFile(createDataset(), createWriterConfig(bits));
+      const file = writeVegFile(createDataset(), createWriterConfig(bits), createFileMetadata());
       const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
       const heightOffset = view.getUint32(VEG_HEADER_OFFSET.heightData, true);
       const readValue = bits === 8
@@ -81,8 +89,8 @@ describe('writeVegFile', () => {
   );
 
   it('produces identical bytes for identical datasets and writer config', () => {
-    const first = writeVegFile(createDataset(), createWriterConfig(16));
-    const second = writeVegFile(createDataset(), createWriterConfig(16));
+    const first = writeVegFile(createDataset(), createWriterConfig(16), createFileMetadata());
+    const second = writeVegFile(createDataset(), createWriterConfig(16), createFileMetadata());
 
     expect(second).toEqual(first);
   });
@@ -104,10 +112,18 @@ describe('writeVegFile', () => {
       }, dataset.layers[1]!],
     } satisfies VegetationDataset;
 
-    expect(() => writeVegFile(invalidValue, createWriterConfig(16)))
+    expect(() => writeVegFile(invalidValue, createWriterConfig(16), createFileMetadata()))
       .toThrow('maskData may contain only 0 or 1');
-    expect(() => writeVegFile(invalidLength, createWriterConfig(16)))
+    expect(() => writeVegFile(invalidLength, createWriterConfig(16), createFileMetadata()))
       .toThrow('maskData length is invalid');
+  });
+
+  it('requires a 16-byte build fingerprint', () => {
+    expect(() => writeVegFile(
+      createDataset(),
+      createWriterConfig(16),
+      { buildFingerprint: new Uint8Array(15) },
+    )).toThrow('buildFingerprint must contain exactly 16 bytes.');
   });
 });
 
@@ -127,6 +143,10 @@ function createWriterConfig(heightValueBits: HeightValueBits): VegWriterConfig {
     byteOrder: 'little-endian',
     heightValueBits,
   };
+}
+
+function createFileMetadata() {
+  return { buildFingerprint: TEST_BUILD_FINGERPRINT };
 }
 
 function createDataset(): VegetationDataset {

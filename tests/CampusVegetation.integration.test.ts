@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { icakaVegetationConfig } from '../config/icaka.vegetation.config.js';
-import { compileGlbToVeg } from '../src/compiler/VegCompiler.js';
-import { VEG_HEADER_OFFSET } from '../src/writer/format.js';
+import { compileGlbToVeg } from '../src/offline/compiler/VegCompiler.js';
+import { VEG_HEADER_OFFSET } from '../src/offline/writer/format.js';
 
 const fallbackCampusPath = resolve(
   process.cwd(),
@@ -25,20 +25,12 @@ describe.runIf(existsSync(campusPath))('I-CAKA campus extraction', () => {
       file.byteOffset,
       file.byteOffset + file.byteLength,
     ) as ArrayBuffer;
-    const compilation = await compileGlbToVeg(
-      arrayBuffer,
-      {
-        ...icakaVegetationConfig,
-        extraction: {
-          ...icakaVegetationConfig.extraction,
-          seed: { mode: 'manual', manualValue: 0 },
-        },
-      },
-    );
+    const compilation = await compileGlbToVeg(arrayBuffer, icakaVegetationConfig);
     const { dataset, file: vegFile, report } = compilation;
 
     expect(report.sourceMeshCount).toBe(76);
     expect(report.triangleCount).toBe(287_731);
+    expect(dataset.seed).toBe(0);
     expect(dataset.layers.map((layer) => layer.key)).toEqual(['campus-grass']);
     expect(dataset.layers[0]!.activeCellCount).toBeGreaterThan(0);
     expect(dataset.chunks.length).toBeGreaterThan(0);

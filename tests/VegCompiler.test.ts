@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 import {
   compileGlbToVeg,
   type VegCompilerConfig,
-} from '../src/compiler/VegCompiler.js';
-import { createVegFile } from '../src/compiler/NodeVegCompiler.js';
+} from '../src/offline/compiler/VegCompiler.js';
+import { createVegFile } from '../src/offline/compiler/NodeVegCompiler.js';
 import { createMinimalGlb } from './fixtures/createMinimalGlb.js';
 
 describe('VegCompiler', () => {
@@ -15,6 +15,7 @@ describe('VegCompiler', () => {
 
     expect(String.fromCharCode(...result.file.subarray(0, 8))).toBe('VEGFILE\0');
     expect(result.dataset.seed).toBe(42);
+    expect(result.buildFingerprint).toHaveLength(16);
     expect(result.dataset.layers[0]!.maskResolution).toBe(4);
     expect(result.report).toEqual({
       sourceMeshCount: 1,
@@ -24,6 +25,7 @@ describe('VegCompiler', () => {
       heightResolution: 3,
       heightValueBits: 16,
       seed: 42,
+      buildFingerprint: expect.stringMatching(/^[0-9a-f]{32}$/),
       fileByteLength: 180,
       layers: [{
         id: 5,
@@ -33,6 +35,28 @@ describe('VegCompiler', () => {
         packedMaskByteLength: 4,
       }],
     });
+  });
+
+  it('creates stable fingerprints and changes them with the compiler config', async () => {
+    const source = createMinimalGlb();
+    const config = createConfig();
+    const first = await compileGlbToVeg(source, config);
+    const second = await compileGlbToVeg(source, config);
+    const reordered = await compileGlbToVeg(source, {
+      output: config.output,
+      extraction: config.extraction,
+      source: config.source,
+      coordinateSystem: config.coordinateSystem,
+    });
+    const changed = await compileGlbToVeg(source, {
+      ...config,
+      output: { ...config.output, heightValueBits: 8 },
+    });
+
+    expect(second.buildFingerprint).toEqual(first.buildFingerprint);
+    expect(reordered.buildFingerprint).toEqual(first.buildFingerprint);
+    expect(changed.buildFingerprint).not.toEqual(first.buildFingerprint);
+    expect(second.file).toEqual(first.file);
   });
 
   it('atomically replaces a requested .veg file and leaves no temporary file', async () => {

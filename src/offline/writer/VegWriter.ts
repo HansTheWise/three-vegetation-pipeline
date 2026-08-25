@@ -1,6 +1,8 @@
 import type { Axis } from '../config/types.js';
 import type { VegetationDataset } from '../extractor/types.js';
 import {
+  calculateVegChecksum,
+  VEG_BUILD_FINGERPRINT_SIZE,
   VEG_CHUNK_METADATA_SIZE,
   VEG_FORMAT_VERSION,
   VEG_HEADER_OFFSET,
@@ -8,7 +10,7 @@ import {
   VEG_LAYER_METADATA_SIZE,
   VEG_MAGIC_BYTES,
 } from './format.js';
-import type { HeightValueBits, VegWriterConfig } from './types.js';
+import type { HeightValueBits, VegFileMetadata, VegWriterConfig } from './types.js';
 
 const UINT16_MAX = 0xffff;
 const UINT32_MAX = 0xffff_ffff;
@@ -35,18 +37,25 @@ type FileLayout = Readonly<{
 export function writeVegFile(
   dataset: VegetationDataset,
   config: VegWriterConfig,
+  metadata: VegFileMetadata,
 ): Uint8Array {
   validateWriterConfig(config);
+  validateFileMetadata(metadata);
   validateDataset(dataset);
   const layout = createFileLayout(dataset, config.heightValueBits);
   const output = new Uint8Array(layout.fileSize);
   const view = new DataView(output.buffer, output.byteOffset, output.byteLength);
 
-  writeHeader(view, dataset, config, layout);
+  writeHeader(view, dataset, config, metadata, layout);
   writeLayerMetadata(view, dataset, layout);
   writeChunkLookup(view, dataset, layout);
   writeChunksAndHeights(view, dataset, config.heightValueBits, layout);
   writeMasks(view, dataset, layout);
+  view.setUint32(
+    VEG_HEADER_OFFSET.fileChecksum,
+    calculateVegChecksum(output),
+    true,
+  );
   return output;
 }
 function createFileLayout(
@@ -103,6 +112,7 @@ function writeHeader(
   view: DataView,
   dataset: VegetationDataset,
   config: VegWriterConfig,
+  metadata: VegFileMetadata,
   layout: FileLayout,
 ): void {
   for (let index = 0; index < VEG_MAGIC_BYTES.length; index += 1) {
@@ -151,6 +161,12 @@ function writeHeader(
     layout.vegetationMaskDataOffset,
     true,
   );
+  for (let index = 0; index < metadata.buildFingerprint.length; index += 1) {
+    view.setUint8(
+      VEG_HEADER_OFFSET.buildFingerprint + index,
+      metadata.buildFingerprint[index]!,
+    );
+  }
 }
 
 function writeLayerMetadata(
@@ -261,6 +277,14 @@ function validateWriterConfig(config: VegWriterConfig): void {
   }
   if (![8, 16, 32].includes(config.heightValueBits)) {
     throw new Error('heightValueBits must be 8, 16 or 32.');
+  }
+}
+
+function validateFileMetadata(metadata: VegFileMetadata): void {
+  if (metadata.buildFingerprint.length !== VEG_BUILD_FINGERPRINT_SIZE) {
+    throw new Error(
+      `buildFingerprint must contain exactly ${VEG_BUILD_FINGERPRINT_SIZE} bytes.`,
+    );
   }
 }
 
