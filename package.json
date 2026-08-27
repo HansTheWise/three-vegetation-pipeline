@@ -23,18 +23,22 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "build:watch": "tsc -p tsconfig.build.json --watch",
+    "debug:webgl": "vite --host 127.0.0.1 --open /examples/webgl-debug-chunks.html?near",
     "veg:compile": "tsc -p tsconfig.build.json && node --experimental-strip-types tooling/veg-compile.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "verify": "pnpm run typecheck && pnpm run test && pnpm run build"
+    "verify": "npm run typecheck && npm run test && npm run build"
   },
-  "dependencies": {
-    "three": "0.185.1"
+  "peerDependencies": {
+    "three": ">=0.184.0 <0.186.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "@types/three": "^0.185.4",
+    "@types/three": "0.185.3",
+    "three": "0.185.1",
     "typescript": "7.0.2",
+    "vite": "^8.2.2",
     "vitest": "^4.1.11"
   }
 }

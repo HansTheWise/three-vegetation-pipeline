@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vegetation pipeline debug chunks</title>
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #07111f;
+        font-family: system-ui, sans-serif;
+      }
+
+      canvas {
+        display: block;
+      }
+
+      #status {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        padding: 10px 12px;
+        border: 1px solid rgb(255 255 255 / 20%);
+        border-radius: 6px;
+        color: #e2e8f0;
+        background: rgb(2 6 23 / 80%);
+        white-space: pre-line;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status">Lade campus.veg …</div>
+    <script type="module" src="./webgl-debug-chunks.ts"></script>
+  </body>
+</html>

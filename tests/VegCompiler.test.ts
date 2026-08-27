@@ -6,7 +6,10 @@ import {
   compileGlbToVeg,
   type VegCompilerConfig,
 } from '../src/offline/compiler/VegCompiler.js';
-import { createVegFile } from '../src/offline/compiler/NodeVegCompiler.js';
+import {
+  checkVegFile,
+  createVegFile,
+} from '../src/offline/compiler/NodeVegCompiler.js';
 import { createMinimalGlb } from './fixtures/createMinimalGlb.js';
 
 describe('VegCompiler', () => {
@@ -95,6 +98,45 @@ describe('VegCompiler', () => {
       outputPath: 'model.bin',
       config: createConfig(),
     })).rejects.toThrow('Output file must use the .veg extension.');
+  });
+
+  it('checks VEGFILE validity and source/config provenance without recompiling it', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'veg-check-'));
+    const inputPath = join(directory, 'model.glb');
+    const outputPath = join(directory, 'model.veg');
+    try {
+      await writeFile(inputPath, new Uint8Array(createMinimalGlb()));
+      expect(await checkVegFile({
+        inputPath,
+        outputPath,
+        config: createConfig(),
+      })).toMatchObject({ current: false, reason: 'VEGFILE is missing.' });
+
+      await createVegFile({ inputPath, outputPath, config: createConfig() });
+      expect(await checkVegFile({
+        inputPath,
+        outputPath,
+        config: createConfig(),
+      })).toMatchObject({ current: true, reason: 'VEGFILE is current.' });
+
+      const changedConfig = createConfig();
+      expect(await checkVegFile({
+        inputPath,
+        outputPath,
+        config: {
+          ...changedConfig,
+          extraction: {
+            ...changedConfig.extraction,
+            seed: { mode: 'manual', manualValue: 43 },
+          },
+        },
+      })).toMatchObject({
+        current: false,
+        reason: 'Source model or compiler config changed.',
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 

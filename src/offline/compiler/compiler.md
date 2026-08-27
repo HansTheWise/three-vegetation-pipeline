@@ -23,7 +23,7 @@ Die Kommandozeile übernimmt lediglich Pfade und lädt die Config. Reader, Extra
 Der lokale Befehl baut zuerst den Compiler und erzeugt anschließend die Datei:
 
 ```text
-pnpm run veg:compile -- \
+npm run veg:compile -- \
   --input <model.glb> \
   --config <vegetation.config.ts> \
   --output <asset.veg>
@@ -31,7 +31,7 @@ pnpm run veg:compile -- \
 
 Nach erfolgreicher Erstellung werden Mesh- und Dreiecksanzahl, gespeicherte Chunks, Layerauflösungen, Seed, Build-Fingerprint und Dateigröße ausgegeben. Bei einem Fehler bleibt die zuvor vorhandene Ausgabedatei unverändert.
 
-Unter Windows kann der Compiler auch ohne global installiertes `pnpm` gestartet werden:
+Unter Windows kann der Compiler auch ohne global installiertes `npm` gestartet werden:
 
 ```text
 veg-compile.cmd \

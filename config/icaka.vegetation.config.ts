@@ -15,8 +15,8 @@ export const icakaVegetationConfig = {
   coordinateSystem: {
     /** All extracted data is stored relative to the GLB root object. */
     space: 'model-local',
-    upAxis: 'z',
-    horizontalAxes: ['x', 'y'],
+    upAxis: 'y',
+    horizontalAxes: ['x', 'z'],
     unitsPerMeter: 1,
   },
 

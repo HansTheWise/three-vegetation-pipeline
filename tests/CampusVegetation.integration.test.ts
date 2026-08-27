@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { icakaVegetationConfig } from '../config/icaka.vegetation.config.js';
 import { compileGlbToVeg } from '../src/offline/compiler/VegCompiler.js';
+import { parseVegFile } from '../src/runtime/parser/VegParser.js';
 import { VEG_HEADER_OFFSET } from '../src/offline/writer/format.js';
 
 const fallbackCampusPath = resolve(
@@ -64,5 +65,13 @@ describe.runIf(existsSync(campusPath))('I-CAKA campus extraction', () => {
     const layerMetadataOffset = view.getUint32(VEG_HEADER_OFFSET.layerMetadata, true);
     expect(view.getUint32(layerMetadataOffset, true)).toBe(0);
     expect(view.getUint16(layerMetadataOffset + 4, true)).toBe(128);
+
+    const parsed = parseVegFile(vegFile);
+    expect(parsed.header.storedChunkCount).toBe(dataset.chunks.length);
+    expect(parsed.header.heightMap.resolution).toBe(dataset.heightMap.resolution);
+    expect(parsed.header.buildFingerprint).toEqual(compilation.buildFingerprint);
+    expect(parsed.chunkLookup).toEqual(dataset.chunkLookup);
+    expect(parsed.layers.map(({ id, maskResolution }) => ({ id, maskResolution })))
+      .toEqual([{ id: 0, maskResolution: 128 }]);
   }, 60_000);
 });
