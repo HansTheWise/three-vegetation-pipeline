@@ -62,6 +62,10 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 
 - Erzeugung, Frameupdate, Layerumschaltung und Cleanup bündeln;
 - einen gemeinsamen Modell-/Koordinatenroot verwenden;
+- einen Three.js-Standardadapter für Renderer, Szene, Kamera und
+  `coordinateRoot` bereitstellen;
+- Three-Kameradaten intern allokationsarm in einen neutralen Framezustand für
+  gemeinsames Culling und Layer-Rendering übersetzen;
 - Fehler während der Initialisierung transaktional aufräumen;
 - synchrone und Worker-basierte Vorbereitung über dieselbe Grenze anbieten.
 
@@ -69,6 +73,8 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 
 - vorhandene Three.js-Licht-, Shadow-, Tone-Mapping- und Color-Space-Chunks als
   Standard-Lichtadapter kapseln;
+- Lichtuniforms und Renderer-Exposure über den nativen Three.js-Materialpfad
+  beziehen, ohne Lichter oder Belichtungswerte pro Frame zu kopieren;
 - Vegetationsreaktion konfigurierbar halten, ohne Szenenlichter manuell zu
   duplizieren;
 - Ground-Material-Patching generisch anbieten und Materialauswahl sowie

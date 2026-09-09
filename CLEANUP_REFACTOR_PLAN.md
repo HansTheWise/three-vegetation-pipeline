@@ -133,9 +133,12 @@ Shaderfehler. Die visuelle Abnahme bleibt unabhängig davon Aufgabe des Benutzer
 ## Empfohlene Zielarchitektur
 
 ```text
-Three.js-Anwendung oder R3F-Wrapper
+Three.js-Anwendung oder dünner R3F-Wrapper
   -> lädt Bytes und hält App-Zustand
-  -> createWebGLVegetationRuntime(...)
+  -> ThreeVegetationSceneAdapter (Standardintegration)
+       -> Renderer, Szene, Kamera und coordinateRoot
+       -> ThreeCameraAdapter -> neutraler VegetationFrameState
+       -> createWebGLVegetationRuntime(...)
        -> Parser + Runtime-Dataset
        -> gemeinsames Culling und Frame-Planning
        -> gemeinsame WebGL-Assetressourcen
@@ -147,15 +150,17 @@ Three.js-Anwendung oder R3F-Wrapper
             -> weitere Profile erst bei echtem Bedarf
        -> optionaler GroundSurfaceAdapter
   -> runtime.object3d
-  -> runtime.updateFrame(camera)
+  -> runtime.updateFrame()
   -> runtime.dispose()
 ```
 
 Die minimale öffentliche Verwendung soll ungefähr so aussehen:
 
 ```ts
-const runtime = await createWebGLVegetationRuntime({
+const runtime = await createThreeVegetation({
   renderer,
+  scene,
+  camera,
   source: vegetationBytes,
   config: vegetationConfig,
   coordinateRoot: modelRoot,
@@ -171,13 +176,14 @@ const runtime = await createWebGLVegetationRuntime({
   }),
 })
 
-scene.add(runtime.object3d)
-runtime.updateFrame(camera)
+runtime.updateFrame()
 runtime.dispose()
 ```
 
 Die endgültigen Namen werden erst beim API-Test festgelegt. Wichtig ist der
-Vertrag, nicht diese exakte Syntax.
+Vertrag, nicht diese exakte Syntax. Wer die automatische Szenenbindung nicht
+verwenden möchte, kann weiterhin die niedrigere Runtime-Fassade verwenden,
+`object3d` selbst einhängen und die internen Adapter gezielt ersetzen.
 
 ## Architekturentscheidungen
 
@@ -186,6 +192,8 @@ Vertrag, nicht diese exakte Syntax.
 Empfohlen wird eine kleine Zahl tragender Grenzen:
 
 - Preparation-Adapter: synchron oder Worker;
+- Scene-Adapter: bequeme Standardintegration und Besitz der Ein-/Aushängung;
+- Camera-Adapter: Three-Kamera und Modellroot in neutralen Framezustand abbilden;
 - Layer-Renderer-Factory: Grass heute, weitere Profile später;
 - Lighting-Adapter: Three-Szenenlicht als Standard, alternatives Modell optional;
 - Ground-Surface-Adapter: Materialbindung der Hostanwendung.
@@ -213,6 +221,30 @@ Konfigurierbar sind nur die Vegetationsentscheidungen:
 Three-interne Shader-Chunks und deren Versionsabhängigkeit liegen ausschließlich
 im `ThreeSceneLightingAdapter`. Ein alternativer Adapter kann ein anderes
 Lichtmodell bereitstellen, ohne VEGFILE, Placement oder Density zu ändern.
+
+Der Standardadapter zählt oder kopiert keine Lichter pro Frame. Materialien
+melden Three.js über `lights: true`, dass sie am nativen Lichtpfad teilnehmen;
+die benötigten Licht- und Shadow-Uniforms sowie Renderer-Exposure werden vom
+Renderer aktualisiert. Der Scene-Adapter besitzt deshalb keine Sonne und kein
+Day/Night-Modell, sondern verbindet die Vegetation nur mit derselben Szene und
+demselben Renderer wie die übrigen Objekte.
+
+### Kamera- und Frame-Daten
+
+Der `ThreeCameraAdapter` liest die aktuelle Three-Kamera und den gemeinsamen
+`coordinateRoot` aus und erzeugt daraus einen implementationsneutralen,
+wiederverwendeten `VegetationFrameState`. Dieser enthält nur die Daten, die
+gemeinsames Chunk-/Tile-Culling und Layer-Rendering tatsächlich benötigen, zum
+Beispiel Clip-aus-Modell-Matrix und Kameraposition im Modellraum. Three-Klassen
+werden nicht in den neutralen Culling-Kern durchgereicht.
+
+Die Standardintegration aktualisiert diese Daten in `runtime.updateFrame()`.
+Ein Consumer muss daher weder Kameramatrizen selbst umrechnen noch zusätzliche
+Uniforms synchronisieren. Gleichzeitig kann eine Anwendung den Camera-Adapter
+ersetzen, etwa für mehrere Viewports, eine XR-Kamera oder vorab berechnete
+Framezustände, ohne Layerprofile oder Dataset zu verändern. Temporäre Matrizen
+und Frusta werden wiederverwendet, damit der Adapter keine vermeidbaren
+Allokationen im Renderloop erzeugt.
 
 ### Serialisierbare Config bleibt frei von Implementierungsobjekten
 
@@ -391,6 +423,13 @@ Arbeiten:
    freigegeben.
 5. Preparation synchron anbieten und Worker als separaten Adapter ergänzen.
    Bundler-/Worker-Protokoll bleibt aus dem R3F-Component heraus.
+6. Einen `ThreeCameraAdapter` einführen, der Kamera und `coordinateRoot` in einen
+   neutralen, allokationsarmen Framezustand für gemeinsames Culling und die
+   Layer-Renderer übersetzt.
+7. Einen kleinen `ThreeVegetationSceneAdapter` als Standardweg ergänzen. Er
+   nimmt Renderer, Szene, Kamera und `coordinateRoot` entgegen, hängt das
+   Runtime-Objekt ein und aus und delegiert Frameupdate sowie Cleanup. Er besitzt
+   keine Szenenlichter und keine layerspezifische Konfiguration.
 
 Gate:
 
@@ -399,6 +438,10 @@ Gate:
 - Fehler-Injektionstests prüfen Cleanup nach jeder Erzeugungsstufe.
 - Tests prüfen transformierten `coordinateRoot`, Layer-Umschaltung und
   wiederholtes `dispose()`.
+- Das Standalone-Beispiel benötigt weder manuelle Kameramatrix-Konvertierung
+  noch einen eigenen Kamera- oder Licht-Synchronisationscallback.
+- Ein Vertragstest ersetzt den Camera-Adapter, ohne Dataset oder Layerprofil zu
+  ändern.
 
 Commit: `refactor(webgl): add vegetation runtime lifecycle facade`
 
@@ -437,6 +480,9 @@ Arbeiten:
 
 1. Bestehende Three-Licht-, Shadow-, Tone-Mapping- und Color-Space-Anbindung in
    einen `ThreeSceneLightingAdapter` verschieben und als Default setzen.
+   Der Adapter verwendet den nativen Three-Materialpfad (`lights: true`,
+   Lichtuniforms und Shader-Chunks), statt Szenenlichter selbst zu suchen oder
+   zu spiegeln.
 2. `directLightWeight` beziehungsweise sein Nachfolgemodell bleibt pro
    Grass-Profil konfigurierbar.
 3. Den versteckten Übergang des direkten Lichtanteils auf `1.0` aus dem
@@ -449,6 +495,9 @@ Arbeiten:
    Meshwerte nicht nochmals überschreiben.
 6. Einen einfachen alternativen Testadapter implementieren, aber kein zweites
    produktives Lichtsystem.
+7. Renderer-Exposure wird über Three.js Tone Mapping übernommen. Weder Runtime
+   noch I-CAKA führen dafür ein paralleles Exposure-Uniform oder eine
+   Frame-Synchronisation ein.
 
 Technische Verifikation:
 
@@ -462,6 +511,8 @@ Technische Verifikation:
 Gate:
 
 - I-CAKAs `DayNightLighting` bleibt alleiniger Besitzer der Szenenlichter.
+- Hinzufügen, Entfernen sowie Farb-/Intensitätsänderungen kompatibler
+  Three-Lichter erreichen die Vegetation ohne Consumer-Callback.
 - Placement, Density und VEGFILE kennen das Lichtmodell nicht.
 - Ein Adapterwechsel benötigt keine Shaderänderung außerhalb des
   Lighting-Adapters.
