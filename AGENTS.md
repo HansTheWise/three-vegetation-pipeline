@@ -180,6 +180,7 @@ When the user corrects your approach, append a one-line rule here before ending 
 - For soft meadow ground, use broad falloff and moderate domain distortion; moving generation into a worker does not replace profiling and removing full-field/per-source startup rescans.
 - Do not assume patch coverage belongs per Cell or in the VEGFILE; compare a low-resolution global R8 field with deterministic runtime generation using measured file-size and startup costs first.
 - For debug performance comparisons, expose physical drawing-buffer resolution and asynchronous GPU render time/throughput; do not treat requestAnimationFrame FPS as uncapped performance or silently cap pipeline DPR to 1.
+- Keep chunking, frustum evaluation and future occlusion infrastructure global and shared, while distribution, patterns, LOD/density, lighting, shadows and profile settings remain layer-specific; shared culling must consume each profile's bounds.
 
 ---
 ## 12. How this file was built

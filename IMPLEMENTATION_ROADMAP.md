@@ -48,9 +48,13 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 
 ### 3. Runtime- und Renderprofilverträge stabilisieren
 
-- neutralen Layerkern vom Grass-Renderprofil trennen;
-- gemeinsame, profilabhängige Render-Bounds für Chunk- und Tile-Culling
-  einführen;
+- globale Renderer-, Chunking- und Culling-Infrastruktur von allen
+  layerspezifischen Einstellungen trennen;
+- Distribution, Pattern, LOD/Density, Shadows und Lighting pro Layer halten;
+- profilabhängige Geometrie- und Shaderwerte aus dem neutralen Layervertrag
+  lösen und Grass als anpassbares Standardpreset bereitstellen;
+- gemeinsame, profilabhängige Render-Bounds im globalen Chunk- und
+  Tile-Culling verwenden;
 - gemeinsame WebGL-Assetressourcen von Grass-Ressourcen trennen;
 - Layer-Renderer über eine kleine Factory-/Registry-Grenze erzeugen.
 

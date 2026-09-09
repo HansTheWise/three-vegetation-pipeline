@@ -321,27 +321,53 @@ Gate:
 
 Commit: `refactor(core): separate library and icaka ownership`
 
-### Phase 3 – Runtime- und Renderprofilverträge korrigieren
+### Phase 3 – Globale Runtime- und Layerverträge korrigieren
 
-Ziel: Neutraler Layerkern, korrektes Culling und ein eingebautes Grass-Profil.
+Ziel: Layerunabhängige Renderinfrastruktur, layerspezifische Entscheidungen und
+profilabhängige Implementierungen eindeutig trennen.
 
 Arbeiten:
 
-1. Neutralen Layerkern für ID/Key, Aktivierung, Pattern, Verteilung, Density und
-   Sichtbarkeit definieren.
-2. Grass-spezifische Geometrie, Farben, Thickness, Lighting und Bounds in ein
-   diskriminiertes Grass-Renderprofil verschieben.
-3. Einen gemeinsamen `VegetationRenderBounds`-Vertrag einführen. Chunk- und
-   Tile-Frustum-Culling verwenden dieselben maximalen Profilausmaße.
-4. WebGL-Instanzgrenzen anhand des tatsächlich sicheren `GLsizei`-Bereichs
+1. Einen globalen Runtime-Vertrag für gemeinsam genutzte Infrastruktur
+   definieren: Koordinatenbezug, Renderer-Backend, VEGFILE-Dataset,
+   Chunk-Struktur, Frustum-Auswertung, Diagnostik und den späteren
+   Occlusion-Culling-Einstieg. Implementierungsobjekte bleiben Runtime-Optionen
+   und werden nicht als scheinbar serialisierbare Configwerte ausgegeben.
+2. Einen neutralen Layervertrag für stabile ID/Key, Aktivierung, Pattern,
+   Verteilung, LOD/Density, Sichtbarkeit, Shadows und Lighting definieren. Diese
+   Werte werden pro Layer entschieden; Gras, Büsche und Bäume dürfen jeweils
+   andere Einstellungen verwenden.
+3. Profilabhängige Einstellungen hinter einem eindeutigen Profiltyp halten.
+   Grass besitzt Halmgeometrie, Farben, Thickness, Kameraausrichtung und seine
+   weiteren Shaderparameter. Spätere Baum- oder Buschmodule definieren eigene
+   Einstellungen, ohne Grass-Felder vortäuschen zu müssen.
+4. Grass als vollständiges, opinionated Standardpreset der Bibliothek anbieten.
+   Es funktioniert ohne eigene Modulentwicklung, bleibt aber über normale
+   Layer- und Grass-Profilwerte anpassbar und enthält keine I-CAKA-Werte.
+5. Chunking und Culling als gemeinsame Systeme beibehalten. Basis-Chunkdaten und
+   Frustumebenen werden nur einmal erzeugt. Ein neutraler
+   `VegetationRenderBounds`-Vertrag übergibt dem gemeinsamen Culler jedoch die
+   Ausmaße jedes Layerprofils. Ein konservativer globaler Grobpass kann die
+   größten aktiven Bounds verwenden; der layerspezifische Pass verfeinert mit
+   eigenen Bounds, Sichtweite und LOD.
+6. Chunk- und Tile-Frustum-Culling auf denselben Bounds-Vertrag umstellen und
+   Tests für niedriges Gras sowie ein deutlich höheres Dummyprofil ergänzen.
+7. WebGL-Instanzgrenzen anhand des tatsächlich sicheren `GLsizei`-Bereichs
    validieren.
-5. Offline-Felder, die nur eine zulässige Ausprägung vortäuschen, entweder
+8. Offline-Felder, die nur eine zulässige Ausprägung vortäuschen, entweder
    entfernen oder erst dann zu Strategien machen, wenn ein zweiter echter
    Verbraucher existiert.
 
 Gate:
 
-- Ein neutraler Layer kann ohne `blade`-Felder beschrieben werden.
+- Globale Runtime-Einstellungen enthalten keine Grass-, Baum- oder Buschwerte.
+- Ein Layer kann ohne `blade`-Felder beschrieben und von einem eigenen
+  Profilmodul verarbeitet werden.
+- Distribution, Pattern, LOD/Density, Shadows und Lighting bleiben pro Layer.
+- Shared Chunking/Culling wird nicht pro Layer dupliziert und verarbeitet
+  trotzdem korrekte profilabhängige Bounds.
+- Das eingebaute Grass-Preset erzeugt ohne I-CAKA-Abhängigkeit eine vollständige,
+  gültige Grass-Konfiguration und lässt gezielte Overrides zu.
 - Tests decken mindestens 0,5-m-Gras und ein deutlich höheres Dummyprofil ab.
 - VEGFILE v1, deterministische IDs und sichtbares Grass-Verhalten bleiben
   unverändert.
