@@ -3,6 +3,7 @@ import type { VegetationRuntimeConfig } from '../config/types.js';
 import { createVegetationPatterns } from '../patterns/VegetationPatterns.js';
 import { VEGETATION_ID_UINT32_MAX } from '../identity/VegetationIds.js';
 import type { ParsedVegFile } from '../parser/types.js';
+import { createGroundPatchField } from '../patches/createGroundPatchField.js';
 import type { VegetationRuntimeDataset, VegetationRuntimeLayer } from './types.js';
 
 /** Strictly joins parsed VEGFILE data and runtime configuration by stable layer ID. */
@@ -43,9 +44,11 @@ export function createVegetationRuntimeDataset(
       config: layerConfig,
       patterns: createVegetationPatterns(
         file.header.seed,
-        layerConfig.pattern,
-        layerConfig.lod.levels.map((level) => level.anchorCount),
+        { ...layerConfig.pattern, anchorsPerCell: layerConfig.distribution.anchorsPerCell },
       ),
+      groundPatchField: layerConfig.enabled
+        ? createGroundPatchField(file, fileLayer.id, layerConfig.patches.ground)
+        : undefined,
       cellSizeUnits,
       cellSizeMeters: cellSizeUnits / file.header.coordinateSystem.unitsPerMeter,
     };

@@ -1,39 +1,70 @@
 import { describe, expect, it } from 'vitest';
-import { icakaVegetationRuntimeConfig } from '../config/icaka.vegetation.runtime.config.js';
+
 import { icakaVegetationConfig } from '../config/icaka.vegetation.config.js';
-import type { VegetationRuntimeConfig } from '../src/runtime/config/types.js';
-import { validateVegetationRuntimeConfig } from '../src/runtime/config/validateVegetationRuntimeConfig.js';
+import { icakaVegetationRuntimeConfig } from '../config/icaka.vegetation.runtime.config.js';
+import { groundColorConfig } from './fixtures/groundColorConfig.js';
+import {
+  evaluateVegetationDensityCurve,
+  type VegetationRuntimeConfig,
+  validateVegetationRuntimeConfig,
+} from '../src/index.js';
 
 describe('VegetationRuntimeConfig', () => {
-  it('accepts the initial I-CAKA frontend values', () => {
-    expect(() => validateVegetationRuntimeConfig(icakaVegetationRuntimeConfig))
-      .not.toThrow();
+  it('rejects removed vegetation patches with a coverage migration hint', () => {
+    const config = structuredClone(icakaVegetationRuntimeConfig);
+    Object.assign(config.layers[0]!.patches, { vegetation: { enabled: false } });
+    expect(() => validateVegetationRuntimeConfig(config)).toThrow('Use density.activeCells');
+  });
+  it('accepts independent ground color curves including a linear transition', () => {
+    expect(() => validateVegetationRuntimeConfig(groundColorConfig)).not.toThrow();
+  });
+
+  it.each(['bottom', 'top'] as const)('rejects invalid %s ground color curves', (endpoint) => {
+    for (const invalid of [
+      { startsAtMeters: -1, endsAtMeters: 120, curveStrength: 1 },
+      { startsAtMeters: 120, endsAtMeters: 120, curveStrength: 1 },
+      { startsAtMeters: 150, endsAtMeters: 120, curveStrength: 1 },
+      { startsAtMeters: 30, endsAtMeters: 120, curveStrength: -1 },
+      { startsAtMeters: 30, endsAtMeters: 120, curveStrength: Number.NaN },
+    ]) {
+      const config = structuredClone(groundColorConfig) as VegetationRuntimeConfig;
+      Object.assign(config.layers[0]!.colors.distanceColorTransition, { [endpoint]: invalid });
+      expect(() => validateVegetationRuntimeConfig(config))
+        .toThrow(`distanceColorTransition.${endpoint}`);
+    }
+  });
+
+  it('rejects a ground target without a ground field', () => {
+    const config = structuredClone(groundColorConfig) as VegetationRuntimeConfig;
+    Object.assign(config.layers[0]!.patches, { ground: { enabled: false } });
+    expect(() => validateVegetationRuntimeConfig(config)).toThrow('enabled ground patches');
+  });
+
+  it('accepts the continuous I-CAKA density values', () => {
+    expect(() => validateVegetationRuntimeConfig(icakaVegetationRuntimeConfig)).not.toThrow();
     const layer = icakaVegetationRuntimeConfig.layers[0]!;
-    expect([
-      layer.visibility.maximumDistanceMeters,
-      layer.bladeCount.reachesZeroAtMeters,
-      layer.bladeThicknessDistanceScaling.reachesMaximumAtMeters,
-      layer.colors.distanceColorTransition.endsAtMeters,
-    ]).toEqual([500, 500, 500, 500]);
-    expect(layer.shadows).toMatchObject({ receive: true, cast: false });
-    expect(layer.bladeCount.maximumPerAnchor).toBe(1);
-    expect(layer.bladeCount.lodTransitionStartVisibleRatio).toBe(0.25);
-    expect(layer.lod.levels.map((level) => ({
-      cells: level.cellCoverageRatio,
-      anchors: level.anchorCount,
-      elements: level.elementCount,
-      segments: level.bladeSegments,
-      height: level.heightSampling,
-    }))).toEqual([
-      { cells: 1, anchors: 4, elements: 1, segments: 2, height: 'bilinear' },
-      { cells: 1, anchors: 3, elements: 1, segments: 2, height: 'bilinear' },
-      { cells: 1, anchors: 2, elements: 1, segments: 2, height: 'bilinear' },
-      { cells: 1, anchors: 1, elements: 1, segments: 2, height: 'bilinear' },
-      { cells: 1 / 2, anchors: 1, elements: 1, segments: 1, height: 'diagonal-average' },
-      { cells: 1 / 4, anchors: 1, elements: 1, segments: 1, height: 'diagonal-average' },
-      { cells: 1 / 8, anchors: 1, elements: 1, segments: 1, height: 'diagonal-average' },
-      { cells: 1 / 64, anchors: 1, elements: 1, segments: 1, height: 'diagonal-average' },
-    ]);
+    expect(layer.shadows).toEqual({ receive: true });
+    expect(layer.lighting).toEqual({ directLightWeight: 0.35 });
+    expect(layer.blade).toMatchObject({ segments: 2, heightSampling: 'bilinear' });
+    expect(layer.blade.cameraFacing).toEqual({
+      startsAtMeters: 80,
+      reachesFullAtMeters: 140,
+    });
+    expect(layer.patches).toEqual({ ground: { enabled: false } });
+    expect(evaluateVegetationDensityCurve(layer.density.activeCells, 126)).toBe(0.568);
+    expect(evaluateVegetationDensityCurve(layer.density.activeAnchors, 127)).toBe(0.345);
+  });
+
+  it('interpolates density deterministically and clamps to the curve ends', () => {
+    const curve = [
+      { distanceMeters: 0, ratio: 1 },
+      { distanceMeters: 100, ratio: 0.5 },
+      { distanceMeters: 200, ratio: 0 },
+    ] as const;
+    expect(evaluateVegetationDensityCurve(curve, -10)).toBe(1);
+    expect(evaluateVegetationDensityCurve(curve, 50)).toBe(0.75);
+    expect(evaluateVegetationDensityCurve(curve, 150)).toBe(0.25);
+    expect(evaluateVegetationDensityCurve(curve, 300)).toBe(0);
   });
 
   it('connects runtime data to .veg data through stable layer IDs and keys', () => {
@@ -41,15 +72,12 @@ describe('VegetationRuntimeConfig', () => {
       .map(({ id, key }) => ({ id, key }));
     const runtimeLayers = icakaVegetationRuntimeConfig.layers
       .map(({ layerId: id, key }) => ({ id, key }));
-
     expect(runtimeLayers).toEqual(offlineLayers);
   });
 
-  it('contains serializable data and no module or function references', () => {
-    const serialized = JSON.stringify(icakaVegetationRuntimeConfig);
-    const parsed = JSON.parse(serialized) as unknown;
-
-    expect(parsed).toEqual(icakaVegetationRuntimeConfig);
+  it('contains serializable data and no function references', () => {
+    expect(JSON.parse(JSON.stringify(icakaVegetationRuntimeConfig)))
+      .toEqual(icakaVegetationRuntimeConfig);
     expect(containsFunction(icakaVegetationRuntimeConfig)).toBe(false);
   });
 
@@ -59,211 +87,169 @@ describe('VegetationRuntimeConfig', () => {
       ...icakaVegetationRuntimeConfig,
       layers: [layer, { ...layer, key: 'other-grass' }],
     } satisfies VegetationRuntimeConfig;
-
     expect(() => validateVegetationRuntimeConfig(invalid))
       .toThrow('Runtime layer ID 0 is duplicated.');
   });
 
-  it('rejects distance curves outside the visibility range', () => {
+  it('validates enabled patch generation values through the runtime config', () => {
     const layer = icakaVegetationRuntimeConfig.layers[0]!;
     const invalid = {
       ...icakaVegetationRuntimeConfig,
       layers: [{
         ...layer,
-        bladeCount: {
-          ...layer.bladeCount,
-          reachesZeroAtMeters: layer.visibility.maximumDistanceMeters + 1,
+        patches: {
+          ground: {
+            enabled: true,
+            seed: 0,
+            radiusMeters: { minimum: 8, maximum: 32 },
+            targetCoverage: 2,
+            allowMerging: true,
+            edgeFalloffMeters: 3,
+            shapeDistortion: 0.35,
+            colors: { baseColor: '#39a83a', brightnessVariation: 0.08 },
+          },
         },
       }],
     } satisfies VegetationRuntimeConfig;
 
     expect(() => validateVegetationRuntimeConfig(invalid))
-      .toThrow('bladeCount end distance must be between 0 and 500.');
+      .toThrow('Vegetation patches.targetCoverage must be between 0 and 1.');
   });
 
-  it('rejects non-positive render-tile sizes and empty LOD profiles', () => {
+  it('rejects invalid render-tile sizes and empty density curves', () => {
     const layer = icakaVegetationRuntimeConfig.layers[0]!;
     const invalidTileSize = {
       ...icakaVegetationRuntimeConfig,
-      layers: [{ ...layer, lod: { ...layer.lod, renderTileSizeCells: 0 } }],
+      layers: [{ ...layer, density: { ...layer.density, renderTileSizeCells: 0 } }],
     } satisfies VegetationRuntimeConfig;
-    const emptyLevels = {
+    const emptyCurve = {
       ...icakaVegetationRuntimeConfig,
-      layers: [{ ...layer, lod: { ...layer.lod, levels: [] } }],
+      layers: [{ ...layer, density: { ...layer.density, activeCells: [] } }],
     } satisfies VegetationRuntimeConfig;
-
     expect(() => validateVegetationRuntimeConfig(invalidTileSize))
-      .toThrow('lod.renderTileSizeCells must be an integer greater than or equal to 1.');
-    expect(() => validateVegetationRuntimeConfig(emptyLevels))
-      .toThrow('lod.levels must not be empty.');
+      .toThrow('density.renderTileSizeCells must be an integer greater than or equal to 1.');
+    expect(() => validateVegetationRuntimeConfig(emptyCurve))
+      .toThrow('density.activeCells must not be empty.');
   });
 
-  it('rejects incomplete or increasing LOD density profiles', () => {
+  it('rejects unordered, increasing and unnormalized density curves', () => {
     const layer = icakaVegetationRuntimeConfig.layers[0]!;
-    const incomplete = {
-      ...icakaVegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        lod: { ...layer.lod, levels: layer.lod.levels.slice(1) },
-      }],
-    } satisfies VegetationRuntimeConfig;
-    const increasing = {
-      ...icakaVegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        lod: {
-          ...layer.lod,
-          levels: [
-            layer.lod.levels[0]!,
-            { ...layer.lod.levels[1]!, anchorCount: 4 },
-          ],
-        },
-      }],
-    } satisfies VegetationRuntimeConfig;
-
-    expect(() => validateVegetationRuntimeConfig(incomplete))
-      .toThrow('lod.levels[0] must use the complete Cell, Anchor and Element density.');
-    expect(() => validateVegetationRuntimeConfig(increasing))
-      .toThrow('lod.levels must strictly decrease total density.');
+    const invalidCurves = [
+      {
+        points: [{ distanceMeters: 1, ratio: 1 }],
+        message: 'density.activeCells[0].distanceMeters must be 0.',
+      },
+      {
+        points: [{ distanceMeters: 0, ratio: 1 }, { distanceMeters: 0, ratio: 0.5 }],
+        message: 'density.activeCells distances must strictly increase.',
+      },
+      {
+        points: [{ distanceMeters: 0, ratio: 0.5 }, { distanceMeters: 10, ratio: 0.75 }],
+        message: 'density.activeCells ratios must not increase with distance.',
+      },
+      {
+        points: [{ distanceMeters: 0, ratio: 1.1 }],
+        message: 'density.activeCells[0].ratio must be between 0 and 1.',
+      },
+    ];
+    for (const { points, message } of invalidCurves) {
+      const config = {
+        ...icakaVegetationRuntimeConfig,
+        layers: [{ ...layer, density: { ...layer.density, activeCells: points } }],
+      } as VegetationRuntimeConfig;
+      expect(() => validateVegetationRuntimeConfig(config)).toThrow(message);
+    }
   });
 
-  it('rejects invalid blade geometry and height sampling', () => {
+  it('requires density to reach zero before the visibility cutoff', () => {
+    const layer = icakaVegetationRuntimeConfig.layers[0]!;
+    const nonZeroCurve = [
+      { distanceMeters: 0, ratio: 1 },
+      { distanceMeters: 500, ratio: 0.1 },
+    ] as const;
+    const config = {
+      ...icakaVegetationRuntimeConfig,
+      layers: [{ ...layer, density: {
+        ...layer.density,
+        activeCells: nonZeroCurve,
+        activeAnchors: nonZeroCurve,
+        activeElements: nonZeroCurve,
+      } }],
+    } satisfies VegetationRuntimeConfig;
+    expect(() => validateVegetationRuntimeConfig(config))
+      .toThrow('density must reach zero by visibility.maximumDistanceMeters.');
+  });
+
+  it('rejects invalid fixed blade quality', () => {
     const layer = icakaVegetationRuntimeConfig.layers[0]!;
     const invalidSegments = {
       ...icakaVegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        lod: {
-          ...layer.lod,
-          levels: [
-            { ...layer.lod.levels[0]!, bladeSegments: 0 },
-            ...layer.lod.levels.slice(1),
-          ],
-        },
-      }],
-    } as unknown as VegetationRuntimeConfig;
+      layers: [{ ...layer, blade: { ...layer.blade, segments: 0 } }],
+    } as VegetationRuntimeConfig;
     const invalidSampling = {
       ...icakaVegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        lod: {
-          ...layer.lod,
-          levels: [
-            { ...layer.lod.levels[0]!, heightSampling: 'nearest' },
-            ...layer.lod.levels.slice(1),
-          ],
-        },
-      }],
+      layers: [{ ...layer, blade: { ...layer.blade, heightSampling: 'nearest' } }],
     } as unknown as VegetationRuntimeConfig;
-
     expect(() => validateVegetationRuntimeConfig(invalidSegments))
-      .toThrow('lod.levels[0].bladeSegments must be an integer greater than or equal to 1.');
+      .toThrow('blade.segments must be an integer greater than or equal to 1.');
     expect(() => validateVegetationRuntimeConfig(invalidSampling))
-      .toThrow('lod.levels[0].heightSampling is unsupported.');
+      .toThrow('blade.heightSampling is unsupported.');
   });
 
-  it('rejects a blade growth transition larger than the blade-count distance range', () => {
+  it('rejects an invalid camera-facing transition', () => {
     const layer = icakaVegetationRuntimeConfig.layers[0]!;
     const invalid = {
       ...icakaVegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        bladeCount: {
-          ...layer.bladeCount,
-          growthTransitionDistanceMeters: layer.bladeCount.reachesZeroAtMeters
-            - layer.bladeCount.startsDecreasingAtMeters
-            + 1,
-        },
-      }],
+      layers: [{ ...layer, blade: {
+        ...layer.blade,
+        cameraFacing: { startsAtMeters: 140, reachesFullAtMeters: 80 },
+      } }],
     } satisfies VegetationRuntimeConfig;
-
     expect(() => validateVegetationRuntimeConfig(invalid))
-      .toThrow(
-        'bladeCount.growthTransitionDistanceMeters must not exceed the blade-count distance range.',
-      );
+      .toThrow('blade.cameraFacing end distance must be greater than start distance.');
   });
 
-  it('rejects invalid colors and numeric ranges', () => {
+  it('rejects an invalid direct light weight', () => {
+    const layer = icakaVegetationRuntimeConfig.layers[0]!;
+    const invalid = {
+      ...icakaVegetationRuntimeConfig,
+      layers: [{ ...layer, lighting: { directLightWeight: 1.1 } }],
+    } satisfies VegetationRuntimeConfig;
+    expect(() => validateVegetationRuntimeConfig(invalid))
+      .toThrow('lighting.directLightWeight must be between 0 and 1.');
+  });
+
+  it('rejects invalid colors, ranges, pattern counts and distribution counts', () => {
     const layer = icakaVegetationRuntimeConfig.layers[0]!;
     const invalidColor = {
       ...icakaVegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        colors: { ...layer.colors, bottomColors: ['#grass'] },
-      }],
+      layers: [{ ...layer, colors: { ...layer.colors, bottomColors: ['#grass'] } }],
     } as unknown as VegetationRuntimeConfig;
     const invalidRange = {
       ...icakaVegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        blade: {
-          ...layer.blade,
-          heightMeters: { minimum: 0.3, maximum: 0.2 },
-        },
-      }],
+      layers: [{ ...layer, blade: {
+        ...layer.blade,
+        heightMeters: { minimum: 0.3, maximum: 0.2 },
+      } }],
     } satisfies VegetationRuntimeConfig;
-
-    expect(() => validateVegetationRuntimeConfig(invalidColor))
-      .toThrow('colors.bottomColors[0] must be a six-digit hex color.');
-    expect(() => validateVegetationRuntimeConfig(invalidRange))
-      .toThrow('blade.heightMeters.maximum must be at least minimum.');
+    const tooManyPatterns = {
+      ...icakaVegetationRuntimeConfig,
+      layers: [{ ...layer, pattern: { ...layer.pattern, patternCount: 257 } }],
+    } satisfies VegetationRuntimeConfig;
+    const invalidCount = {
+      ...icakaVegetationRuntimeConfig,
+      layers: [{ ...layer, distribution: { ...layer.distribution, anchorsPerCell: 0 } }],
+    } satisfies VegetationRuntimeConfig;
+    expect(() => validateVegetationRuntimeConfig(invalidColor)).toThrow('six-digit hex color');
+    expect(() => validateVegetationRuntimeConfig(invalidRange)).toThrow('maximum must be at least');
+    expect(() => validateVegetationRuntimeConfig(tooManyPatterns)).toThrow('must not exceed 256');
+    expect(() => validateVegetationRuntimeConfig(invalidCount)).toThrow('anchorsPerCell');
   });
 
-  it('rejects more patterns than the assigned Cell-ID bits can select', () => {
-    const layer = icakaVegetationRuntimeConfig.layers[0]!;
-    const invalid = {
-      ...icakaVegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        pattern: { ...layer.pattern, patternCount: 257 },
-      }],
-    } satisfies VegetationRuntimeConfig;
-
-    expect(() => validateVegetationRuntimeConfig(invalid))
-      .toThrow('pattern.patternCount must not exceed 256.');
-  });
-
-  it('rejects negative blade offsets and palettes larger than one hash byte', () => {
-    const layer = icakaVegetationRuntimeConfig.layers[0]!;
-    const negativeOffset = {
-      ...icakaVegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        bladeCount: { ...layer.bladeCount, maximumOffsetMeters: -0.01 },
-      }],
-    } satisfies VegetationRuntimeConfig;
-    const oversizedPalette = {
-      ...icakaVegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        colors: {
-          ...layer.colors,
-          topColors: new Array(257).fill('#000000') as `#${string}`[],
-        },
-      }],
-    } satisfies VegetationRuntimeConfig;
-
-    expect(() => validateVegetationRuntimeConfig(negativeOffset))
-      .toThrow('bladeCount.maximumOffsetMeters must not be negative.');
-    expect(() => validateVegetationRuntimeConfig(oversizedPalette))
-      .toThrow('colors.topColors must not contain more than 256 colors.');
-  });
-
-  it('rejects an LOD transition start outside the visible blade range', () => {
-    const layer = icakaVegetationRuntimeConfig.layers[0]!;
-    const invalid = {
-      ...icakaVegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        bladeCount: {
-          ...layer.bladeCount,
-          lodTransitionStartVisibleRatio: 1.1,
-        },
-      }],
-    } satisfies VegetationRuntimeConfig;
-
-    expect(() => validateVegetationRuntimeConfig(invalid))
-      .toThrow('bladeCount.lodTransitionStartVisibleRatio must be between 0 and 1.');
+  it('reports old runtime schemas without interpreting them as version 2', () => {
+    const config = { ...icakaVegetationRuntimeConfig, configVersion: 1 };
+    expect(() => validateVegetationRuntimeConfig(config as unknown as VegetationRuntimeConfig))
+      .toThrow('Use version 2');
   });
 });
 

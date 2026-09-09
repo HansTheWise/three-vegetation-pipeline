@@ -3,8 +3,6 @@ export type VegetationPatternSet = Readonly<{
   anchorsPerPattern: number;
   /** Interleaved normalized [x, y] positions in pattern-major order. */
   anchorPositions: Float32Array;
-  /** Anchor counts from nearest/highest-detail LOD to farthest/lowest-detail LOD. */
-  lodAnchorCounts: Uint32Array;
 }>;
 
 export type CellPatternSelection = Readonly<{

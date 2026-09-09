@@ -6,7 +6,7 @@ import type { VegetationRuntimeConfig } from '../src/runtime/config/types.js';
  * modules consume the individual sections.
  */
 export const icakaVegetationRuntimeConfig = {
-  configVersion: 1,
+  configVersion: 2,
   assetUrl: '/models/campus/campus.veg',
 
   layers: [
@@ -15,87 +15,30 @@ export const icakaVegetationRuntimeConfig = {
       layerId: 0,
       key: 'campus-grass',
       enabled: true,
+      patches: {
+        ground: { enabled: false },
+      },
+
+      // Grundverteilung: maximal 4 einzeln verteilte Halme pro aktiver Cell.
+      distribution: {
+        anchorsPerCell: 4,
+        elementsPerAnchor: 1,
+        elementRadiusMeters: 0.02, // Büschelradius; Wurzeln bleiben in der Cell.
+      },
 
       visibility: {
         maximumDistanceMeters: 500,
       },
 
-      lod: {
-        /** 32 Cells equal an 8 m render tile for the current 0.25 m Cells. */
-        renderTileSizeCells: 32,
-        /**
-         * Progressive stable prefixes. Density first falls through the four
-         * Anchors, then through Cells. Far levels use the four-vertex strip.
-         */
-        levels: [
-          {
-            cellCoverageRatio: 1,
-            anchorCount: 4,
-            elementCount: 1,
-            bladeSegments: 2,
-            heightSampling: 'bilinear',
-          },
-          {
-            cellCoverageRatio: 1,
-            anchorCount: 3,
-            elementCount: 1,
-            bladeSegments: 2,
-            heightSampling: 'bilinear',
-          },
-          {
-            cellCoverageRatio: 1,
-            anchorCount: 2,
-            elementCount: 1,
-            bladeSegments: 2,
-            heightSampling: 'bilinear',
-          },
-          {
-            cellCoverageRatio: 1,
-            anchorCount: 1,
-            elementCount: 1,
-            bladeSegments: 2,
-            heightSampling: 'bilinear',
-          },
-          {
-            cellCoverageRatio: 1 / 2,
-            anchorCount: 1,
-            elementCount: 1,
-            bladeSegments: 1,
-            heightSampling: 'diagonal-average',
-          },
-          {
-            cellCoverageRatio: 1 / 4,
-            anchorCount: 1,
-            elementCount: 1,
-            bladeSegments: 1,
-            heightSampling: 'diagonal-average',
-          },
-          {
-            cellCoverageRatio: 1 / 8,
-            anchorCount: 1,
-            elementCount: 1,
-            bladeSegments: 1,
-            heightSampling: 'diagonal-average',
-          },
-          {
-            cellCoverageRatio: 1 / 64,
-            anchorCount: 1,
-            elementCount: 1,
-            bladeSegments: 1,
-            heightSampling: 'diagonal-average',
-          },
-        ],
-      },
-
       pattern: {
         patternCount: 4,
-        /** Four progressive Anchors form the maximum near-camera density. */
-        anchorsPerCell: 4,
         rotatePerCell: true,
         reflectPerCell: true,
       },
 
       blade: {
+        segments: 2,
+        heightSampling: 'bilinear',
         heightMeters: {
           minimum: 0.4,
           maximum: 0.5,
@@ -106,19 +49,10 @@ export const icakaVegetationRuntimeConfig = {
         },
         topWidthRatio: 0.5,
         maximumTiltDegrees: 35,
-      },
-
-      bladeCount: {
-        /** One blade per Anchor is sufficient at the current Cell size. */
-        maximumPerAnchor: 1,
-        /** Keeps the blade root close to its Anchor. */
-        maximumOffsetMeters: 0.02,
-        startsDecreasingAtMeters: 10,
-        reachesZeroAtMeters: 500,
-        curveStrength: 10,
-        growthTransitionDistanceMeters: 12,
-        /** New LOD candidates enter at full height with only their upper quarter visible. */
-        lodTransitionStartVisibleRatio: 0.25,
+        cameraFacing: {
+          startsAtMeters: 80,
+          reachesFullAtMeters: 140,
+        },
       },
 
       bladeThicknessDistanceScaling: {
@@ -152,29 +86,34 @@ export const icakaVegetationRuntimeConfig = {
       },
 
       lighting: {
-        normalUpBias: 0.95,
-      },
-
-      cameraFacing: {
-        topViewStartsAtDegrees: 35,
-        topViewFullyAppliedAtDegrees: 70,
-        maximumTiltDegrees: 35,
+        directLightWeight: 0.35,
       },
 
       shadows: {
         receive: true,
-        /** Grass receives scene shadows but never renders into shadow maps. */
-        cast: false,
-        castUntilMeters: 40,
       },
 
-      wind: {
-        strength: 1,
-        speed: 1,
-        spatialFrequency: 1,
-        gustStrength: 0.5,
-        gustFrequency: 0.2,
-        variation: 0.25,
+      // Kontinuierliche Tile-Dichte; die Runtime verteilt ganzzahlige Budgets
+      // stabil über maskenaktive Cells, Anchors und Elements.
+      density: {
+        renderTileSizeCells: 32, // 8 m pro Tile bei aktuellen 0.25-m-Cells.
+        activeCells: [
+          { distanceMeters: 0, ratio: 1 },
+          { distanceMeters: 126, ratio: 0.568 },
+          { distanceMeters: 220, ratio: 3 / 64 },
+          { distanceMeters: 500, ratio: 0 },
+        ],
+        activeAnchors: [
+          { distanceMeters: 0, ratio: 1 },
+          { distanceMeters: 127, ratio: 0.345 },
+          { distanceMeters: 220, ratio: 1 / 4 },
+          { distanceMeters: 500, ratio: 0 },
+        ],
+        activeElements: [
+          { distanceMeters: 0, ratio: 1 },
+          { distanceMeters: 220, ratio: 1 },
+          { distanceMeters: 500, ratio: 0 },
+        ],
       },
     },
   ],

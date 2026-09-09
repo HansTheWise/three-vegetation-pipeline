@@ -18,8 +18,8 @@ Cell
   zusätzlichen Element-Hash.
 
 Alle Eingaben, Zwischenwerte und Ergebnisse sind vorzeichenlose 32-Bit-Werte.
-LOD-Stufen ändern keine ID und keinen Hash. Sie entscheiden ausschließlich, wie
-viele Anchor oder Elemente der stabilen Reihenfolge verwendet werden.
+Dichtebudgets ändern keine ID und keinen Hash. Sie entscheiden ausschließlich,
+wie viele Cells, Anchor oder Elemente der stabilen Reihenfolge verwendet werden.
 
 ## Cell-ID und Cell-Hash
 

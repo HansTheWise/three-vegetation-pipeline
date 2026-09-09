@@ -86,9 +86,38 @@ describe('createVegetationRuntimeDataset', () => {
     });
     expect(dataset.layers[0]!.fileLayer).toBe(file.layers[0]);
     expect(dataset.layers[0]!.config).toBe(config.layers[0]);
-    expect(dataset.layers[0]!.patterns.lodAnchorCounts).toEqual(
-      Uint32Array.from([4, 3, 2, 1, 1, 1, 1, 1]),
-    );
+    expect(dataset.layers[0]!.patterns.anchorsPerPattern).toBe(4);
+    expect(dataset.layers[0]!.groundPatchField).toBeUndefined();
+  });
+
+  it('creates the configured patch field once with the runtime layer', () => {
+    const file = createParsedFile();
+    const source = createRuntimeConfig();
+    const config: VegetationRuntimeConfig = {
+      ...source,
+      layers: source.layers.map((layer) => ({
+        ...layer,
+        patches: {
+          ground: {
+            enabled: true,
+            seed: 0,
+            radiusMeters: { minimum: 2, maximum: 4 },
+            targetCoverage: 0,
+            allowMerging: true,
+            edgeFalloffMeters: 1,
+            shapeDistortion: 0.35,
+            colors: { baseColor: '#39a83a', brightnessVariation: 0.08 },
+          },
+        },
+      })),
+    };
+
+    const dataset = createVegetationRuntimeDataset(file, config);
+    expect(dataset.layers[0]!.groundPatchField).toMatchObject({
+      layerId: 0,
+      patchCount: 0,
+      achievedCoverage: 0,
+    });
   });
 
   it('rejects a VEGFILE layer without runtime configuration', () => {

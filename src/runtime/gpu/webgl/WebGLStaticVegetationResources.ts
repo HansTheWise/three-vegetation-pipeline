@@ -2,6 +2,8 @@ import {
   Color,
   DataTexture,
   FloatType,
+  LinearFilter,
+  LinearMipmapLinearFilter,
   RedIntegerFormat,
   RGFormat,
   RGIntegerFormat,
@@ -42,6 +44,11 @@ export type WebGLColorPaletteResource = Readonly<{
   texture: DataTexture;
 }>;
 
+export type WebGLPatchFieldResource = Readonly<{
+  layerId: number;
+  texture: DataTexture;
+}>;
+
 /** Owns the immutable GPU data created from one parsed VEGFILE. */
 export class WebGLStaticVegetationResources {
   readonly header: ParsedVegHeader;
@@ -50,6 +57,7 @@ export class WebGLStaticVegetationResources {
   readonly heightDataTexture: DataTexture;
   readonly layerMasks: readonly WebGLLayerMaskResource[];
   readonly patterns: readonly WebGLPatternResource[];
+  readonly groundPatchFields: readonly WebGLPatchFieldResource[];
 
   constructor(
     renderer: WebGLRenderer,
@@ -58,6 +66,11 @@ export class WebGLStaticVegetationResources {
     const { file } = dataset;
     const { storedChunkCount, heightMap } = file.header;
     this.header = file.header;
+    for (const layer of dataset.enabledLayers) {
+      if (layer.groundPatchField) validateTextureDimensions(
+        renderer, layer.groundPatchField.width, layer.groundPatchField.height, 'vegetation/patch-field',
+      );
+    }
 
     this.storedChunkGridCoordinatesTexture = createUploadedDataTexture(
       renderer,
@@ -101,6 +114,20 @@ export class WebGLStaticVegetationResources {
       ),
     }));
     this.patterns = createPatternResources(renderer, dataset);
+    this.groundPatchFields = dataset.enabledLayers.flatMap((layer) => {
+      const field = layer.groundPatchField;
+      if (!field) return [];
+      const texture = new DataTexture(
+        field.data, field.width, field.height, RGFormat, UnsignedByteType,
+      );
+      texture.name = `vegetation/layer-${layer.layerId}-patch-field`;
+      texture.magFilter = LinearFilter;
+      texture.minFilter = LinearMipmapLinearFilter;
+      texture.generateMipmaps = true;
+      texture.needsUpdate = true;
+      renderer.initTexture(texture);
+      return [{ layerId: layer.layerId, texture }];
+    });
   }
 
   dispose(): void {
@@ -108,6 +135,7 @@ export class WebGLStaticVegetationResources {
     this.chunkHeightRangesTexture.dispose();
     this.heightDataTexture.dispose();
     for (const layer of this.layerMasks) layer.texture.dispose();
+    for (const field of this.groundPatchFields) field.texture.dispose();
     for (const pattern of this.patterns) {
       pattern.texture.dispose();
       pattern.bottomColors.texture.dispose();

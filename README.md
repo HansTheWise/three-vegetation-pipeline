@@ -3,6 +3,8 @@ A modular, data-driven vegetation rendering pipeline for Three.js, designed for 
 
 ## Architecture
 
+- [Cleanup and refactor plan](CLEANUP_REFACTOR_PLAN.md)
 - [Implementation roadmap](IMPLEMENTATION_ROADMAP.md)
 - [Offline pipeline](src/offline/offline-pipeline.md)
 - [Runtime pipeline](src/runtime/runtime-pipeline.md)
+- [Patch-field contract](src/runtime/patches/patches.md)

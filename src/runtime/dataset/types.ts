@@ -1,6 +1,7 @@
 import type { VegetationRuntimeConfig, VegetationRuntimeLayerConfig } from '../config/types.js';
 import type { VegetationPatternSet } from '../patterns/types.js';
 import type { ParsedVegFile, ParsedVegLayer } from '../parser/types.js';
+import type { GroundPatchField } from '../patches/types.js';
 
 export type VegetationRuntimeLayer = Readonly<{
   layerId: number;
@@ -9,6 +10,7 @@ export type VegetationRuntimeLayer = Readonly<{
   fileLayer: ParsedVegLayer;
   config: VegetationRuntimeLayerConfig;
   patterns: VegetationPatternSet;
+  groundPatchField: GroundPatchField | undefined;
   cellSizeUnits: number;
   cellSizeMeters: number;
 }>;

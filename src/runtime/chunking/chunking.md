@@ -29,5 +29,5 @@ angelegt. Pro Frame werden nur seine ersten `visibleChunkCount` Einträge
 überschrieben; die Sichtbarkeitsprüfung selbst erzeugt keine neuen Arrays oder
 Objekte.
 
-Das Modul prüft ausschließlich das Kamera-Frustum. Distanz-, LOD- und
-Occlusion-Culling bleiben getrennte spätere Schritte.
+Das Modul prüft ausschließlich das Kamera-Frustum. Distanzdichte und
+Occlusion-Culling bleiben getrennte Schritte.

@@ -9,6 +9,7 @@ import {
   PerspectiveCamera,
   Scene,
   SRGBColorSpace,
+  PCFShadowMap,
   Vector3,
   WebGLRenderer,
 } from 'three';
@@ -19,24 +20,35 @@ import {
   createVegetationRuntimeDataset,
   FrustumChunkVisibility,
   parseVegFile,
-  WebGLDebugChunkView,
+  WebGLVegetationDebug,
   WebGLGrassView,
   WebGLVegetationAdapter,
 } from '../src/index.js';
-import { CameraFrustumVisualization } from './debug/CameraFrustumVisualization.js';
-import { createChunkBoundingBoxOutlines } from './debug/createChunkBoundingBoxOutlines.js';
-import { FirstPersonCameraController } from './debug/FirstPersonCameraController.js';
 import { icakaVegetationRuntimeConfig } from '../config/icaka.vegetation.runtime.config.js';
 
 const status = document.querySelector<HTMLDivElement>('#status');
 if (!status) throw new Error('Debug status element is missing.');
 
-const renderer = new WebGLRenderer({ antialias: false });
+const debugParameters = new URLSearchParams(window.location.search);
+const antialiasEnabled = debugParameters.has('aa') && !debugParameters.has('noAA');
+const renderer = new WebGLRenderer({ antialias: antialiasEnabled });
 renderer.outputColorSpace = SRGBColorSpace;
 renderer.toneMapping = ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1;
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+const requestedResolution = debugParameters.get('resolution');
+let targetWidth = requestedResolution === '2k' ? 2560 : requestedResolution === '4k' ? 3840 : null;
+const requestedPixelRatio = Number(debugParameters.get('dpr'));
+let pixelRatio = (
+  targetWidth
+    ? targetWidth / window.innerWidth
+    : Number.isFinite(requestedPixelRatio) && requestedPixelRatio > 0
+    ? requestedPixelRatio
+    : window.devicePixelRatio
+);
+renderer.setPixelRatio(pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = !debugParameters.has('noShadows');
+renderer.shadowMap.type = PCFShadowMap;
 document.body.append(renderer.domElement);
 
 const response = await fetch('/campus.veg');
@@ -54,29 +66,21 @@ const chunkBoundingBoxes = createChunkBoundingBoxes(parsedVegFile);
 const chunkVisibility = new FrustumChunkVisibility(
   chunkBoundingBoxes,
 );
-const debugChunks = new WebGLDebugChunkView(gpuAdapter);
 const grass = new WebGLGrassView(gpuAdapter, 0);
 
 const scene = new Scene();
 scene.background = new Color('#9bc4dc');
 scene.add(grass.mesh);
-scene.add(debugChunks.mesh);
-debugChunks.mesh.visible = false;
 const campusModel = await new GLTFLoader().loadAsync('/campus.glb');
 campusModel.scene.traverse((object) => {
   if (!(object instanceof Mesh)) return;
-  object.castShadow = false;
+  object.castShadow = !belongsToGround(object);
   object.receiveShadow = true;
 });
 scene.add(campusModel.scene);
 const ambientLight = new AmbientLight('#b9c9df', 0.45);
 scene.add(ambientLight);
 scene.add(new AxesHelper(parsedVegFile.header.grid.chunkSize));
-const boundingBoxOutlines = createChunkBoundingBoxOutlines(chunkBoundingBoxes);
-boundingBoxOutlines.visible = false;
-scene.add(boundingBoxOutlines);
-const cullingFrustum = new CameraFrustumVisualization();
-scene.add(cullingFrustum.group);
 
 const { sourceBounds } = parsedVegFile.header;
 const minimum = new Vector3(sourceBounds.minX, sourceBounds.minY, sourceBounds.minZ);
@@ -116,12 +120,21 @@ directionalLight.position.copy(center)
   .addScaledVector(axisVectors[horizontalAxes[1]], -sceneRadius * 0.25)
   .addScaledVector(axisVectors[upAxis], sceneRadius);
 directionalLight.target.position.copy(center);
+directionalLight.castShadow = renderer.shadowMap.enabled;
+directionalLight.shadow.mapSize.set(2048, 2048);
+directionalLight.shadow.bias = -0.0002;
+directionalLight.shadow.normalBias = 0.5;
+const shadowExtent = sceneRadius * 1.15;
+directionalLight.shadow.camera.left = -shadowExtent;
+directionalLight.shadow.camera.right = shadowExtent;
+directionalLight.shadow.camera.top = shadowExtent;
+directionalLight.shadow.camera.bottom = -shadowExtent;
+directionalLight.shadow.camera.near = 0.1;
+directionalLight.shadow.camera.far = sceneRadius * 5;
+directionalLight.shadow.camera.updateProjectionMatrix();
+directionalLight.shadow.autoUpdate = false;
+directionalLight.shadow.needsUpdate = directionalLight.castShadow;
 scene.add(directionalLight, directionalLight.target);
-grass.setLighting(
-  directionalLight.position.clone().sub(center).normalize(),
-  ambientLight.color.clone().multiplyScalar(ambientLight.intensity),
-  directionalLight.color.clone().multiplyScalar(directionalLight.intensity),
-);
 const upAxisIndex = upAxis === 'x' ? 0 : upAxis === 'y' ? 1 : 2;
 nearChunkCenter.setComponent(
   upAxisIndex,
@@ -145,56 +158,67 @@ cullingCamera.position.copy(cameraTarget)
   .addScaledVector(axisVectors[upAxis], cameraDistance);
 cullingCamera.lookAt(cameraTarget);
 
-let activeCamera = cullingCamera;
-let observerCamera: PerspectiveCamera | null = null;
-const cameraController = new FirstPersonCameraController({
-  camera: cullingCamera,
-  canvas: renderer.domElement,
-  upAxis: axisVectors[upAxis],
-  horizontalForwardAxis: axisVectors[horizontalAxes[1]],
-  movementSpeed: parsedVegFile.header.grid.chunkSize * 1.5,
-});
-
-window.addEventListener('keydown', (event) => {
-  if (event.repeat) return;
-
-  if (event.code === 'KeyG') {
-    debugChunks.mesh.visible = !debugChunks.mesh.visible;
-    return;
-  } else if (event.code === 'KeyB') {
-    boundingBoxOutlines.visible = !boundingBoxOutlines.visible;
-    return;
-  } else if (event.code !== 'KeyC') return;
-  else if (observerCamera) {
-    observerCamera = null;
-    activeCamera = cullingCamera;
-    cameraController.setCamera(cullingCamera);
-    cullingFrustum.group.visible = false;
-  } else {
-    observerCamera = cullingCamera.clone();
-    activeCamera = observerCamera;
-    cameraController.setCamera(observerCamera);
-    cullingFrustum.group.visible = true;
-  }
+status.remove();
+const renderControls = {
+  get antialias(): boolean {
+    return antialiasEnabled;
+  },
+  get shadows(): boolean {
+    return renderer.shadowMap.enabled;
+  },
+  get dpr(): number {
+    return pixelRatio;
+  },
+  setAntialias(enabled: boolean): void {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('noAA');
+    if (enabled) url.searchParams.set('aa', '');
+    else url.searchParams.delete('aa');
+    window.location.assign(url.href);
+  },
+  setShadows(enabled: boolean): void {
+    renderer.shadowMap.enabled = enabled;
+    directionalLight.castShadow = enabled;
+    directionalLight.shadow.needsUpdate = enabled;
+    scene.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach((material) => { material.needsUpdate = true; });
+    });
+    const url = new URL(window.location.href);
+    if (enabled) url.searchParams.delete('noShadows');
+    else url.searchParams.set('noShadows', '');
+    window.history.replaceState(null, '', url);
+  },
+  setDpr(nextDpr: number): void {
+    targetWidth = null;
+    pixelRatio = nextDpr;
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('resolution');
+    url.searchParams.set('dpr', String(pixelRatio));
+    window.history.replaceState(null, '', url);
+  },
+};
+const debug = new WebGLVegetationDebug({
+  adapter: gpuAdapter, grass, camera: cullingCamera, scene, panelParent: document.body, renderControls,
 });
 
 const clipFromModelMatrix = new Matrix4();
 const modelFromWorldMatrix = new Matrix4();
 const cameraPositionModel = new Vector3();
 let previousFrameTime = performance.now();
-let fpsSampleStart = previousFrameTime;
-let fpsSampleFrameCount = 0;
-let measuredFps = 0;
 
 function render(frameTime = performance.now()): void {
-  const deltaSeconds = Math.min((frameTime - previousFrameTime) / 1000, 0.1);
+  const deltaSeconds = (frameTime - previousFrameTime) / 1000;
   previousFrameTime = frameTime;
-  cameraController.update(deltaSeconds);
-  activeCamera.updateMatrixWorld();
-  cullingCamera.updateMatrixWorld();
+  debug.update(deltaSeconds);
+  const visibilityCamera = debug.cullingCamera;
+  const cpuStart = performance.now();
   grass.mesh.updateMatrixWorld();
   clipFromModelMatrix
-    .multiplyMatrices(cullingCamera.projectionMatrix, cullingCamera.matrixWorldInverse)
+    .multiplyMatrices(visibilityCamera.projectionMatrix, visibilityCamera.matrixWorldInverse)
     .multiply(grass.mesh.matrixWorld);
 
   const visibleChunkCount = chunkVisibility.updateVisibleChunks(
@@ -207,54 +231,36 @@ function render(frameTime = performance.now()): void {
   );
   modelFromWorldMatrix.copy(grass.mesh.matrixWorld).invert();
   cameraPositionModel
-    .setFromMatrixPosition(cullingCamera.matrixWorld)
+    .setFromMatrixPosition(visibilityCamera.matrixWorld)
     .applyMatrix4(modelFromWorldMatrix);
-  grass.updateLod(cameraPositionModel);
-  cullingFrustum.update(cullingCamera);
-  updateFps(frameTime);
-
-  status!.textContent = [
-    `FPS: ${measuredFps.toFixed(1)}`,
-    `Kamera: ${observerCamera ? 'Beobachter (Culling-Kamera eingefroren)' : 'Culling-Kamera'}`,
-    `Sichtbare Chunks: ${visibleChunkCount}/${parsedVegFile.header.storedChunkCount}`,
-    `Aktive Render-Tiles: ${grass.visibleTileCount}`,
-    `LOD-Tiles: ${grass.lodDraws
-      .map((draw) => draw.tileBuffer.visibleTileCount)
-      .join(' / ')}`,
-    `LOD-Cells je Tile: ${grass.lodDraws
-      .map((draw) => draw.cellCount)
-      .join(' / ')}`,
-    `Gerenderte Halmkandidaten: ${grass.visibleCandidateCount.toLocaleString('de-DE')}`,
-    `Maximale Halmkandidaten je Chunk: ${grass.candidatesPerVisibleChunk.toLocaleString('de-DE')}`,
-    'Klick: Maus fangen · Maus: umsehen · Esc: Maus freigeben',
-    'WASD: bewegen · Leertaste: hoch · Shift: runter · C: Kamera wechseln',
-    `G: Cell-Debugfläche ${debugChunks.mesh.visible ? 'ausblenden' : 'einblenden'}`,
-    `B: Chunk-Boxen ${boundingBoxOutlines.visible ? 'ausblenden' : 'einblenden'}`,
-  ].join('\n');
-  renderer.render(scene, activeCamera);
+  grass.updateDensity(cameraPositionModel, clipFromModelMatrix.elements, 'negative-one-to-one');
+  debug.recordFrame(deltaSeconds, performance.now() - cpuStart);
+  debug.beginGpuFrame();
+  renderer.render(scene, cullingCamera);
+  debug.endGpuFrame();
   requestAnimationFrame(render);
 }
 
-function updateFps(frameTime: number): void {
-  fpsSampleFrameCount += 1;
-  const elapsedMilliseconds = frameTime - fpsSampleStart;
-  if (elapsedMilliseconds < 1_000) return;
-  measuredFps = fpsSampleFrameCount * 1_000 / elapsedMilliseconds;
-  fpsSampleFrameCount = 0;
-  fpsSampleStart = frameTime;
-}
-
 window.addEventListener('resize', () => {
+  if (targetWidth) pixelRatio = targetWidth / window.innerWidth;
+  renderer.setPixelRatio(pixelRatio);
   cullingCamera.aspect = window.innerWidth / window.innerHeight;
   cullingCamera.updateProjectionMatrix();
-  if (observerCamera) {
-    observerCamera.aspect = window.innerWidth / window.innerHeight;
-    observerCamera.updateProjectionMatrix();
-  }
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
 render();
+
+function belongsToGround(object: Mesh): boolean {
+  let current = object.parent;
+  while (current) {
+    if (current.name.toLowerCase() === 'surfice' || current.name.toLowerCase() === 'surface') {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
+}
 
 function findDensestStoredChunk(
   maskData: Uint32Array,

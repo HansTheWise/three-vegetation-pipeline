@@ -1,3 +1,5 @@
+import type { PatchConfig } from '../patches/types.js';
+
 export type HexColor = `#${string}`;
 
 export type NumericRange = Readonly<{
@@ -7,12 +9,22 @@ export type NumericRange = Readonly<{
 
 export type VegetationHeightSampling = 'bilinear' | 'diagonal-average';
 
-export type VegetationLodLevelConfig = Readonly<{
-  cellCoverageRatio: number;
-  anchorCount: number;
-  elementCount: number;
-  bladeSegments: number;
-  heightSampling: VegetationHeightSampling;
+export type VegetationColorDistanceCurve = Readonly<{
+  startsAtMeters: number;
+  endsAtMeters: number;
+  curveStrength: number;
+}>;
+
+export type VegetationDensityCurvePoint = Readonly<{
+  distanceMeters: number;
+  ratio: number;
+}>;
+
+export type VegetationPatternConfig = Readonly<{
+  patternCount: number;
+  anchorsPerCell: number;
+  rotatePerCell: boolean;
+  reflectPerCell: boolean;
 }>;
 
 export type VegetationRuntimeLayerConfig = Readonly<{
@@ -20,43 +32,45 @@ export type VegetationRuntimeLayerConfig = Readonly<{
   layerId: number;
   key: string;
   enabled: boolean;
+  patches: PatchConfig;
+
+  distribution: Readonly<{
+    /** Tuft centers per active Cell at full density. */
+    anchorsPerCell: number;
+    /** Grass blades per tuft at full density. */
+    elementsPerAnchor: number;
+    /** Maximum radial root offset, clipped to the Cell boundary. */
+    elementRadiusMeters: number;
+  }>;
 
   visibility: Readonly<{
     maximumDistanceMeters: number;
   }>;
 
-  lod: Readonly<{
+  density: Readonly<{
     /** Maximum number of vegetation Cells along one render-tile edge. */
     renderTileSizeCells: number;
-    /** Progressive render profiles from nearest to farthest distance. */
-    levels: readonly VegetationLodLevelConfig[];
+    /** Fraction of mask-active Cells admitted into the tile. */
+    activeCells: readonly VegetationDensityCurvePoint[];
+    /** Fraction of the admitted Cells' maximum Anchor capacity. */
+    activeAnchors: readonly VegetationDensityCurvePoint[];
+    /** Fraction of the admitted Anchors' maximum Element capacity. */
+    activeElements: readonly VegetationDensityCurvePoint[];
   }>;
 
-  pattern: Readonly<{
-    patternCount: number;
-    anchorsPerCell: number;
-    rotatePerCell: boolean;
-    reflectPerCell: boolean;
-  }>;
+  pattern: Omit<VegetationPatternConfig, 'anchorsPerCell'>;
 
   blade: Readonly<{
+    segments: number;
+    heightSampling: VegetationHeightSampling;
     heightMeters: NumericRange;
     widthMeters: NumericRange;
     topWidthRatio: number;
     maximumTiltDegrees: number;
-  }>;
-
-  bladeCount: Readonly<{
-    maximumPerAnchor: number;
-    /** Maximum radial distance of a blade root from its Anchor. */
-    maximumOffsetMeters: number;
-    startsDecreasingAtMeters: number;
-    reachesZeroAtMeters: number;
-    curveStrength: number;
-    /** Distance over which an admitted blade rises from or sinks into the ground. */
-    growthTransitionDistanceMeters: number;
-    /** Visible blade fraction at the far edge of its LOD transition. */
-    lodTransitionStartVisibleRatio: number;
+    cameraFacing: Readonly<{
+      startsAtMeters: number;
+      reachesFullAtMeters: number;
+    }>;
   }>;
 
   bladeThicknessDistanceScaling: Readonly<{
@@ -79,38 +93,26 @@ export type VegetationRuntimeLayerConfig = Readonly<{
       startsAtMeters: number;
       endsAtMeters: number;
       curveStrength: number;
+    }> | Readonly<{
+      target: 'ground';
+      bottom: VegetationColorDistanceCurve;
+      top: VegetationColorDistanceCurve;
     }>;
   }>;
 
   lighting: Readonly<{
-    normalUpBias: number;
-  }>;
-
-  cameraFacing: Readonly<{
-    topViewStartsAtDegrees: number;
-    topViewFullyAppliedAtDegrees: number;
-    maximumTiltDegrees: number;
+    /** Near-grass direct sun contribution; ground-color transitions converge to full Lambert light. */
+    directLightWeight: number;
   }>;
 
   shadows: Readonly<{
     receive: boolean;
-    cast: boolean;
-    castUntilMeters: number;
-  }>;
-
-  wind: Readonly<{
-    strength: number;
-    speed: number;
-    spatialFrequency: number;
-    gustStrength: number;
-    gustFrequency: number;
-    variation: number;
   }>;
 }>;
 
 /** Pure frontend data. Algorithm and module references deliberately live elsewhere. */
 export type VegetationRuntimeConfig = Readonly<{
-  configVersion: 1;
+  configVersion: 2;
   assetUrl: string;
   layers: readonly VegetationRuntimeLayerConfig[];
 }>;

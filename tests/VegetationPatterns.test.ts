@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  createLodAnchorCounts,
   createVegetationPatterns,
   selectCellPattern,
 } from '../src/index.js';
@@ -26,11 +25,6 @@ describe('VegetationPatterns', () => {
       expect(coordinate).toBeGreaterThanOrEqual(0);
       expect(coordinate).toBeLessThan(1);
     }
-  });
-
-  it('halves anchor density dynamically for each later LOD', () => {
-    expect([...createLodAnchorCounts(8)]).toEqual([8, 4, 2]);
-    expect([...createLodAnchorCounts(5)]).toEqual([5, 3, 2]);
   });
 
   it('assigns pattern transforms reproducibly and respects disabled transforms', () => {

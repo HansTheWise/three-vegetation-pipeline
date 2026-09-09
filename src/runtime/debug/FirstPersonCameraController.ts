@@ -1,6 +1,6 @@
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 
-type FirstPersonCameraControllerOptions = Readonly<{
+export type FirstPersonCameraControllerOptions = Readonly<{
   camera: PerspectiveCamera;
   canvas: HTMLCanvasElement;
   upAxis: Vector3;
@@ -44,6 +44,7 @@ export class FirstPersonCameraController {
     window.addEventListener('keydown', this.#pressKey);
     window.addEventListener('keyup', this.#releaseKey);
     window.addEventListener('blur', this.#clearKeys);
+    document.addEventListener('pointerlockchange', this.#clearKeys);
   }
 
   setCamera(camera: PerspectiveCamera): void {
@@ -88,10 +89,15 @@ export class FirstPersonCameraController {
     window.removeEventListener('keydown', this.#pressKey);
     window.removeEventListener('keyup', this.#releaseKey);
     window.removeEventListener('blur', this.#clearKeys);
+    document.removeEventListener('pointerlockchange', this.#clearKeys);
+    this.#clearKeys();
+    if (document.pointerLockElement === this.#canvas) document.exitPointerLock();
   }
 
   readonly #captureMouse = (): void => {
-    void this.#canvas.requestPointerLock();
+    void this.#canvas.requestPointerLock()?.catch(() => {
+      // Browsers can reject pointer lock; a later canvas click may retry.
+    });
   };
 
   readonly #rotateCamera = (event: MouseEvent): void => {
@@ -106,7 +112,8 @@ export class FirstPersonCameraController {
   };
 
   readonly #pressKey = (event: KeyboardEvent): void => {
-    if (isMovementKey(event.code)) event.preventDefault();
+    if (document.pointerLockElement !== this.#canvas || !isMovementKey(event.code)) return;
+    event.preventDefault();
     this.#pressedKeys.add(event.code);
   };
 

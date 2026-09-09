@@ -1,5 +1,5 @@
-import { GLSL3, type WebGLRenderer } from 'three';
-import { describe, expect, it, vi } from 'vitest';
+import { GLSL3, PerspectiveCamera, Scene, type DataTexture, type WebGLRenderer } from 'three';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { icakaVegetationRuntimeConfig } from '../config/icaka.vegetation.runtime.config.js';
 
 import {
@@ -8,6 +8,8 @@ import {
   createVegetationRuntimeDataset,
   WebGLDebugChunkView,
   WebGLVegetationAdapter,
+  WebGLVegetationDebug,
+  WebGLGrassView,
   type ParsedVegFile,
 } from '../src/index.js';
 
@@ -71,6 +73,15 @@ function createRuntimeDataset() {
 }
 
 describe('WebGLDebugChunkView', () => {
+  it('uses the original VEG mask and rejects missing layers', () => {
+    const adapter = new WebGLVegetationAdapter(createRenderer(), createRuntimeDataset());
+    const view = new WebGLDebugChunkView(adapter);
+    expect(view.material.uniforms.layerMask!.value).toBe(adapter.staticResources.layerMasks[0]!.texture);
+    expect(view.material.uniforms.layerMask!.value).toBe(adapter.staticResources.layerMasks[0]!.texture);
+    expect(() => new WebGLDebugChunkView(adapter, { layerId: 123 })).toThrow();
+    view.dispose();
+    adapter.dispose();
+  });
   it('binds adapter textures and model-local grid metadata to the debug material', () => {
     const adapter = new WebGLVegetationAdapter(
       createRenderer(),
@@ -162,6 +173,147 @@ describe('WebGLDebugChunkView', () => {
     expect(() => new WebGLDebugChunkView(adapter, { heightOffsetMeters: -1 })).toThrow(
       'Debug chunk height offset must be a non-negative finite number.',
     );
+  });
+});
+
+// Minimal event/DOM doubles; the real DOM and shader path are checked in Vite.
+class DebugElement extends EventTarget {
+  dataset: Record<string, string> = {};
+  style = { cssText: '' };
+  textContent = '';
+  type = '';
+  children: DebugElement[] = [];
+  parentElement: DebugElement | null = null;
+  append(...children: DebugElement[]): void {
+    children.forEach((child) => { child.parentElement = this; this.children.push(child); });
+  }
+  remove(): void {
+    if (this.parentElement) this.parentElement.children = this.parentElement.children.filter((child) => child !== this);
+    this.parentElement = null;
+  }
+  requestPointerLock = vi.fn(async () => undefined);
+}
+
+describe('shared WebGLVegetationDebug lifecycle', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('freezes the exact culling pose/projection, reports counters and removes all owned resources', () => {
+    const canvas = new DebugElement();
+    const parent = new DebugElement();
+    const windowEvents = new EventTarget();
+    const gpuQuery = {} as WebGLQuery;
+    const gpuContext = {
+      QUERY_RESULT_AVAILABLE: 0x8867,
+      QUERY_RESULT: 0x8866,
+      getContextAttributes: () => ({ antialias: false }),
+      getExtension: (name: string) => name === 'EXT_disjoint_timer_query_webgl2'
+        ? { TIME_ELAPSED_EXT: 0x88bf, GPU_DISJOINT_EXT: 0x8fbb }
+        : null,
+      createQuery: vi.fn(() => gpuQuery),
+      beginQuery: vi.fn(),
+      endQuery: vi.fn(),
+      getParameter: vi.fn(() => false),
+      getQueryParameter: vi.fn((_query: WebGLQuery, parameter: number) =>
+        parameter === 0x8867 ? true : 2_000_000),
+      deleteQuery: vi.fn(),
+    };
+    const documentEvents = Object.assign(new EventTarget(), {
+      pointerLockElement: null as DebugElement | null,
+      exitPointerLock: vi.fn(),
+      createElement: () => new DebugElement(),
+    });
+    vi.stubGlobal('window', windowEvents);
+    vi.stubGlobal('document', documentEvents);
+    vi.stubGlobal('HTMLButtonElement', DebugElement);
+    const renderer = Object.assign(createRenderer(), {
+      domElement: canvas,
+      getDrawingBufferSize: (target: { set: (x: number, y: number) => void }) => target.set(800, 600),
+      getPixelRatio: () => 1,
+      getContext: () => gpuContext,
+      shadowMap: { enabled: false }, info: { render: { calls: 4, triangles: 20 } },
+    });
+    const adapter = new WebGLVegetationAdapter(renderer, createRuntimeDataset());
+    const grass = new WebGLGrassView(adapter, 0);
+    const scene = new Scene();
+    scene.add(grass.mesh);
+    grass.mesh.position.set(30, 40, 50);
+    const camera = new PerspectiveCamera(50, 1, 0.1, 1000);
+    camera.position.set(3, 4, 5);
+    camera.lookAt(0, 0, 0);
+    const renderControls = {
+      antialias: true,
+      shadows: false,
+      dpr: 1,
+      setAntialias: vi.fn(),
+      setShadows: vi.fn(),
+      setDpr: vi.fn(),
+    };
+    const view = new WebGLVegetationDebug({
+      adapter, grass, camera, scene, panelParent: parent as unknown as HTMLElement,
+      panelTopOffsetPx: 80, renderControls,
+    });
+    expect(view.cullingCamera).toBe(camera);
+    expect(view.cells.mesh.parent).toBe(grass.mesh);
+    expect(view.frustum.group.parent).toBe(scene);
+    expect(view.cells.mesh.visible).toBe(false);
+    expect(view.panel.style.cssText).toContain('top:80px');
+    expect(parent.children[0]!.children[0]!.children.map((button) => button.dataset.action)).toEqual([
+      'vegetation', 'cells', 'boxes', 'freeze', 'aa', 'shadows', 'dpr-0.5', 'dpr-1', 'dpr-1.5', 'dpr-2',
+    ]);
+    view.act('vegetation');
+    expect(grass.mesh.visible).toBe(false);
+    view.act('aa');
+    view.act('shadows');
+    view.act('dpr-0.5');
+    expect(renderControls.setAntialias).toHaveBeenCalledWith(false);
+    expect(renderControls.setShadows).toHaveBeenCalledWith(true);
+    expect(renderControls.setDpr).toHaveBeenCalledWith(0.5);
+    view.toggleCullingFreeze();
+    const frozen = view.cullingCamera;
+    const projection = frozen.projectionMatrix.clone();
+    camera.position.set(90, 80, 70);
+    camera.aspect = 2;
+    camera.updateProjectionMatrix();
+    view.update(0.1);
+    expect(frozen.position.toArray()).toEqual([3, 4, 5]);
+    expect(frozen.projectionMatrix.equals(projection)).toBe(true);
+    view.toggleCullingFreeze();
+    expect(view.cullingCamera).toBe(camera);
+    view.recordFrame(0.5, 2);
+    view.beginGpuFrame();
+    view.endGpuFrame();
+    view.beginGpuFrame();
+    view.endGpuFrame();
+    view.recordFrame(0.5, 2);
+    expect(parent.children[0]!.children[1]!.textContent).toContain('Instanzen eingereicht:');
+    expect(parent.children[0]!.children[1]!.textContent).toContain(
+      'GPU-Renderzeit Ø: 2.00 ms · GPU-Durchsatz: 500 Bilder/s',
+    );
+    expect(parent.children[0]!.children[1]!.textContent).toContain('800 × 600');
+    const key = new Event('keydown', { cancelable: true });
+    Object.assign(key, { code: 'KeyW', repeat: false });
+    const start = camera.position.clone();
+    windowEvents.dispatchEvent(key);
+    view.update(0.1);
+    expect(camera.position.equals(start)).toBe(true);
+    documentEvents.pointerLockElement = canvas;
+    windowEvents.dispatchEvent(key);
+    view.update(0.1);
+    expect(camera.position.equals(start)).toBe(false);
+    const disposed = vi.fn();
+    view.cells.geometry.addEventListener('dispose', disposed);
+    view.dispose();
+    expect(disposed).toHaveBeenCalledOnce();
+    expect(documentEvents.exitPointerLock).toHaveBeenCalledOnce();
+    expect(parent.children).toHaveLength(0);
+    expect(view.cells.mesh.parent).toBeNull();
+    expect(view.frustum.group.parent).toBeNull();
+    const afterDispose = camera.position.clone();
+    windowEvents.dispatchEvent(key);
+    view.update(0.1);
+    expect(camera.position.equals(afterDispose)).toBe(true);
+    grass.dispose();
+    adapter.dispose();
   });
 });
 

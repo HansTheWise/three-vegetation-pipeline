@@ -1,4 +1,4 @@
-import type { VegetationRuntimeLayerConfig } from '../config/types.js';
+import type { VegetationPatternConfig } from '../config/types.js';
 import {
   CELL_PATTERN_BITS,
   CELL_REFLECTION_BITS,
@@ -13,19 +13,13 @@ import {
 import type { CellPatternSelection, VegetationPatternSet } from './types.js';
 
 const CANDIDATES_PER_ANCHOR = 24;
-const DEFAULT_LOD_LEVEL_COUNT = 3;
 
 /** Creates deterministic, progressively distributed anchor patterns for one layer. */
 export function createVegetationPatterns(
   seed: number,
-  patternConfig: VegetationRuntimeLayerConfig['pattern'],
-  lodAnchorCounts: readonly number[] = Array.from(createLodAnchorCounts(
-    patternConfig.anchorsPerCell,
-    DEFAULT_LOD_LEVEL_COUNT,
-  )),
+  patternConfig: VegetationPatternConfig,
 ): VegetationPatternSet {
   validatePatternInput(seed, patternConfig.patternCount, patternConfig.anchorsPerCell);
-  validateLodAnchorCounts(lodAnchorCounts, patternConfig.anchorsPerCell);
 
   const anchorPositions = new Float32Array(
     patternConfig.patternCount * patternConfig.anchorsPerCell * 2,
@@ -45,42 +39,7 @@ export function createVegetationPatterns(
     patternCount: patternConfig.patternCount,
     anchorsPerPattern: patternConfig.anchorsPerCell,
     anchorPositions,
-    lodAnchorCounts: Uint32Array.from(lodAnchorCounts),
   };
-}
-
-function validateLodAnchorCounts(
-  lodAnchorCounts: readonly number[],
-  anchorsPerCell: number,
-): void {
-  if (lodAnchorCounts.length === 0) {
-    throw new Error('lodAnchorCounts must not be empty.');
-  }
-  let previousCount = anchorsPerCell;
-  for (const count of lodAnchorCounts) {
-    if (!Number.isInteger(count) || count < 1 || count > previousCount) {
-      throw new Error('lodAnchorCounts must contain descending positive Anchor counts.');
-    }
-    previousCount = count;
-  }
-}
-
-/** Uses a power-of-two reduction: LOD 0 is full density, later LODs halve it. */
-export function createLodAnchorCounts(
-  anchorsPerPattern: number,
-  lodLevelCount = DEFAULT_LOD_LEVEL_COUNT,
-): Uint32Array {
-  if (!Number.isInteger(anchorsPerPattern) || anchorsPerPattern < 1) {
-    throw new Error('anchorsPerPattern must be a positive integer.');
-  }
-  if (!Number.isInteger(lodLevelCount) || lodLevelCount < 1) {
-    throw new Error('lodLevelCount must be a positive integer.');
-  }
-
-  return Uint32Array.from(
-    { length: lodLevelCount },
-    (_, lodLevel) => Math.max(1, Math.ceil(anchorsPerPattern / (2 ** lodLevel))),
-  );
 }
 
 /** Deterministically assigns pattern, quarter-turn rotation and reflection to a cell. */
@@ -89,7 +48,7 @@ export function selectCellPattern(
   layerId: number,
   globalCellX: number,
   globalCellY: number,
-  patternConfig: VegetationRuntimeLayerConfig['pattern'],
+  patternConfig: VegetationPatternConfig,
 ): CellPatternSelection {
   validatePatternInput(seed, patternConfig.patternCount, patternConfig.anchorsPerCell);
   for (const [name, value] of [

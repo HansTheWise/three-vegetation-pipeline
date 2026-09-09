@@ -14,14 +14,18 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./node": {
       "types": "./dist/offline/compiler/NodeVegCompiler.d.ts",
-      "import": "./dist/offline/compiler/NodeVegCompiler.js"
+      "import": "./dist/offline/compiler/NodeVegCompiler.js",
+      "default": "./dist/offline/compiler/NodeVegCompiler.js"
     }
   },
   "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "prebuild": "npm run clean",
     "build": "tsc -p tsconfig.build.json",
     "build:watch": "tsc -p tsconfig.build.json --watch",
     "debug:webgl": "vite --host 127.0.0.1 --open /examples/webgl-debug-chunks.html?near",

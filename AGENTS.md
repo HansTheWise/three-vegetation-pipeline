@@ -127,39 +127,59 @@ Boris Cherny (creator of Claude Code) keeps his team's file around 100 lines. Un
 - Runtime / deployment target: ES modules; library exports plus a Node.js compiler entry point and CLI
 
 ### Commands
-- Install: `TODO`
+- Install: `npm ci`
 - Build: `npm run build`
 - Test (all): `npm run test`
-- Test (single file): `TODO`
-- Lint: `TODO`
+- Test (single file): `npm run test -- tests/<name>.test.ts`
+- Lint: not configured; use `npm run typecheck` and `git diff --check`
 - Typecheck: `npm run typecheck`
 - Verify: `npm run verify`
-- Run locally: `TODO`
+- Run locally: `npm run debug:webgl`
 
 Prefer single-file or single-test runs during iteration. Full suites are for the final verification pass.
 ### Layout
 - Source lives in: `src/`
 - Tests live in: `tests/` with shared fixtures in `tests/fixtures/`
-- Do not modify: `TODO` (generated code, vendored deps, legacy areas)
+- Do not modify: `dist/` (generated build output) or `node_modules/`
 
 ### Conventions specific to this repo
-- Naming: `TODO`
-- Import style: `TODO`
-- Error handling pattern: `TODO`
+- Naming: PascalCase for exported classes/types and camelCase for functions/values
+- Import style: ESM with explicit `.js` suffixes for local imports; use `import type` for type-only imports
+- Error handling pattern: validate external/config data early and throw descriptive `Error` instances
 - Testing pattern and framework: Vitest test files named `*.test.ts`
 
 ### Forbidden
-- `TODO`: things that look reasonable but will break this project.
+- Do not hand-edit `dist/`; run the clean build.
+- Do not add project-specific I-CAKA names or asset assumptions to `src/`.
+- Do not change VEGFILE v1 or deterministic ID composition as part of an unrelated runtime refactor.
 
 ---
 ## 11. Project Learnings
 
 **Accumulated corrections. This section is for the agent to maintain, not just the human.**
 
+- Use seeded Cell coverage through `density.activeCells` for grass admission, without repeated geometric hole templates; reveal the campus only after vegetation resources and the ground material patch are ready.
+- After coarse chunk culling, cull mask-active Render Tiles against the same frustum before distance budgets, GPU uploads, and grass draws.
+
 When the user corrects your approach, append a one-line rule here before ending the session. Write it concretely ("Always use X for Y"), never abstractly ("be careful with Y"). If an existing line already covers the correction, tighten it instead of adding a new one. Remove lines when the underlying issue goes away (model upgrades, refactors, process changes).
 
-- Visual checks are performed by the user; agents verify with tests, typechecking and builds and provide the relevant visual tuning controls.
-- Admit new grass LOD candidates as full-height blades with the configured visible fraction above terrain, then raise them into place; never scale blade height for LOD transitions.
+- All visual tests, comparisons and implementation acceptance are performed independently by the user; agents must not use their own screenshots as visual validation and instead verify technically with runtime diagnostics, tests, typechecking and builds.
+- Do not submit hidden underground vegetation candidates for density transitions; admit full-height candidates through exact tile budgets and bounded GPU capacity buckets.
+- Treat the angled 2.5D top-down far view as the primary grass presentation: a vegetation-mask-bound ground detail layer maintains continuous coverage while blade geometry supplies secondary close-range detail.
+- Keep maximum Anchor/Element counts in one distribution block and derive active Cell, Anchor and Element budgets from separate continuous distance curves without duplicate LOD rows.
+- Verify linked-library changes through Vite's served modules, not only Node tests/builds; keep the local pipeline outside dependency pre-bundling and node_modules watcher exclusions.
+- Derive ground variation from the shared patch field and `layers[].patches.colors`; do not generate a second independent ground-noise texture from blade colors.
+- Verify campus ground material extensions against the production `campus.glb` and confirm the patched `map_grun` shader compiles in the Vite-served WebGL runtime; isolated shader-string tests are insufficient.
+- When replacing an `onBeforeCompile` material patch at runtime, dispose the material during cleanup so Three.js cannot reuse a cached program with stale custom uniforms; `needsUpdate` alone is insufficient for an unchanged custom cache key.
+- Treat `map_grun` only as the ground mesh selector and PBR carrier: patch albedo must fully replace its original diffuse color or texture, without opacity mixing; `brightnessVariation` only varies patch albedo.
+- Route grass lighting through Three.js scene-light, incoming-shadow, tone-mapping and output-color chunks; do not maintain a parallel manual light bridge in an integration.
+- Do not accept distance-based camera-facing from builds or shader-string checks alone; first force full facing across the visible range and verify the camera response in the served WebGL runtime.
+- Keep vegetation patch coverage static and independent of distance LOD; let the ground detail cover density transitions instead of preserving patch cores through distance-prioritized Cell selection.
+- Patch integration must replace the old ground noise with the same field used for grass admission, preserve existing distance curves, and perform expensive startup generation outside the UI thread.
+- Use `edgeFalloffMeters` for individual patch-color blending and the transition to base color, not only for the union coverage edge; keep geometric union smoothing independent.
+- For soft meadow ground, use broad falloff and moderate domain distortion; moving generation into a worker does not replace profiling and removing full-field/per-source startup rescans.
+- Do not assume patch coverage belongs per Cell or in the VEGFILE; compare a low-resolution global R8 field with deterministic runtime generation using measured file-size and startup costs first.
+- For debug performance comparisons, expose physical drawing-buffer resolution and asynchronous GPU render time/throughput; do not treat requestAnimationFrame FPS as uncapped performance or silently cap pipeline DPR to 1.
 
 ---
 ## 12. How this file was built

@@ -1,5 +1,7 @@
 import {
   FloatType,
+  LinearFilter,
+  LinearMipmapLinearFilter,
   RedIntegerFormat,
   RGFormat,
   RGIntegerFormat,
@@ -200,9 +202,7 @@ describe('WebGLStaticVegetationResources', () => {
       rotatePerCell: true,
       reflectPerCell: true,
     });
-    expect(resources.patterns[0]!.patternSet.lodAnchorCounts).toEqual(
-      Uint32Array.from([4, 3, 2, 1, 1, 1, 1, 1]),
-    );
+    expect(resources.patterns[0]!.patternSet.anchorsPerPattern).toBe(4);
     const colors = icakaVegetationRuntimeConfig.layers[0]!.colors;
     expect(resources.patterns[0]!.texture.image).toMatchObject({ width: 4, height: 4 });
     expect(resources.patterns[0]!.bottomColors)
@@ -257,29 +257,56 @@ describe('WebGLVisibleChunkBuffer', () => {
 });
 
 describe('WebGLVisibleTileBuffer', () => {
-  it('packs chunk and tile coordinates into reusable RGBA texels', () => {
+  it('copies reusable RGBA density records without repacking them', () => {
     const { renderer, initTexture } = createRenderer(2);
     const buffer = new WebGLVisibleTileBuffer(renderer, 3, 'test/tiles');
 
     buffer.update(Uint32Array.from([
-      7, 1, 2,
-      9, 3, 4,
+      7, 11, 13, 17,
+      9, 19, 23, 29,
     ]), 2);
 
     expect(buffer.texture.image).toMatchObject({ width: 2, height: 2 });
-    expect([...buffer.data.slice(0, 8)]).toEqual([7, 1, 2, 0, 9, 3, 4, 0]);
+    expect([...buffer.data.slice(0, 8)]).toEqual([7, 11, 13, 17, 9, 19, 23, 29]);
     expect(buffer.visibleTileCount).toBe(2);
     expect(initTexture).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('WebGLVegetationAdapter', () => {
+  it('uploads the shared RG patch field once and disposes it with the adapter', () => {
+    const dataset = createRuntimeDataset();
+    const source = dataset.layers[0]!;
+    const data = Uint8Array.from([0, 128, 255, 200, 128, 30, 255, 128]);
+    const layer = { ...source, groundPatchField: {
+      layerId: source.layerId, data, width: 2, height: 2,
+      texelSizeUnits: 1, texelSizeMeters: 1, originX: 0, originY: 0,
+      baseColor: '#39a83a' as const, brightnessVariation: 0.1,
+      patchCount: 1, eligibleSampleCount: 4, achievedCoverage: 0.5,
+    } };
+    const { renderer } = createRenderer();
+    const adapter = new WebGLVegetationAdapter(renderer, {
+      ...dataset, layers: [layer, dataset.layers[1]!], enabledLayers: [layer],
+    });
+    const texture = adapter.staticResources.groundPatchFields[0]!.texture;
+    expect(texture.image.data).toBe(data);
+    expect(texture.format).toBe(RGFormat);
+    expect(texture.magFilter).toBe(LinearFilter);
+    expect(texture.minFilter).toBe(LinearMipmapLinearFilter);
+    expect(texture.generateMipmaps).toBe(true);
+    const disposed = vi.fn();
+    texture.addEventListener('dispose', disposed);
+    adapter.dispose();
+    expect(disposed).toHaveBeenCalledOnce();
+  });
+
   it('updates visibility and disposes every owned texture', () => {
     const { renderer } = createRenderer();
     const adapter = new WebGLVegetationAdapter(
       renderer,
       createRuntimeDataset(),
     );
+    expect(adapter.staticResources.groundPatchFields).toHaveLength(0);
     const textures: DataTexture[] = [
       adapter.staticResources.storedChunkGridCoordinatesTexture,
       adapter.staticResources.chunkHeightRangesTexture,

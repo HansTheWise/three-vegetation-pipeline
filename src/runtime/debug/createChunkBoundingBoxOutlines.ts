@@ -5,7 +5,7 @@ import {
   LineSegments,
 } from 'three';
 
-import type { ChunkBoundingBoxes } from '../../src/index.js';
+import type { ChunkBoundingBoxes } from '../chunking/types.js';
 
 const BOX_EDGES = [
   0, 1, 1, 2, 2, 3, 3, 0,

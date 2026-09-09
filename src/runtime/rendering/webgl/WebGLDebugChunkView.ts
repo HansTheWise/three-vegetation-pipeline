@@ -23,6 +23,7 @@ export type WebGLDebugChunkViewOptions = Readonly<{
   oddChunkColor?: ColorRepresentation;
   opacity?: number;
   heightOffsetMeters?: number;
+  layerId?: number;
 }>;
 
 const defaultShader: WebGLShaderSource = {
@@ -35,9 +36,6 @@ export class WebGLDebugChunkView {
   readonly geometry: InstancedBufferGeometry;
   readonly material: RawShaderMaterial;
   readonly mesh: Mesh<InstancedBufferGeometry, RawShaderMaterial>;
-  readonly lodAnchorCounts: Uint32Array;
-
-  #lodLevel = 0;
 
   constructor(
     adapter: WebGLVegetationAdapter,
@@ -50,7 +48,9 @@ export class WebGLDebugChunkView {
     const { header } = adapter.staticResources;
     const [horizontalAxisA, horizontalAxisB] = header.coordinateSystem.horizontalAxes;
     const shader = options.shader ?? defaultShader;
-    const patternResource = adapter.staticResources.patterns[0];
+    const patternResource = options.layerId === undefined
+      ? adapter.staticResources.patterns[0]
+      : adapter.staticResources.patterns.find((pattern) => pattern.layerId === options.layerId);
     if (!patternResource) {
       throw new Error('Debug cell view requires runtime pattern resources.');
     }
@@ -60,8 +60,6 @@ export class WebGLDebugChunkView {
     if (!layerMask) {
       throw new Error(`Debug pattern layer ${patternResource.layerId} has no VEGFILE mask.`);
     }
-    this.lodAnchorCounts = patternResource.patternSet.lodAnchorCounts;
-
     this.geometry = createChunkTileGeometry(header.heightMap.resolution);
     this.material = new RawShaderMaterial({
       name: 'vegetation/debug-visible-chunks',
@@ -86,7 +84,7 @@ export class WebGLDebugChunkView {
         layerId: { value: patternResource.layerId },
         patternCount: { value: patternResource.patternSet.patternCount },
         maskResolution: { value: layerMask.maskResolution },
-        visibleAnchorCount: { value: this.lodAnchorCounts[0] },
+        visibleAnchorCount: { value: patternResource.patternSet.anchorsPerPattern },
         rotatePerCell: { value: patternResource.rotatePerCell },
         reflectPerCell: { value: patternResource.reflectPerCell },
         gridOrigin: {
@@ -119,21 +117,6 @@ export class WebGLDebugChunkView {
     this.material.dispose();
   }
 
-  get lodLevel(): number {
-    return this.#lodLevel;
-  }
-
-  get visibleAnchorCount(): number {
-    return this.lodAnchorCounts[this.#lodLevel]!;
-  }
-
-  setLodLevel(lodLevel: number): void {
-    if (!Number.isInteger(lodLevel) || lodLevel < 0 || lodLevel >= this.lodAnchorCounts.length) {
-      throw new Error(`Debug pattern LOD ${lodLevel} is outside the available levels.`);
-    }
-    this.#lodLevel = lodLevel;
-    this.material.uniforms.visibleAnchorCount!.value = this.visibleAnchorCount;
-  }
 }
 
 function createChunkTileGeometry(resolution: number): InstancedBufferGeometry {

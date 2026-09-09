@@ -7,9 +7,6 @@ rendererunabhängig.
 
 ## Datenfluss
 
-Durchgezogene Kanten zeigen den aktuellen Datenweg. Gestrichelte Kanten markieren
-die noch zu implementierende produktive Renderstrecke.
-
 ```mermaid
 flowchart LR
   Veg[".veg-Bytes"]
@@ -21,6 +18,7 @@ flowchart LR
     Parsed["ParsedVegFile<br/>validierte Typed-Array-Views"]
     DatasetBuilder["createVegetationRuntimeDataset"]
     Patterns["progressive Anchor-Patterns"]
+    Patches["globales RG8-Patch-Feld"]
     Dataset["VegetationRuntimeDataset"]
     Boxes["Chunk-Begrenzungsboxen"]
   end
@@ -37,7 +35,7 @@ flowchart LR
   end
 
   subgraph RenderGPU["Pro Frame auf der GPU"]
-    Debug["aktueller Debug-Renderer"]
+    Debug["optionaler Debug-Renderer"]
     CellHash["Cell-Hash<br/>Pattern, Rotation, Spiegelung"]
     AnchorHash["Anchor-Hash"]
     ElementHash["optionaler Element-Hash"]
@@ -48,6 +46,7 @@ flowchart LR
   Parsed --> DatasetBuilder
   Config --> DatasetBuilder
   DatasetBuilder --> Patterns --> Dataset
+  DatasetBuilder --> Patches --> Dataset
   DatasetBuilder --> Dataset
   Parsed --> Boxes
   Dataset --> Static
@@ -89,9 +88,15 @@ stabile Layer-IDs. Dabei werden:
 - fehlende oder doppelte Layerzuordnungen abgelehnt;
 - Cell-Größen in Modell- und Metereinheiten berechnet;
 - progressive Anchor-Patterns aus VEGFILE-Seed und Layerconfig erzeugt;
+- aktivierte Patch-Felder einmalig erzeugt;
 - aktivierte Layer als eigene Ansicht bereitgestellt.
 
 Das Dataset kopiert die großen VEGFILE-Datenbereiche nicht.
+
+`createVegetationActiveCellData(dataset, layerId)` bereitet die statische
+VEG-Zulassung separat vor und mischt die Cell-Reihenfolge seedbasiert. Dataset und Cell-Arrays können in einem Worker
+entstehen und anschließend transferiert werden. `WebGLGrassView` akzeptiert die
+vorbereiteten Arrays; die kamerabhängigen Distanzbudgets bleiben unverändert.
 
 ### 3. Chunk-Begrenzungsboxen
 
@@ -112,7 +117,8 @@ berechnet. Sie sind Zahlendaten und keine unsichtbaren Three.js-Meshes.
 - minimale und maximale Chunkhöhe;
 - quantisierte Heightmaps;
 - bitgepackte Layer-Masken;
-- normalisierte Pattern-Anker.
+- normalisierte Pattern-Anker;
+- aktivierte globale RG-Patch-Felder mit linearer Filterung und Mipmaps.
 
 `WebGLVisibleChunkBuffer` reserviert zusätzlich einmalig Platz für maximal alle
 gespeicherten Chunkindizes.
@@ -129,7 +135,9 @@ Die Anwendung liefert `projection × view × model` und den Clip-Space-Tiefenrau
 visibleChunkIndices[0 .. visibleChunkCount)
 ```
 
-Distanzgrenze, LOD und Verdeckung sind absichtlich nicht Teil dieses Moduls.
+Die groben Chunk-Boxen bleiben der erste günstige Filter. Die anschließende
+Tile-Dichteberechnung prüft jede maskenaktive Render-Tile-Box mit denselben
+Frustumebenen, bevor sie Distanzbudgets berechnet oder einen GPU-Record schreibt.
 
 ### 2. Upload der sichtbaren Chunks
 
@@ -138,20 +146,24 @@ bereits reservierten Visible-Chunk-Buffer. Es wird kein neues Array pro Frame
 angelegt. Der Renderer zeichnet anschließend ausschließlich Einträge dieses
 Buffers.
 
-### 3. Aktuelle Debugdarstellung
+### 3. Optionale Debugdarstellung
 
 `WebGLDebugChunkView` zeichnet momentan eine Heightmap-Fläche pro sichtbarem
-Chunk. Der Fragment-Shader zeigt aktive Cells und ihre Pattern-Anker. Das ist ein
-Pipeline-Test, noch kein produktiver Vegetationsrenderer.
+Chunk. Der Fragment-Shader zeigt aktive Cells und ihre Pattern-Anker. Diese
+Darstellung diagnostiziert dieselben Runtime- und GPU-Ressourcen, ist aber vom
+produktiven Vegetationsrenderer getrennt.
 
 ### 4. Statischer WebGL-Grasrenderer
 
-`WebGLGrassView` erzeugt für jedes aktive Render-Tile ein distanzabhängiges,
-deterministisches Cell-Präfix und daraus Kandidaten für Anchor und Halm. Der
-Vertex-Shader verwirft inaktive Maskenbits, rekonstruiert Pattern und
-Hashhierarchie, liest die Heightmap und positioniert je nach LOD ein
-Vier- oder Sechs-Vertex-Mesh. Halmform, Versatz und Farben werden vollständig
-aus Config und stabilen Hashwerten abgeleitet.
+`WebGLGrassView` verwendet eine einmalig vorberechnete, seedbasiert gemischte
+Liste maskenaktiver Cells. Nach dem Chunk-Culling verwirft ein zweiter
+Frustumtest nicht sichtbare Render-Tiles. Drei kontinuierliche Distanzkurven
+bestimmen für die verbleibenden Tiles die Cell-, Anchor- und Elementbudgets.
+Tiles werden in die kleinste ausreichende GPU-Kapazitätsklasse gruppiert;
+Nullbudgets starten keinen Draw. Der Vertex-Shader rekonstruiert Pattern und
+Hashhierarchie, liest die Heightmap und positioniert die feste Halmgeometrie.
+Halmform, Versatz und Farben werden vollständig aus Config und stabilen
+Hashwerten abgeleitet.
 
 ## Koordinaten und Indizes
 
@@ -193,20 +205,17 @@ mehrere unabhängig variierte Unterobjekte besitzen.
 Die CPU- und GLSL-Funktionen verwenden dieselben Salts und Bitlayouts. Details
 stehen in `identity/identity.md`.
 
-## Weiterführende Renderstrecke
-
-Der produktive Renderer muss den aktuellen Datenweg fortsetzen:
+## Aktuelle Renderstrecke
 
 ```text
 sichtbare Chunks
-→ aktive Cells
+→ aktive Render-Tiles
+→ einmalig patch-gefilterte Cells
+→ kontinuierliche Cell-/Anchor-/Elementbudgets
+→ GPU-Kapazitätsbucket
+→ kompakte aktive Cells
 → Pattern-Anker
 → Heightmap-Position
 → Gras-Elemente
-→ automatisches LOD
-→ Occlusion-Ergebnis
-→ Wind, Schatten und weitere Renderprofile
+→ Szenenlicht und eingehende Schatten
 ```
-
-Die Reihenfolge und Abnahmekriterien sind in der
-[`IMPLEMENTATION_ROADMAP.md`](../../IMPLEMENTATION_ROADMAP.md) festgelegt.

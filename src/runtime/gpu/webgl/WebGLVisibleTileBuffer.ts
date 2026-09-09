@@ -5,10 +5,9 @@ import {
   type WebGLRenderer,
 } from 'three';
 
-const SOURCE_VALUES_PER_TILE = 3;
-const TEXTURE_VALUES_PER_TILE = 4;
+const VALUES_PER_TILE = 4;
 
-/** Owns a fixed-capacity texture of [chunk, tile-x, tile-y] LOD work records. */
+/** Owns the shared RGBA32UI texture for grouped density tile records. */
 export class WebGLVisibleTileBuffer {
   readonly data: Uint32Array;
   readonly texture: DataTexture;
@@ -32,7 +31,7 @@ export class WebGLVisibleTileBuffer {
       );
     }
     this.data = new Uint32Array(
-      this.textureWidth * textureHeight * TEXTURE_VALUES_PER_TILE,
+      this.textureWidth * textureHeight * VALUES_PER_TILE,
     );
     this.texture = new DataTexture(
       this.data,
@@ -50,16 +49,10 @@ export class WebGLVisibleTileBuffer {
     if (!Number.isInteger(tileCount)
       || tileCount < 0
       || tileCount > this.tileCapacity
-      || tileCount * SOURCE_VALUES_PER_TILE > tileRecords.length) {
+      || tileCount * VALUES_PER_TILE > tileRecords.length) {
       throw new Error(`Visible tile count ${tileCount} exceeds its source or buffer capacity.`);
     }
-    for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
-      const sourceOffset = tileIndex * SOURCE_VALUES_PER_TILE;
-      const targetOffset = tileIndex * TEXTURE_VALUES_PER_TILE;
-      this.data[targetOffset] = tileRecords[sourceOffset]!;
-      this.data[targetOffset + 1] = tileRecords[sourceOffset + 1]!;
-      this.data[targetOffset + 2] = tileRecords[sourceOffset + 2]!;
-    }
+    this.data.set(tileRecords.subarray(0, tileCount * VALUES_PER_TILE));
     this.visibleTileCount = tileCount;
     if (tileCount > 0) {
       this.texture.needsUpdate = true;

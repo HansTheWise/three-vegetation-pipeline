@@ -5,50 +5,53 @@ import {
   GLSL3,
   InstancedBufferGeometry,
   Mesh,
-  RawShaderMaterial,
+  ShaderMaterial,
+  UniformsLib,
+  UniformsUtils,
   Vector2,
   Vector3,
 } from 'three';
 
 import type { Axis } from '../../../offline/config/types.js';
+import type { ClipSpaceDepthRange, Matrix4Elements } from '../../chunking/types.js';
+import { VegetationRenderTileDensity } from '../../density/VegetationRenderTileDensity.js';
+import type { ModelPosition, VegetationActiveCellData } from '../../density/types.js';
+import { WebGLActiveCellBuffer } from '../../gpu/webgl/WebGLActiveCellBuffer.js';
 import { WebGLVisibleTileBuffer } from '../../gpu/webgl/WebGLVisibleTileBuffer.js';
 import type { WebGLVegetationAdapter } from '../../gpu/webgl/WebGLVegetationAdapter.js';
-import {
-  createCellPermutationStride,
-  VegetationRenderTileLod,
-} from '../../lod/VegetationRenderTileLod.js';
-import type { ModelPosition } from '../../lod/types.js';
 import { grassFragmentShader } from './shaders/grassFragmentShader.js';
 import { grassVertexShader } from './shaders/grassVertexShader.js';
 
 const MAXIMUM_WEBGL_INSTANCE_COUNT = 0x8000_0000;
 
-export type WebGLGrassLodDraw = Readonly<{
-  cellCount: number;
-  anchorCount: number;
-  elementCount: number;
-  bladeSegments: number;
-  candidatesPerTile: number;
+export type WebGLGrassDensityDraw = Readonly<{
+  bucketIndex: number;
+  candidateCapacity: number;
   geometry: InstancedBufferGeometry;
-  material: RawShaderMaterial;
-  mesh: Mesh<InstancedBufferGeometry, RawShaderMaterial>;
-  tileBuffer: WebGLVisibleTileBuffer;
+  material: ShaderMaterial;
+  mesh: Mesh<InstancedBufferGeometry, ShaderMaterial>;
 }>;
 
-/** Draws distance-bucketed grass blades for deterministic Cell prefixes. */
+/** Draws exact continuous tile densities through bounded GPU capacity buckets. */
 export class WebGLGrassView {
   readonly geometry: InstancedBufferGeometry;
-  readonly material: RawShaderMaterial;
-  readonly mesh: Mesh<InstancedBufferGeometry, RawShaderMaterial>;
-  readonly lodDraws: readonly WebGLGrassLodDraw[];
+  readonly material: ShaderMaterial;
+  readonly mesh: Mesh<InstancedBufferGeometry, ShaderMaterial>;
+  readonly densityDraws: readonly WebGLGrassDensityDraw[];
   readonly layerId: number;
   readonly candidatesPerVisibleChunk: number;
-  readonly tileLod: VegetationRenderTileLod;
+  readonly tileDensity: VegetationRenderTileDensity;
+  readonly tileBuffer: WebGLVisibleTileBuffer;
+  readonly activeCellBuffer: WebGLActiveCellBuffer;
 
   readonly #adapter: WebGLVegetationAdapter;
   readonly #cameraPositionModel = new Vector3();
 
-  constructor(adapter: WebGLVegetationAdapter, layerId: number) {
+  constructor(
+    adapter: WebGLVegetationAdapter,
+    layerId: number,
+    preparedCells?: VegetationActiveCellData,
+  ) {
     const layer = adapter.dataset.enabledLayers.find(
       (candidate) => candidate.layerId === layerId,
     );
@@ -66,196 +69,163 @@ export class WebGLGrassView {
     }
     this.#adapter = adapter;
     this.layerId = layerId;
-    this.tileLod = new VegetationRenderTileLod(adapter.dataset, layerId);
+    this.tileDensity = new VegetationRenderTileDensity(adapter.dataset, layerId, preparedCells);
     this.candidatesPerVisibleChunk = layerMask.maskResolution ** 2
       * patternResource.patternSet.anchorsPerPattern
-      * layer.config.bladeCount.maximumPerAnchor;
-    const maximumInstanceCount = adapter.staticResources.header.storedChunkCount
-      * this.candidatesPerVisibleChunk;
+      * layer.config.distribution.elementsPerAnchor;
+    const maximumInstanceCount = this.tileDensity.tileCapacity
+      * this.tileDensity.maximumCandidatesPerTile;
     if (!Number.isSafeInteger(maximumInstanceCount)
       || maximumInstanceCount > MAXIMUM_WEBGL_INSTANCE_COUNT) {
       throw new Error(`Grass layer ${layerId} exceeds the safe WebGL instance range.`);
     }
 
-    const draws = this.tileLod.levels.map((level, levelIndex) => {
-      const nextLevel = this.tileLod.levels[levelIndex + 1] ?? level;
-      const bladeSegments = level.bladeSegments;
-      const tileBuffer = new WebGLVisibleTileBuffer(
-        adapter.renderer,
-        this.tileLod.tileCapacity,
-        `vegetation/layer-${layerId}-lod-${levelIndex}-tiles`,
-      );
-      const geometry = createGrassBladeGeometry(bladeSegments);
-      const material = createGrassMaterial({
-        adapter,
-        layerId,
-        levelIndex,
-        tileBuffer,
-        renderTileSizeCells: this.tileLod.renderTileSizeCells,
-        visibleCellCount: level.cellCount,
-        cellPermutationStride: createCellPermutationStride(this.tileLod.renderTileSizeCells),
-        visibleAnchorCount: level.anchorCount,
-        visibleElementCount: level.elementCount,
-        finalLodLevel: levelIndex === this.tileLod.levels.length - 1,
-        nextCellCount: nextLevel.cellCount,
-        nextAnchorCount: nextLevel.anchorCount,
-        nextElementCount: nextLevel.elementCount,
-        lodFadeRange: new Vector2(
-          this.tileLod.fadeStartsMeters[levelIndex],
-          this.tileLod.fadeEndsMeters[levelIndex],
-        ),
-        cameraPositionModel: this.#cameraPositionModel,
-        useTwoSampleHeight: level.heightSampling === 'diagonal-average',
-      });
-      const mesh = new Mesh(geometry, material);
-      mesh.name = `vegetation/grass-layer-${layerId}-lod-${levelIndex}`;
-      mesh.frustumCulled = false;
-      return {
-        cellCount: level.cellCount,
-        anchorCount: level.anchorCount,
-        elementCount: level.elementCount,
-        bladeSegments,
-        candidatesPerTile: level.cellCount * level.anchorCount
-          * level.elementCount,
-        geometry,
-        material,
-        mesh,
-        tileBuffer,
-      };
-    });
-    this.lodDraws = draws;
-    this.geometry = draws[0]!.geometry;
-    this.material = draws[0]!.material;
-    this.mesh = draws[0]!.mesh;
-    for (let levelIndex = 1; levelIndex < draws.length; levelIndex += 1) {
-      this.mesh.add(draws[levelIndex]!.mesh);
+    this.tileBuffer = new WebGLVisibleTileBuffer(
+      adapter.renderer,
+      this.tileDensity.tileCapacity,
+      `vegetation/layer-${layerId}-density-tiles`,
+    );
+    this.activeCellBuffer = new WebGLActiveCellBuffer(
+      adapter.renderer,
+      this.tileDensity.activeCellIndices,
+      `vegetation/layer-${layerId}-active-cells`,
+    );
+    this.densityDraws = Array.from(
+      this.tileDensity.bucketCapacities,
+      (candidateCapacity, bucketIndex): WebGLGrassDensityDraw => {
+        const geometry = createGrassBladeGeometry(layer.config.blade.segments);
+        const material = createGrassMaterial({
+          adapter,
+          layerId,
+          candidateCapacity,
+          tileBuffer: this.tileBuffer,
+          activeCellBuffer: this.activeCellBuffer,
+          cameraPositionModel: this.#cameraPositionModel,
+        });
+        const mesh = new Mesh(geometry, material);
+        mesh.name = `vegetation/grass-layer-${layerId}-density-${candidateCapacity}`;
+        mesh.frustumCulled = false;
+        mesh.castShadow = false;
+        mesh.receiveShadow = layer.config.shadows.receive;
+        return { bucketIndex, candidateCapacity, geometry, material, mesh };
+      },
+    );
+    this.geometry = this.densityDraws[0]!.geometry;
+    this.material = this.densityDraws[0]!.material;
+    this.mesh = this.densityDraws[0]!.mesh;
+    for (let bucketIndex = 1; bucketIndex < this.densityDraws.length; bucketIndex += 1) {
+      this.mesh.add(this.densityDraws[bucketIndex]!.mesh);
     }
   }
 
   get visibleTileCount(): number {
-    return this.lodDraws.reduce((sum, draw) => sum + draw.tileBuffer.visibleTileCount, 0);
+    return this.tileDensity.visibleTileCount;
   }
 
+  /** Exact visible blade count before capacity-bucket padding. */
   get visibleCandidateCount(): number {
-    return this.lodDraws.reduce((sum, draw) => sum + draw.geometry.instanceCount, 0);
+    return this.tileDensity.visibleCandidateCount;
   }
 
-  /** Applies the same model-space light used by the surrounding scene. */
-  setLighting(
-    directionalLightDirection: Vector3,
-    ambientLightColor: Color,
-    directionalLightColor: Color,
+  /** Submitted blade instances including capacity-bucket padding, not vertex invocations. */
+  get executedCandidateCount(): number {
+    return this.densityDraws.reduce((sum, draw) => sum + draw.geometry.instanceCount, 0);
+  }
+
+  /** Updates continuous tile density from the model-local culling camera. */
+  updateDensity(
+    cameraPositionModel: ModelPosition,
+    clipFromModelMatrix?: Matrix4Elements,
+    depthRange: ClipSpaceDepthRange = 'negative-one-to-one',
   ): void {
-    for (const draw of this.lodDraws) {
-      draw.material.uniforms.directionalLightDirection!.value
-        .copy(directionalLightDirection)
-        .normalize();
-      draw.material.uniforms.ambientLightColor!.value.copy(ambientLightColor);
-      draw.material.uniforms.directionalLightColor!.value.copy(directionalLightColor);
-    }
-  }
-
-  /** Updates tile distance buckets from the same model-local camera used for culling. */
-  updateLod(cameraPositionModel: ModelPosition): void {
     this.#cameraPositionModel.set(
       cameraPositionModel.x,
       cameraPositionModel.y,
       cameraPositionModel.z,
     );
     const visibleChunks = this.#adapter.visibleChunkBuffer;
-    this.tileLod.update(
+    this.tileDensity.update(
       visibleChunks.data,
       visibleChunks.visibleChunkCount,
       cameraPositionModel,
+      clipFromModelMatrix,
+      depthRange,
     );
-    this.lodDraws.forEach((draw, levelIndex) => {
-      const tileCount = this.tileLod.tileCounts[levelIndex]!;
-      draw.tileBuffer.update(this.tileLod.levels[levelIndex]!.tileRecords, tileCount);
-      draw.geometry.instanceCount = tileCount * draw.candidatesPerTile;
+    this.tileBuffer.update(this.tileDensity.tileRecords, this.tileDensity.visibleTileCount);
+    this.densityDraws.forEach((draw, bucketIndex) => {
+      const tileCount = this.tileDensity.bucketTileCounts[bucketIndex]!;
+      draw.material.uniforms.tileRecordOffset!.value =
+        this.tileDensity.bucketRecordOffsets[bucketIndex]!;
+      draw.geometry.instanceCount = tileCount * draw.candidateCapacity;
     });
   }
 
   dispose(): void {
-    for (const draw of this.lodDraws) {
+    for (const draw of this.densityDraws) {
       draw.geometry.dispose();
       draw.material.dispose();
-      draw.tileBuffer.dispose();
     }
+    this.tileBuffer.dispose();
+    this.activeCellBuffer.dispose();
   }
 }
 
 type GrassMaterialOptions = Readonly<{
   adapter: WebGLVegetationAdapter;
   layerId: number;
-  levelIndex: number;
+  candidateCapacity: number;
   tileBuffer: WebGLVisibleTileBuffer;
-  renderTileSizeCells: number;
-  visibleCellCount: number;
-  cellPermutationStride: number;
-  visibleAnchorCount: number;
-  visibleElementCount: number;
-  finalLodLevel: boolean;
-  nextCellCount: number;
-  nextAnchorCount: number;
-  nextElementCount: number;
-  lodFadeRange: Vector2;
+  activeCellBuffer: WebGLActiveCellBuffer;
   cameraPositionModel: Vector3;
-  useTwoSampleHeight: boolean;
 }>;
 
-function createGrassMaterial(options: GrassMaterialOptions): RawShaderMaterial {
+function createGrassMaterial(options: GrassMaterialOptions): ShaderMaterial {
   const { adapter, layerId } = options;
   const layer = adapter.dataset.enabledLayers.find((candidate) => candidate.layerId === layerId)!;
   const patternResource = adapter.staticResources.patterns.find(
     (candidate) => candidate.layerId === layerId,
   )!;
-  const layerMask = adapter.staticResources.layerMasks.find(
-    (candidate) => candidate.layerId === layerId,
-  )!;
   const { header } = adapter.staticResources;
   const [horizontalAxisA, horizontalAxisB] = header.coordinateSystem.horizontalAxes;
   const unitsPerMeter = header.coordinateSystem.unitsPerMeter;
-  const axisA = createAxisVector(horizontalAxisA);
-  const axisB = createAxisVector(horizontalAxisB);
-  const up = createAxisVector(header.coordinateSystem.upAxis);
-  const directionalLightDirection = up.clone()
-    .addScaledVector(axisA, 0.35)
-    .addScaledVector(axisB, 0.2)
-    .normalize();
   const distanceColor = layer.config.colors.distanceColorTransition;
+  const groundTransition = 'target' in distanceColor ? distanceColor : undefined;
+  const groundField = layer.groundPatchField;
+  const groundTexture = adapter.staticResources.groundPatchFields.find(
+    (field) => field.layerId === layerId,
+  )?.texture;
+  if (groundTransition && (!groundField || !groundTexture)) {
+    throw new Error(`Grass layer ${layerId} needs a ground patch field for its color transition.`);
+  }
   const thickness = layer.config.bladeThicknessDistanceScaling;
-  return new RawShaderMaterial({
-    name: `vegetation/grass-layer-${layerId}-lod-${options.levelIndex}`,
+  return new ShaderMaterial({
+    name: `vegetation/grass-layer-${layerId}-density-${options.candidateCapacity}`,
     glslVersion: GLSL3,
+    lights: true,
     vertexShader: grassVertexShader,
     fragmentShader: grassFragmentShader,
     side: DoubleSide,
+    defines: groundTransition ? { GROUND_COLOR_TRANSITION: 1 } : {},
     uniforms: {
+      ...UniformsUtils.clone(UniformsLib.lights),
       visibleTileRecords: { value: options.tileBuffer.texture },
       visibleTileTextureWidth: { value: options.tileBuffer.textureWidth },
+      activeCellIndices: { value: options.activeCellBuffer.texture },
+      activeCellTextureWidth: { value: options.activeCellBuffer.textureWidth },
+      tileRecordOffset: { value: 0 },
+      bucketCandidateCapacity: { value: options.candidateCapacity },
       storedChunkGridCoordinates: {
         value: adapter.staticResources.storedChunkGridCoordinatesTexture,
       },
       chunkHeightRanges: { value: adapter.staticResources.chunkHeightRangesTexture },
       heightData: { value: adapter.staticResources.heightDataTexture },
-      layerMask: { value: layerMask.texture },
       patternPositions: { value: patternResource.texture },
       bottomColors: { value: patternResource.bottomColors.texture },
       topColors: { value: patternResource.topColors.texture },
       seed: { value: header.seed },
       layerId: { value: layerId },
       patternCount: { value: patternResource.patternSet.patternCount },
-      maskResolution: { value: layerMask.maskResolution },
-      renderTileSizeCells: { value: options.renderTileSizeCells },
-      visibleCellCount: { value: options.visibleCellCount },
-      visibleAnchorCount: { value: options.visibleAnchorCount },
-      visibleElementCount: { value: options.visibleElementCount },
-      cellPermutationStride: { value: options.cellPermutationStride },
-      finalLodLevel: { value: options.finalLodLevel },
-      nextCellCount: { value: options.nextCellCount },
-      nextAnchorCount: { value: options.nextAnchorCount },
-      nextElementCount: { value: options.nextElementCount },
-      lodFadeRange: { value: options.lodFadeRange },
+      maskResolution: { value: layer.fileLayer.maskResolution },
       bottomColorCount: { value: patternResource.bottomColors.colorCount },
       topColorCount: { value: patternResource.topColors.colorCount },
       rotatePerCell: { value: patternResource.rotatePerCell },
@@ -266,9 +236,9 @@ function createGrassMaterial(options: GrassMaterialOptions): RawShaderMaterial {
       maximumQuantizedHeight: { value: (2 ** header.heightMap.valueBits) - 1 },
       unitsPerMeter: { value: unitsPerMeter },
       cameraPositionModel: { value: options.cameraPositionModel },
-      horizontalAxisA: { value: axisA },
-      horizontalAxisB: { value: axisB },
-      upAxis: { value: up },
+      horizontalAxisA: { value: createAxisVector(horizontalAxisA) },
+      horizontalAxisB: { value: createAxisVector(horizontalAxisB) },
+      upAxis: { value: createAxisVector(header.coordinateSystem.upAxis) },
       bladeHeight: {
         value: new Vector2(
           layer.config.blade.heightMeters.minimum * unitsPerMeter,
@@ -285,33 +255,54 @@ function createGrassMaterial(options: GrassMaterialOptions): RawShaderMaterial {
       maximumBladeTiltRadians: {
         value: degreesToRadians(layer.config.blade.maximumTiltDegrees),
       },
+      cameraFacingDistance: {
+        value: new Vector2(
+          layer.config.blade.cameraFacing.startsAtMeters,
+          layer.config.blade.cameraFacing.reachesFullAtMeters,
+        ),
+      },
       maximumBladeOffset: {
-        value: layer.config.bladeCount.maximumOffsetMeters * unitsPerMeter,
+        value: layer.config.distribution.elementRadiusMeters * unitsPerMeter,
       },
-      lodTransitionStartVisibleRatio: {
-        value: layer.config.bladeCount.lodTransitionStartVisibleRatio,
+      useTwoSampleHeight: {
+        value: layer.config.blade.heightSampling === 'diagonal-average',
       },
-      useTwoSampleHeight: { value: options.useTwoSampleHeight },
       bladeThicknessDistance: {
         value: new Vector2(thickness.startsIncreasingAtMeters, thickness.reachesMaximumAtMeters),
       },
       bladeThicknessScale: { value: new Vector2(thickness.defaultScale, thickness.maximumScale) },
       bladeThicknessCurveStrength: { value: thickness.curveStrength },
+      directLightWeight: { value: layer.config.lighting.directLightWeight },
       verticalColorTransition: {
         value: new Vector2(
           layer.config.colors.verticalColorTransition.startsAtBladeRatio,
           layer.config.colors.verticalColorTransition.endsAtBladeRatio,
         ),
       },
-      distanceColorFarTint: { value: new Color(distanceColor.farTint) },
-      distanceColorRange: {
-        value: new Vector2(distanceColor.startsAtMeters, distanceColor.endsAtMeters),
-      },
-      distanceColorCurveStrength: { value: distanceColor.curveStrength },
-      lightingNormalUpBias: { value: layer.config.lighting.normalUpBias },
-      directionalLightDirection: { value: directionalLightDirection },
-      ambientLightColor: { value: new Color(0.65, 0.65, 0.65) },
-      directionalLightColor: { value: new Color(0.35, 0.35, 0.35) },
+      ...('target' in distanceColor ? {
+        groundPatchField: { value: groundTexture },
+        groundBaseColor: { value: new Color(groundField!.baseColor) },
+        groundBrightnessVariation: { value: groundField!.brightnessVariation },
+        groundOrigin: { value: new Vector2(groundField!.originX, groundField!.originY) },
+        groundExtent: { value: new Vector2(
+          groundField!.width * groundField!.texelSizeUnits,
+          groundField!.height * groundField!.texelSizeUnits,
+        ) },
+        bottomGroundTransition: { value: new Vector3(
+          distanceColor.bottom.startsAtMeters, distanceColor.bottom.endsAtMeters,
+          distanceColor.bottom.curveStrength,
+        ) },
+        topGroundTransition: { value: new Vector3(
+          distanceColor.top.startsAtMeters, distanceColor.top.endsAtMeters,
+          distanceColor.top.curveStrength,
+        ) },
+      } : {
+        distanceColorFarTint: { value: new Color(distanceColor.farTint) },
+        distanceColorRange: {
+          value: new Vector2(distanceColor.startsAtMeters, distanceColor.endsAtMeters),
+        },
+        distanceColorCurveStrength: { value: distanceColor.curveStrength },
+      }),
     },
   });
 }

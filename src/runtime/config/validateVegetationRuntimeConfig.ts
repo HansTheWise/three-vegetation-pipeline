@@ -1,11 +1,14 @@
 import type {
   HexColor,
   NumericRange,
+  VegetationDensityCurvePoint,
   VegetationRuntimeConfig,
   VegetationRuntimeLayerConfig,
 } from './types.js';
 import { MAX_CELL_PATTERN_COUNT } from '../identity/CellHashLayout.js';
 import { MAX_ELEMENT_COLOR_COUNT } from '../identity/ElementHashLayout.js';
+import { validatePatchConfig } from '../patches/validatePatchConfig.js';
+import { evaluateVegetationDensityCurve } from './evaluateVegetationDensityCurve.js';
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
@@ -13,8 +16,8 @@ const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 export function validateVegetationRuntimeConfig(
   config: VegetationRuntimeConfig,
 ): void {
-  if (config.configVersion !== 1) {
-    throw new Error(`Unsupported runtime config version ${String(config.configVersion)}.`);
+  if (config.configVersion !== 2) {
+    throw new Error(`Unsupported runtime config version ${String(config.configVersion)}. Use version 2 with continuous density curves.`);
   }
   if (config.assetUrl.trim().length === 0) {
     throw new Error('Runtime assetUrl must not be empty.');
@@ -42,13 +45,22 @@ function validateLayer(layer: VegetationRuntimeLayerConfig): void {
   const label = `Runtime layer "${layer.key}"`;
   assertInteger(layer.layerId, `${label}.layerId`, 0);
   if (layer.key.trim().length === 0) throw new Error(`${label}.key must not be empty.`);
+  validatePatchConfig(layer.patches);
 
   const maximumDistance = layer.visibility.maximumDistanceMeters;
   assertPositive(maximumDistance, `${label}.visibility.maximumDistanceMeters`);
 
-  assertInteger(layer.lod.renderTileSizeCells, `${label}.lod.renderTileSizeCells`, 1);
-  if (layer.lod.levels.length === 0) {
-    throw new Error(`${label}.lod.levels must not be empty.`);
+  assertInteger(layer.density.renderTileSizeCells, `${label}.density.renderTileSizeCells`, 1);
+  validateDensityCurve(layer.density.activeCells, `${label}.density.activeCells`);
+  validateDensityCurve(layer.density.activeAnchors, `${label}.density.activeAnchors`);
+  validateDensityCurve(layer.density.activeElements, `${label}.density.activeElements`);
+  const densityAtVisibilityLimit = [
+    layer.density.activeCells,
+    layer.density.activeAnchors,
+    layer.density.activeElements,
+  ].map((curve) => evaluateVegetationDensityCurve(curve, maximumDistance));
+  if (densityAtVisibilityLimit.every((ratio) => ratio > 0)) {
+    throw new Error(`${label}.density must reach zero by visibility.maximumDistanceMeters.`);
   }
 
   assertInteger(layer.pattern.patternCount, `${label}.pattern.patternCount`, 1);
@@ -57,43 +69,24 @@ function validateLayer(layer: VegetationRuntimeLayerConfig): void {
       `${label}.pattern.patternCount must not exceed ${MAX_CELL_PATTERN_COUNT}.`,
     );
   }
-  assertInteger(layer.pattern.anchorsPerCell, `${label}.pattern.anchorsPerCell`, 1);
+  assertInteger(layer.distribution.anchorsPerCell, `${label}.distribution.anchorsPerCell`, 1);
+  assertInteger(layer.distribution.elementsPerAnchor, `${label}.distribution.elementsPerAnchor`, 1);
+  assertNonNegative(layer.distribution.elementRadiusMeters, `${label}.distribution.elementRadiusMeters`);
 
   validateRange(layer.blade.heightMeters, `${label}.blade.heightMeters`, true);
   validateRange(layer.blade.widthMeters, `${label}.blade.widthMeters`, true);
+  assertInteger(layer.blade.segments, `${label}.blade.segments`, 1);
+  if (layer.blade.heightSampling !== 'bilinear'
+    && layer.blade.heightSampling !== 'diagonal-average') {
+    throw new Error(`${label}.blade.heightSampling is unsupported.`);
+  }
   assertBetween(layer.blade.topWidthRatio, 0, 1, `${label}.blade.topWidthRatio`);
   assertBetween(layer.blade.maximumTiltDegrees, 0, 90, `${label}.blade.maximumTiltDegrees`);
-
-  assertInteger(layer.bladeCount.maximumPerAnchor, `${label}.bladeCount.maximumPerAnchor`, 1);
-  validateLodLevels(layer, label);
-  assertNonNegative(
-    layer.bladeCount.maximumOffsetMeters,
-    `${label}.bladeCount.maximumOffsetMeters`,
-  );
   validateDistancePair(
-    layer.bladeCount.startsDecreasingAtMeters,
-    layer.bladeCount.reachesZeroAtMeters,
-    maximumDistance,
-    `${label}.bladeCount`,
+    layer.blade.cameraFacing.startsAtMeters,
+    layer.blade.cameraFacing.reachesFullAtMeters,
+    `${label}.blade.cameraFacing`,
   );
-  assertPositive(layer.bladeCount.curveStrength, `${label}.bladeCount.curveStrength`);
-  assertPositive(
-    layer.bladeCount.growthTransitionDistanceMeters,
-    `${label}.bladeCount.growthTransitionDistanceMeters`,
-  );
-  assertBetween(
-    layer.bladeCount.lodTransitionStartVisibleRatio,
-    0,
-    1,
-    `${label}.bladeCount.lodTransitionStartVisibleRatio`,
-  );
-  const bladeCountDistanceRange = layer.bladeCount.reachesZeroAtMeters
-    - layer.bladeCount.startsDecreasingAtMeters;
-  if (layer.bladeCount.growthTransitionDistanceMeters > bladeCountDistanceRange) {
-    throw new Error(
-      `${label}.bladeCount.growthTransitionDistanceMeters must not exceed the blade-count distance range.`,
-    );
-  }
 
   const thickness = layer.bladeThicknessDistanceScaling;
   assertPositive(thickness.defaultScale, `${label}.bladeThicknessDistanceScaling.defaultScale`);
@@ -106,7 +99,6 @@ function validateLayer(layer: VegetationRuntimeLayerConfig): void {
   validateDistancePair(
     thickness.startsIncreasingAtMeters,
     thickness.reachesMaximumAtMeters,
-    maximumDistance,
     `${label}.bladeThicknessDistanceScaling`,
   );
   assertPositive(thickness.curveStrength, `${label}.bladeThicknessDistanceScaling.curveStrength`);
@@ -140,75 +132,52 @@ function validateLayer(layer: VegetationRuntimeLayerConfig): void {
     throw new Error(`${label}.colors.verticalColorTransition must end at or after it starts.`);
   }
   const distanceColor = layer.colors.distanceColorTransition;
-  validateColor(distanceColor.farTint, `${label}.colors.distanceColorTransition.farTint`);
-  validateDistancePair(
-    distanceColor.startsAtMeters,
-    distanceColor.endsAtMeters,
-    maximumDistance,
-    `${label}.colors.distanceColorTransition`,
-  );
-  assertPositive(distanceColor.curveStrength, `${label}.colors.distanceColorTransition.curveStrength`);
-
-  assertBetween(layer.lighting.normalUpBias, 0, 1, `${label}.lighting.normalUpBias`);
-  const facing = layer.cameraFacing;
-  assertBetween(facing.topViewStartsAtDegrees, 0, 90, `${label}.cameraFacing.topViewStartsAtDegrees`);
-  assertBetween(facing.topViewFullyAppliedAtDegrees, 0, 90, `${label}.cameraFacing.topViewFullyAppliedAtDegrees`);
-  if (facing.topViewFullyAppliedAtDegrees < facing.topViewStartsAtDegrees) {
-    throw new Error(`${label}.cameraFacing top-view transition must end at or after it starts.`);
+  if ('target' in distanceColor) {
+    if (distanceColor.target !== 'ground' || !layer.patches.ground.enabled) {
+      throw new Error(`${label}.colors.distanceColorTransition requires target ground and enabled ground patches.`);
+    }
+    for (const endpoint of ['bottom', 'top'] as const) {
+      const curve = distanceColor[endpoint];
+      const path = `${label}.colors.distanceColorTransition.${endpoint}`;
+      validateDistancePair(curve.startsAtMeters, curve.endsAtMeters, path);
+      assertNonNegative(curve.curveStrength, `${path}.curveStrength`);
+    }
+  } else {
+    validateColor(distanceColor.farTint, `${label}.colors.distanceColorTransition.farTint`);
+    validateDistancePair(
+      distanceColor.startsAtMeters,
+      distanceColor.endsAtMeters,
+      `${label}.colors.distanceColorTransition`,
+    );
+    assertPositive(distanceColor.curveStrength, `${label}.colors.distanceColorTransition.curveStrength`);
   }
-  assertBetween(facing.maximumTiltDegrees, 0, 90, `${label}.cameraFacing.maximumTiltDegrees`);
 
-  assertBetween(layer.shadows.castUntilMeters, 0, maximumDistance, `${label}.shadows.castUntilMeters`);
+  assertBetween(layer.lighting.directLightWeight, 0, 1, `${label}.lighting.directLightWeight`);
 
-  assertNonNegative(layer.wind.strength, `${label}.wind.strength`);
-  assertNonNegative(layer.wind.speed, `${label}.wind.speed`);
-  assertNonNegative(layer.wind.spatialFrequency, `${label}.wind.spatialFrequency`);
-  assertNonNegative(layer.wind.gustStrength, `${label}.wind.gustStrength`);
-  assertNonNegative(layer.wind.gustFrequency, `${label}.wind.gustFrequency`);
-  assertBetween(layer.wind.variation, 0, 1, `${label}.wind.variation`);
 }
 
-function validateLodLevels(layer: VegetationRuntimeLayerConfig, label: string): void {
-  let previousCellCoverageRatio = 1;
-  let previousAnchorCount = layer.pattern.anchorsPerCell;
-  let previousElementCount = layer.bladeCount.maximumPerAnchor;
-  let previousBladeSegments = Number.POSITIVE_INFINITY;
-  let previousDensity = Number.POSITIVE_INFINITY;
-  for (const [index, level] of layer.lod.levels.entries()) {
-    const levelPath = `${label}.lod.levels[${index}]`;
-    assertPositive(level.cellCoverageRatio, `${levelPath}.cellCoverageRatio`);
-    if (level.cellCoverageRatio > 1) {
-      throw new Error(`${levelPath}.cellCoverageRatio must not exceed 1.`);
+function validateDensityCurve(
+  points: readonly VegetationDensityCurvePoint[],
+  path: string,
+): void {
+  if (points.length === 0) throw new Error(`${path} must not be empty.`);
+  let previousDistance = -1;
+  let previousRatio = Number.POSITIVE_INFINITY;
+  for (const [index, point] of points.entries()) {
+    const pointPath = `${path}[${index}]`;
+    assertNonNegative(point.distanceMeters, `${pointPath}.distanceMeters`);
+    assertBetween(point.ratio, 0, 1, `${pointPath}.ratio`);
+    if (index === 0 && point.distanceMeters !== 0) {
+      throw new Error(`${path}[0].distanceMeters must be 0.`);
     }
-    assertInteger(level.anchorCount, `${levelPath}.anchorCount`, 1);
-    assertInteger(level.elementCount, `${levelPath}.elementCount`, 1);
-    assertInteger(level.bladeSegments, `${levelPath}.bladeSegments`, 1);
-    if (level.heightSampling !== 'bilinear'
-      && level.heightSampling !== 'diagonal-average') {
-      throw new Error(`${levelPath}.heightSampling is unsupported.`);
+    if (point.distanceMeters <= previousDistance) {
+      throw new Error(`${path} distances must strictly increase.`);
     }
-    if (index === 0 && (
-      level.cellCoverageRatio !== 1
-      || level.anchorCount !== layer.pattern.anchorsPerCell
-      || level.elementCount !== layer.bladeCount.maximumPerAnchor
-    )) {
-      throw new Error(`${label}.lod.levels[0] must use the complete Cell, Anchor and Element density.`);
+    if (point.ratio > previousRatio) {
+      throw new Error(`${path} ratios must not increase with distance.`);
     }
-    if (level.cellCoverageRatio > previousCellCoverageRatio
-      || level.anchorCount > previousAnchorCount
-      || level.elementCount > previousElementCount
-      || level.bladeSegments > previousBladeSegments) {
-      throw new Error(`${label}.lod.levels must not increase density.`);
-    }
-    const density = level.cellCoverageRatio * level.anchorCount * level.elementCount;
-    if (density >= previousDensity) {
-      throw new Error(`${label}.lod.levels must strictly decrease total density.`);
-    }
-    previousCellCoverageRatio = level.cellCoverageRatio;
-    previousAnchorCount = level.anchorCount;
-    previousElementCount = level.elementCount;
-    previousBladeSegments = level.bladeSegments;
-    previousDensity = density;
+    previousDistance = point.distanceMeters;
+    previousRatio = point.ratio;
   }
 }
 
@@ -225,11 +194,10 @@ function validateRange(range: NumericRange, path: string, positive: boolean): vo
 function validateDistancePair(
   start: number,
   end: number,
-  maximum: number,
   path: string,
 ): void {
-  assertBetween(start, 0, maximum, `${path} start distance`);
-  assertBetween(end, 0, maximum, `${path} end distance`);
+  assertNonNegative(start, `${path} start distance`);
+  assertNonNegative(end, `${path} end distance`);
   if (end <= start) throw new Error(`${path} end distance must be greater than start distance.`);
 }
 
