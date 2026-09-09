@@ -155,7 +155,7 @@ function createConfig(): VegCompilerConfig {
       heightSurfaceSelector: {
         any: [{
           type: 'mesh-name',
-          values: ['surfice'],
+          values: ['terrain'],
           caseSensitive: false,
         }],
       },
@@ -187,12 +187,12 @@ function createConfig(): VegCompilerConfig {
           all: [
             {
               type: 'mesh-name',
-              values: ['surfice'],
+              values: ['terrain'],
               caseSensitive: false,
             },
             {
               type: 'material-name',
-              values: ['map_grun'],
+              values: ['meadow'],
               caseSensitive: false,
             },
           ],

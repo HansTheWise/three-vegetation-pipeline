@@ -12,7 +12,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { icakaVegetationRuntimeConfig } from '../config/icaka.vegetation.runtime.config.js';
+import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 
 import {
   createStoredChunkGridCoordinates,
@@ -107,9 +107,9 @@ function createParsedFile(
 }
 
 function createRuntimeConfig(): VegetationRuntimeConfig {
-  const layer = icakaVegetationRuntimeConfig.layers[0]!;
+  const layer = vegetationRuntimeConfig.layers[0]!;
   return {
-    ...icakaVegetationRuntimeConfig,
+    ...vegetationRuntimeConfig,
     layers: [
       { ...layer, layerId: 7, key: 'layer-7' },
       { ...layer, layerId: 9, key: 'layer-9', enabled: false },
@@ -203,7 +203,7 @@ describe('WebGLStaticVegetationResources', () => {
       reflectPerCell: true,
     });
     expect(resources.patterns[0]!.patternSet.anchorsPerPattern).toBe(4);
-    const colors = icakaVegetationRuntimeConfig.layers[0]!.colors;
+    const colors = vegetationRuntimeConfig.layers[0]!.colors;
     expect(resources.patterns[0]!.texture.image).toMatchObject({ width: 4, height: 4 });
     expect(resources.patterns[0]!.bottomColors)
       .toMatchObject({ colorCount: colors.bottomColors.length });

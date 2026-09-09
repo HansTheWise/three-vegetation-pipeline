@@ -2,6 +2,8 @@
 
 Die Runtime-Config enthält ausschließlich serialisierbare Vegetationswerte.
 Algorithmen, Shader und Three.js-Ressourcen bleiben in der Pipeline.
+Asset-URLs, Ladezustand und globale Anwendungsschalter gehören dem Consumer und
+sind kein Teil dieses Vertrags.
 
 ## Maximale Verteilung
 
@@ -41,8 +43,9 @@ patches: {
 },
 ```
 
-Das Feld entsteht einmal beim Dataset-Aufbau. I-CAKA führt die Erzeugung in einem
-Worker aus und verwendet dasselbe RG-Feld für Bodenfarbe und Halmfarbübergang.
+Das Feld entsteht einmal beim Dataset-Aufbau. Ein Consumer kann die Erzeugung in
+einem Worker ausführen und dasselbe RG-Feld für Bodenfarbe und
+Halmfarbübergang verwenden.
 Hohe Zielabdeckung kann bei
 `allowMerging: false` unerreichbar sein; das Feld weist `achievedCoverage` aus.
 

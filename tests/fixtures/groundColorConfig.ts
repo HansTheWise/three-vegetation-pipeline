@@ -1,9 +1,9 @@
-import { icakaVegetationRuntimeConfig } from '../../config/icaka.vegetation.runtime.config.js';
+import { vegetationRuntimeConfig } from './vegetationRuntimeConfig.js';
 import type { VegetationRuntimeConfig } from '../../src/index.js';
 
-const layer = icakaVegetationRuntimeConfig.layers[0]!;
+const layer = vegetationRuntimeConfig.layers[0]!;
 export const groundColorConfig = {
-  ...icakaVegetationRuntimeConfig,
+  ...vegetationRuntimeConfig,
   layers: [{
     ...layer,
     patches: {

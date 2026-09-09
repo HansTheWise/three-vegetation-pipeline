@@ -3,7 +3,7 @@ import { createVegetationRuntimeDataset, WebGLVegetationAdapter, WebGLGrassView 
 import { groundColorConfig } from '../fixtures/groundColorConfig.ts';
 
 // Run through Vite: /tests/browser/ground-color.html. Pixel reads are numerical
-// shader checks, not visual acceptance of the campus scene.
+// shader checks, not visual acceptance of a consumer scene.
 const result = document.querySelector('#result');
 try {
   const config = structuredClone(groundColorConfig);

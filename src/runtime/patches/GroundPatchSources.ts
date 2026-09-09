@@ -147,7 +147,7 @@ function createMeasurementPositions(
     positions[sampleIndex * 2 + 1] = position.y;
   }
   // One sorted axis bounds each candidate's measurement range without rescanning
-  // the whole campus or allocating another full distance array per candidate.
+  // the whole field or allocating another full distance array per candidate.
   const order = Array.from({ length: sampleCount }, (_, index) => index)
     .sort((left, right) => positions[left * 2]! - positions[right * 2]!);
   return Float64Array.from({ length: positions.length }, (_, index) => (

@@ -125,11 +125,11 @@ describe('extractVegetation', () => {
   it('matches mesh names across the complete node hierarchy', () => {
     const primitive = {
       ...squarePrimitive('child', 'grass', 0, 0, 4, 4, 0),
-      hierarchyNames: ['campus', 'SuRfIcE', 'child'],
+      hierarchyNames: ['world', 'TeRrAiN', 'child'],
     };
     const config = createConfig({
-      heightMesh: 'surfice',
-      layers: [createLayer(0, 'grass', 'grass', 'surfice')],
+      heightMesh: 'terrain',
+      layers: [createLayer(0, 'grass', 'grass', 'terrain')],
     });
 
     expect(extractVegetation(modelWithPrimitives([primitive]), config).chunks)

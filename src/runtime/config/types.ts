@@ -113,6 +113,5 @@ export type VegetationRuntimeLayerConfig = Readonly<{
 /** Pure frontend data. Algorithm and module references deliberately live elsewhere. */
 export type VegetationRuntimeConfig = Readonly<{
   configVersion: 2;
-  assetUrl: string;
   layers: readonly VegetationRuntimeLayerConfig[];
 }>;

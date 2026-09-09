@@ -4,8 +4,11 @@ import {
   AxesHelper,
   Color,
   DirectionalLight,
+  DoubleSide,
   Matrix4,
   Mesh,
+  MeshLambertMaterial,
+  PlaneGeometry,
   PerspectiveCamera,
   Scene,
   SRGBColorSpace,
@@ -13,18 +16,17 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 import {
   createChunkBoundingBoxes,
   createVegetationRuntimeDataset,
   FrustumChunkVisibility,
-  parseVegFile,
   WebGLVegetationDebug,
   WebGLGrassView,
   WebGLVegetationAdapter,
+  type ParsedVegFile,
 } from '../src/index.js';
-import { icakaVegetationRuntimeConfig } from '../config/icaka.vegetation.runtime.config.js';
+import { vegetationExampleConfig } from './vegetationExampleConfig.js';
 
 const status = document.querySelector<HTMLDivElement>('#status');
 if (!status) throw new Error('Debug status element is missing.');
@@ -51,12 +53,10 @@ renderer.shadowMap.enabled = !debugParameters.has('noShadows');
 renderer.shadowMap.type = PCFShadowMap;
 document.body.append(renderer.domElement);
 
-const response = await fetch('/campus.veg');
-if (!response.ok) throw new Error(`campus.veg could not be loaded: ${response.status}`);
-const parsedVegFile = parseVegFile(new Uint8Array(await response.arrayBuffer()));
+const parsedVegFile = createExampleVegetationFile();
 const runtimeDataset = createVegetationRuntimeDataset(
   parsedVegFile,
-  icakaVegetationRuntimeConfig,
+  vegetationExampleConfig,
 );
 const gpuAdapter = new WebGLVegetationAdapter(
   renderer,
@@ -71,13 +71,13 @@ const grass = new WebGLGrassView(gpuAdapter, 0);
 const scene = new Scene();
 scene.background = new Color('#9bc4dc');
 scene.add(grass.mesh);
-const campusModel = await new GLTFLoader().loadAsync('/campus.glb');
-campusModel.scene.traverse((object) => {
-  if (!(object instanceof Mesh)) return;
-  object.castShadow = !belongsToGround(object);
-  object.receiveShadow = true;
-});
-scene.add(campusModel.scene);
+const ground = new Mesh(
+  new PlaneGeometry(32, 32),
+  new MeshLambertMaterial({ color: '#527d3d', side: DoubleSide }),
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
 const ambientLight = new AmbientLight('#b9c9df', 0.45);
 scene.add(ambientLight);
 scene.add(new AxesHelper(parsedVegFile.header.grid.chunkSize));
@@ -251,17 +251,6 @@ window.addEventListener('resize', () => {
 
 render();
 
-function belongsToGround(object: Mesh): boolean {
-  let current = object.parent;
-  while (current) {
-    if (current.name.toLowerCase() === 'surfice' || current.name.toLowerCase() === 'surface') {
-      return true;
-    }
-    current = current.parent;
-  }
-  return false;
-}
-
 function findDensestStoredChunk(
   maskData: Uint32Array,
   maskWordsPerChunk: number,
@@ -285,4 +274,38 @@ function findDensestStoredChunk(
     }
   }
   return densestChunkIndex;
+}
+
+function createExampleVegetationFile(): ParsedVegFile {
+  const maskResolution = 64;
+  const maskWordsPerChunk = maskResolution ** 2 / 32;
+  return {
+    bytes: new Uint8Array(),
+    header: {
+      version: 1,
+      fileSize: 0,
+      seed: 42,
+      buildFingerprint: new Uint8Array(16),
+      fileChecksum: 0,
+      sourceBounds: {
+        minX: -16, minY: 0, minZ: -16,
+        maxX: 16, maxY: 0, maxZ: 16,
+      },
+      coordinateSystem: {
+        upAxis: 'y', horizontalAxes: ['x', 'z'], unitsPerMeter: 1,
+      },
+      grid: { width: 1, height: 1, chunkSize: 32, originX: -16, originY: -16 },
+      storedChunkCount: 1,
+      heightMap: { resolution: 2, valueBits: 16, valuesPerChunk: 4 },
+    },
+    chunkLookup: Int32Array.of(0),
+    chunkHeightRanges: Float32Array.of(0, 0),
+    heightData: Uint16Array.of(0, 0, 0, 0),
+    layers: [{
+      id: 0,
+      maskResolution,
+      maskWordsPerChunk,
+      maskData: new Uint32Array(maskWordsPerChunk).fill(0xffff_ffff),
+    }],
+  };
 }

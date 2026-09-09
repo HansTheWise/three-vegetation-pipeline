@@ -1,6 +1,6 @@
 import { GLSL3, PerspectiveCamera, Scene, type DataTexture, type WebGLRenderer } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { icakaVegetationRuntimeConfig } from '../config/icaka.vegetation.runtime.config.js';
+import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 
 import {
   debugChunkFragmentShader,
@@ -69,7 +69,7 @@ function createParsedFile(): ParsedVegFile {
 }
 
 function createRuntimeDataset() {
-  return createVegetationRuntimeDataset(createParsedFile(), icakaVegetationRuntimeConfig);
+  return createVegetationRuntimeDataset(createParsedFile(), vegetationRuntimeConfig);
 }
 
 describe('WebGLDebugChunkView', () => {

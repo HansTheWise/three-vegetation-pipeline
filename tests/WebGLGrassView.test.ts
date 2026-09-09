@@ -1,7 +1,7 @@
 import { Color, GLSL3, type WebGLRenderer } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 
-import { icakaVegetationRuntimeConfig } from '../config/icaka.vegetation.runtime.config.js';
+import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import { groundColorConfig } from './fixtures/groundColorConfig.js';
 import {
   createVegetationRuntimeDataset,
@@ -48,7 +48,7 @@ function createParsedFile(): ParsedVegFile {
 }
 
 function createAdapter(
-  config: VegetationRuntimeConfig = icakaVegetationRuntimeConfig,
+  config: VegetationRuntimeConfig = vegetationRuntimeConfig,
 ): WebGLVegetationAdapter {
   return new WebGLVegetationAdapter(
     createRenderer(),
@@ -106,7 +106,7 @@ describe('WebGLGrassView', () => {
   it('binds compact active Cells and fixed layer resources', () => {
     const adapter = createAdapter();
     const view = new WebGLGrassView(adapter, 0);
-    const bladeConfig = icakaVegetationRuntimeConfig.layers[0]!.blade;
+    const bladeConfig = vegetationRuntimeConfig.layers[0]!.blade;
     expect(view.material.uniforms.activeCellIndices!.value).toBe(view.activeCellBuffer.texture);
     expect(view.material.uniforms.visibleTileRecords!.value).toBe(view.tileBuffer.texture);
     expect(view.material.uniforms.patternPositions!.value)
@@ -141,13 +141,13 @@ describe('WebGLGrassView', () => {
   });
 
   it('starts no GPU instances when the Cell curve is zero', () => {
-    const layer = icakaVegetationRuntimeConfig.layers[0]!;
+    const layer = vegetationRuntimeConfig.layers[0]!;
     const zeroCurve = [
       { distanceMeters: 0, ratio: 0 },
       { distanceMeters: 500, ratio: 0 },
     ] as const;
     const view = new WebGLGrassView(createAdapter({
-      ...icakaVegetationRuntimeConfig,
+      ...vegetationRuntimeConfig,
       layers: [{ ...layer, density: { ...layer.density, activeCells: zeroCurve } }],
     }), 0);
     view.updateDensity({ x: 0, y: 2, z: 8 });

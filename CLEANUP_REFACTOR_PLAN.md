@@ -9,8 +9,11 @@ Stand: 9. September 2026
 - Phase 1 ist abgeschlossen: Konfiguration, Tests und Dokumentation stimmen
   überein; der Build leert `dist/`; lokale Referenzbilder sind ausgeschlossen;
   Paket- und I-CAKA-Runtime wurden technisch geprüft.
-- Als Nächstes folgt Phase 2. Architekturänderungen aus späteren Phasen sind
-  bewusst noch nicht in die Baseline eingeflossen.
+- Phase 2 ist abgeschlossen: Pipeline-Code, Tests und Beispiel sind
+  campusneutral; I-CAKA besitzt Assetpfad, globalen Schalter, Compilerconfig und
+  eine gemeinsame Surface-Identität.
+- Als Nächstes folgt Phase 3. Deren Renderprofil- und Bounds-Verträge sind
+  bewusst noch nicht vorgezogen worden.
 
 ## Ziel
 

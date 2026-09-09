@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { icakaVegetationRuntimeConfig } from '../config/icaka.vegetation.runtime.config.js';
+import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import {
   createVegetationRuntimeDataset, createVegetationActiveCellData,
   VegetationRenderTileDensity, type ParsedVegFile,
@@ -20,9 +20,9 @@ function createDataset(seed = 42, ratio = 0.25, reordered = false) {
     layers: [{ id: 0, maskResolution: 64, maskWordsPerChunk: 128,
       maskData: new Uint32Array(256).fill(0xffff_ffff) }],
   };
-  const layer = icakaVegetationRuntimeConfig.layers[0]!;
+  const layer = vegetationRuntimeConfig.layers[0]!;
   return createVegetationRuntimeDataset(file, {
-    ...icakaVegetationRuntimeConfig,
+    ...vegetationRuntimeConfig,
     layers: [{ ...layer, density: { ...layer.density, renderTileSizeCells: 32,
       activeCells: [{ distanceMeters: 0, ratio }, { distanceMeters: 400, ratio }, { distanceMeters: 500, ratio: 0 }],
       activeAnchors: [{ distanceMeters: 0, ratio: 1 }],

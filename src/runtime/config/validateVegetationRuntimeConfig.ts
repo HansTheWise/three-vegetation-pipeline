@@ -19,9 +19,6 @@ export function validateVegetationRuntimeConfig(
   if (config.configVersion !== 2) {
     throw new Error(`Unsupported runtime config version ${String(config.configVersion)}. Use version 2 with continuous density curves.`);
   }
-  if (config.assetUrl.trim().length === 0) {
-    throw new Error('Runtime assetUrl must not be empty.');
-  }
   if (config.layers.length === 0) {
     throw new Error('Runtime config must contain at least one vegetation layer.');
   }

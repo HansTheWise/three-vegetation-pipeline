@@ -1,15 +1,15 @@
-/** Creates a static triangle GLB named "surfice" with material "map_grun". */
+/** Creates a static triangle GLB with neutral test-only mesh and material names. */
 export function createMinimalGlb(): ArrayBuffer {
   const json = {
     asset: { version: '2.0' },
     scene: 0,
     scenes: [{ nodes: [0] }],
-    nodes: [{ mesh: 0, name: 'surfice', translation: [10, 20, 30] }],
+    nodes: [{ mesh: 0, name: 'terrain', translation: [10, 20, 30] }],
     meshes: [{
-      name: 'surfice',
+      name: 'terrain',
       primitives: [{ attributes: { POSITION: 0 }, indices: 1, material: 0 }],
     }],
-    materials: [{ name: 'map_grun' }],
+    materials: [{ name: 'meadow' }],
     accessors: [
       {
         bufferView: 0,

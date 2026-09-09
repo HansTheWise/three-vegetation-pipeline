@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { icakaVegetationRuntimeConfig } from '../config/icaka.vegetation.runtime.config.js';
+import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import {
   createVegetationRuntimeDataset,
   createVegetationActiveCellData,
@@ -35,9 +35,9 @@ function createDataset(configure?: (config: VegetationRuntimeConfig) => Vegetati
       maskData: Uint32Array.from([0b11_0000_0011, 0x8000_0000]),
     }],
   };
-  const sourceLayer = icakaVegetationRuntimeConfig.layers[0]!;
+  const sourceLayer = vegetationRuntimeConfig.layers[0]!;
   const config: VegetationRuntimeConfig = {
-    ...icakaVegetationRuntimeConfig,
+    ...vegetationRuntimeConfig,
     layers: [{
       ...sourceLayer,
       density: { ...sourceLayer.density, renderTileSizeCells: 2 },

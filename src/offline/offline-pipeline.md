@@ -53,8 +53,8 @@ Die GLB-Datei liefert Geometrie, Hierarchie, Transformationen, Mesh- und
 Materialnamen. Die Offline-Config legt Auswahlregeln, Koordinatensystem,
 Chunkgröße, Heightmap- und Maskenauflösungen, Seed sowie das Writerformat fest.
 
-Der Configvertrag liegt in `config/types.ts`. Eine Projektconfig wie
-`config/icaka.vegetation.config.ts` bleibt außerhalb der Bibliotheksmodule.
+Der Configvertrag liegt in `config/types.ts`. Projektbezogene
+Extraktionskonfigurationen bleiben im jeweiligen Consumer.
 
 ### 2. Reader
 

@@ -33,7 +33,7 @@ verbunden bleibt.
 
 Der lokale Browser-Test liegt unter `examples/webgl-debug-chunks.html`. Mit
 dem Queryparameter `?near` startet er in einer Nahansicht, in der nur ein Teil
-der Campus-Chunks das Kamera-Frustum schneidet. Die Nahansicht richtet sich auf
+der Vegetations-Chunks das Kamera-Frustum schneidet. Die Nahansicht richtet sich auf
 den gespeicherten Chunk mit den meisten aktiven Cells und zeigt standardmäßig
 die produktive Grasansicht.
 
@@ -106,7 +106,7 @@ mit hellblauen Außenlinien dargestellt.
 ## Gemeinsame Debug-Steuerung für Integrationen
 
 `WebGLVegetationDebug` wird aus `three-vegetation-pipeline` exportiert und sowohl
-im Beispiel als auch in ICAKA verwendet. Es verwendet den vorhandenen Adapter
+im Beispiel und in Consumer-Integrationen verwendet. Es verwendet den vorhandenen Adapter
 und die vorhandene Grasansicht, ohne eine zweite Runtime oder einen Renderloop
 zu erzeugen. Der Host deaktiviert währenddessen seine eigene Kamerasteuerung
 und sein Pointer-Picking.

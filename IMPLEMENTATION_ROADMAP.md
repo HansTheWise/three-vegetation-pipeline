@@ -30,7 +30,7 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 
 ## Nächste Schritte
 
-### 1. Aktuellen Funktionsstand sichern
+### 1. Aktuellen Funktionsstand sichern — abgeschlossen
 
 - Arbeitsbaum und unversionierte Artefakte bewusst sortieren;
 - sauberen Build ohne alte `dist`-Dateien herstellen;
@@ -38,7 +38,7 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 - Pipeline und I-CAKA technisch sowie durch die Benutzerabnahme prüfen;
 - Pipeline und Consumer in getrennten, nachvollziehbaren Commits sichern.
 
-### 2. Bibliothek und Consumer trennen
+### 2. Bibliothek und Consumer trennen — abgeschlossen
 
 - I-CAKA-Konfigurationen und Campus-Assets aus dem generischen Produktbereich
   entfernen;

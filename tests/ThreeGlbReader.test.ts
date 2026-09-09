@@ -14,7 +14,7 @@ import { createMinimalGlb } from './fixtures/createMinimalGlb.js';
 describe('ThreeGlbReader', () => {
   it('returns vertices relative to the GLB root', () => {
     const root = new Group();
-    root.name = 'campus';
+    root.name = 'world';
     root.position.set(100, 200, 300);
 
     const surface = new Group();
@@ -22,7 +22,7 @@ describe('ThreeGlbReader', () => {
     surface.position.set(10, 20, 30);
     root.add(surface);
 
-    const mesh = createTriangleMesh('ground', 'map_grun');
+    const mesh = createTriangleMesh('ground', 'meadow');
     mesh.position.set(1, 2, 3);
     surface.add(mesh);
 
@@ -38,11 +38,11 @@ describe('ThreeGlbReader', () => {
       11, 23, 33,
     ]);
     expect(result.primitives[0]!.hierarchyNames).toEqual([
-      'campus',
+      'world',
       'surface',
       'ground',
     ]);
-    expect(result.primitives[0]!.materialName).toBe('map_grun');
+    expect(result.primitives[0]!.materialName).toBe('meadow');
     expect(result.bounds).toEqual({
       minX: 11,
       minY: 22,
@@ -66,7 +66,7 @@ describe('ThreeGlbReader', () => {
     geometry.addGroup(3, 3, 1);
 
     const grass = new MeshBasicMaterial();
-    grass.name = 'map_grun';
+    grass.name = 'meadow';
     const path = new MeshBasicMaterial();
     path.name = 'path';
     const mesh = new Mesh(geometry, [grass, path]);
@@ -75,7 +75,7 @@ describe('ThreeGlbReader', () => {
     const result = new ThreeGlbReader().readObject(mesh);
 
     expect(result.primitives.map((primitive) => primitive.materialName)).toEqual([
-      'map_grun',
+      'meadow',
       'path',
     ]);
     expect([...result.primitives[0]!.indices]).toEqual([0, 1, 2]);
@@ -86,7 +86,7 @@ describe('ThreeGlbReader', () => {
 
   it('skips invisible objects unless explicitly included', () => {
     const root = new Group();
-    const hidden = createTriangleMesh('hidden', 'map_grun');
+    const hidden = createTriangleMesh('hidden', 'meadow');
     hidden.visible = false;
     root.add(hidden);
 
@@ -99,8 +99,8 @@ describe('ThreeGlbReader', () => {
     const result = await new ThreeGlbReader().read(createMinimalGlb());
 
     expect(result.primitives).toHaveLength(1);
-    expect(result.primitives[0]!.meshName).toBe('surfice');
-    expect(result.primitives[0]!.materialName).toBe('map_grun');
+    expect(result.primitives[0]!.meshName).toBe('terrain');
+    expect(result.primitives[0]!.materialName).toBe('meadow');
     expect([...result.primitives[0]!.indices]).toEqual([0, 1, 2]);
     expect([...result.primitives[0]!.positions]).toEqual([
       10, 20, 30,

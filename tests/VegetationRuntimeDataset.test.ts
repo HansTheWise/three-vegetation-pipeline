@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { icakaVegetationRuntimeConfig } from '../config/icaka.vegetation.runtime.config.js';
+import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import {
   createVegetationRuntimeDataset,
   type ParsedVegFile,
@@ -56,9 +56,9 @@ function createParsedFile(layerIds: readonly number[] = [0]): ParsedVegFile {
 }
 
 function createRuntimeConfig(layerIds: readonly number[] = [0]): VegetationRuntimeConfig {
-  const sourceLayer = icakaVegetationRuntimeConfig.layers[0]!;
+  const sourceLayer = vegetationRuntimeConfig.layers[0]!;
   return {
-    ...icakaVegetationRuntimeConfig,
+    ...vegetationRuntimeConfig,
     layers: layerIds.map((layerId) => ({
       ...sourceLayer,
       layerId,
