@@ -1,24 +1,24 @@
-import { mixVegetationHash } from '../identity/VegetationIds.js';
-import type { ParsedVegFile } from '../parser/types.js';
+import { mixVegetationHash } from '../../../identity/VegetationIds.js';
+import type { ParsedVegFile } from '../../../parser/types.js';
 import {
   collectEligiblePatchPixels,
   createPatchFieldGeometry,
   type PatchFieldGeometry,
-} from './GroundPatchFieldGeometry.js';
+} from './GrassGroundPatchFieldGeometry.js';
 import {
   patchSourceExtent,
   evaluatePatchFieldValue,
   warpPatchPosition,
   type PatchSource,
-} from './GroundPatchNoise.js';
-import { createPatchSources } from './GroundPatchSources.js';
+} from './GrassGroundPatchNoise.js';
+import { createPatchSources } from './GrassGroundPatchSources.js';
 import type {
-  EnabledGroundPatchConfig,
-  GroundPatchConfig,
-  GroundPatchField,
-  GroundPatchFieldSample,
+  EnabledGrassGroundPatchConfig,
+  GrassGroundPatchConfig,
+  GrassGroundPatchField,
+  GrassGroundPatchFieldSample,
 } from './types.js';
-import { validateGroundPatchConfig } from './validateGroundPatchConfig.js';
+import { validateGrassGroundPatchConfig } from './validateGrassGroundPatchConfig.js';
 
 const MAX_PATCH_FIELD_CHANNEL_VALUES = 0x7fff_ffff;
 const PATCH_LAYER_SEED_SALT = 0x6ac6_90c5;
@@ -35,12 +35,12 @@ type PatchSpatialIndex = Readonly<{
  * Builds a color-only, renderer-independent ground field for a VEGFILE layer.
  * Disabled configs return no allocation and do not inspect the requested layer.
  */
-export function createGroundPatchField(
+export function createGrassGroundPatchField(
   file: ParsedVegFile,
   layerId: number,
-  config: GroundPatchConfig,
-): GroundPatchField | undefined {
-  validateGroundPatchConfig(config);
+  config: GrassGroundPatchConfig,
+): GrassGroundPatchField | undefined {
+  validateGrassGroundPatchConfig(config);
   if (!config.enabled) return undefined;
 
   const layer = file.layers.find((candidate) => candidate.id === layerId);
@@ -103,11 +103,11 @@ export function createGroundPatchField(
 }
 
 /** Bilinearly samples the quantized field at a position in model units. */
-export function sampleGroundPatchField(
-  field: GroundPatchField,
+export function sampleGrassGroundPatchField(
+  field: GrassGroundPatchField,
   modelX: number,
   modelY: number,
-): GroundPatchFieldSample {
+): GrassGroundPatchFieldSample {
   if (!Number.isFinite(modelX) || !Number.isFinite(modelY)) {
     throw new Error('Vegetation patch sample coordinates must be finite.');
   }
@@ -150,7 +150,7 @@ function rasterizePatchField(
   eligiblePixelIndices: readonly number[],
   geometry: PatchFieldGeometry,
   sources: readonly PatchSource[],
-  config: EnabledGroundPatchConfig,
+  config: EnabledGrassGroundPatchConfig,
   seed: number,
 ): number {
   if (sources.length === 0) return 0;
@@ -181,7 +181,7 @@ function rasterizePatchField(
 
 function createPatchSpatialIndex(
   sources: readonly PatchSource[],
-  config: EnabledGroundPatchConfig,
+  config: EnabledGrassGroundPatchConfig,
   geometry: PatchFieldGeometry,
 ): PatchSpatialIndex {
   const bucketSizeMeters = config.radiusMeters.maximum;
@@ -248,7 +248,7 @@ function readNearbyPatchSources(
 }
 
 function sampleFieldChannel(
-  field: GroundPatchField,
+  field: GrassGroundPatchField,
   sampleX: number,
   sampleY: number,
   channel: 0 | 1,
@@ -275,13 +275,13 @@ function sampleFieldChannel(
 function createFieldResult(
   file: ParsedVegFile,
   layerId: number,
-  config: EnabledGroundPatchConfig,
+  config: EnabledGrassGroundPatchConfig,
   geometry: PatchFieldGeometry,
   data: Uint8Array,
   patchCount: number,
   eligibleSampleCount: number,
   achievedCoverage: number,
-): GroundPatchField {
+): GrassGroundPatchField {
   const { unitsPerMeter } = file.header.coordinateSystem;
   return {
     layerId,

@@ -12,7 +12,10 @@ import {
 
 import type { VegetationRuntimeLayer } from '../../dataset/types.js';
 import type { VegetationPatternSet } from '../../patterns/types.js';
-import { requireGrassRenderProfile } from '../../profiles/grass/GrassRenderProfile.js';
+import {
+  requireGrassRuntimeLayer,
+  type GrassRuntimeLayer,
+} from '../../profiles/grass/GrassLayerPreparation.js';
 
 export type WebGLColorPaletteResource = Readonly<{
   colorCount: number;
@@ -40,8 +43,9 @@ export class WebGLGrassLayerResources {
   readonly #ownedTextures: readonly DataTexture[];
 
   constructor(renderer: WebGLRenderer, layer: VegetationRuntimeLayer) {
-    const profile = requireGrassRenderProfile(layer.config);
-    const field = layer.groundPatchField;
+    const grassLayer = requireGrassRuntimeLayer(layer);
+    const profile = grassLayer.config.renderProfile;
+    const field = grassLayer.profileData.groundPatchField;
     validateTextureDimensions(
       renderer,
       layer.patterns.anchorsPerPattern,
@@ -74,8 +78,8 @@ export class WebGLGrassLayerResources {
     try {
       this.pattern = {
         patternSet: layer.patterns,
-        rotatePerCell: layer.config.pattern.rotatePerCell,
-        reflectPerCell: layer.config.pattern.reflectPerCell,
+        rotatePerCell: grassLayer.config.pattern.rotatePerCell,
+        reflectPerCell: grassLayer.config.pattern.reflectPerCell,
         texture: createUploadedDataTexture(
           renderer,
           layer.patterns.anchorPositions,
@@ -100,7 +104,7 @@ export class WebGLGrassLayerResources {
         ),
       };
       this.groundPatchField = field
-        ? { texture: createGroundPatchFieldTexture(renderer, layer, ownedTextures) }
+        ? { texture: createGroundPatchFieldTexture(renderer, grassLayer, ownedTextures) }
         : undefined;
     } catch (error) {
       disposeTextures(ownedTextures);
@@ -146,10 +150,10 @@ function createColorPaletteResource(
 
 function createGroundPatchFieldTexture(
   renderer: WebGLRenderer,
-  layer: VegetationRuntimeLayer,
+  layer: GrassRuntimeLayer,
   ownedTextures: DataTexture[],
 ): DataTexture {
-  const field = layer.groundPatchField!;
+  const field = layer.profileData.groundPatchField!;
   const texture = new DataTexture(
     field.data,
     field.width,

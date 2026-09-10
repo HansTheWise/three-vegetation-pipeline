@@ -57,10 +57,12 @@ distribution: {
 Die Pattern-Erzeugung legt genau diese maximale Anchor-Anzahl einmalig an.
 Aktive Teilmengen verändern Patternpositionen und Identitäten nicht.
 
-## Boden-Patches
+## Grass-Boden-Patches
 
-`patches.ground` ist ein Pflichtbereich jedes Runtime-Layers. Es verändert nur
-die Bodenfarbe und den Distanzübergang der Halmfarben:
+`patches.ground` gehört ausschließlich zum eingebauten Grass-Layerpreset.
+Andere Renderprofile besitzen eigene Konfigurationen und müssen weder Patch-
+noch Halmfelder vortäuschen. Das Grass-Feature verändert nur die Bodenfarbe und
+den Distanzübergang der Halmfarben:
 
 ```ts
 patches: {

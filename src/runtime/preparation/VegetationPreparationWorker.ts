@@ -1,6 +1,7 @@
 import { createVegetationRuntimeDataset } from '../dataset/createVegetationRuntimeDataset.js';
 import { createVegetationActiveCellData } from '../density/VegetationRenderTileDensity.js';
 import { parseVegFile } from '../parser/VegParser.js';
+import { collectBuiltInVegetationLayerTransferBuffers } from '../profiles/VegetationLayerPreparation.js';
 import type {
   VegetationPreparationWorkerRequest,
   VegetationPreparationWorkerResponse,
@@ -54,7 +55,11 @@ function collectTransferBuffers(
   }
   for (const layer of prepared.dataset.layers) {
     addArrayBuffer(buffers, layer.patterns.anchorPositions.buffer);
-    if (layer.groundPatchField) addArrayBuffer(buffers, layer.groundPatchField.data.buffer);
+    collectBuiltInVegetationLayerTransferBuffers(
+      layer.config.renderProfile.type,
+      layer.profileData,
+      buffers,
+    );
   }
   return [...buffers];
 }

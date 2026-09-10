@@ -1,4 +1,3 @@
-import type { PatchConfig } from '../../patches/types.js';
 import type {
   GrassRenderProfileConfig,
   GrassRuntimeLayerConfig,
@@ -10,6 +9,7 @@ import type {
   VegetationDensityCurvePoint,
   VegetationHeightSampling,
 } from '../../config/types.js';
+import type { GrassPatchConfig } from './patches/types.js';
 
 type GrassBladeOverrides = Readonly<{
   segments?: number;
@@ -47,7 +47,7 @@ export type GrassLayerPresetOptions = Readonly<{
   layerId: number;
   key: string;
   enabled?: boolean;
-  patches?: PatchConfig;
+  patches?: GrassPatchConfig;
   distribution?: Readonly<{
     anchorsPerCell?: number;
     elementsPerAnchor?: number;

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { parseVegFile, createGroundPatchField } from '../dist/index.js';
+import { parseVegFile, createGrassGroundPatchField } from '../dist/index.js';
 
 const assetPath = process.argv[2];
 if (!assetPath) throw new Error('Usage: node tooling/benchmark-vegetation-patches.mjs <asset.veg>');
@@ -24,7 +24,7 @@ for (const preset of presets) {
   let sha256;
   for (let run = 0; run < 3; run += 1) {
     const start = performance.now();
-    field = createGroundPatchField(file, layerId, config);
+    field = createGrassGroundPatchField(file, layerId, config);
     milliseconds.push(performance.now() - start);
     const hash = createHash('sha256').update(field.data).digest('hex');
     if (sha256 && sha256 !== hash) throw new Error('Non-deterministic patch field');

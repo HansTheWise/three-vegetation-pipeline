@@ -32,7 +32,7 @@ Lichtgrenze verwendet standardmäßig direkt den nativen Three.js-Lichtpfad.
 und deshalb mit GPU-Ressourcen initialisiert wurden. Ein in der Config
 deaktivierter Layer wird nicht verdeckt im Hintergrund vorbereitet.
 
-## Datenfluss
+###### Datenfluss
 
 ```mermaid
 flowchart LR
@@ -52,7 +52,7 @@ flowchart LR
     Parsed["ParsedVegFile<br/>validierte Typed-Array-Views"]
     DatasetBuilder["createVegetationRuntimeDataset"]
     Patterns["progressive Anchor-Patterns"]
-    Patches["globales RG8-Patch-Feld"]
+    Patches["Grass-Profildaten<br/>optionales RG8-Patch-Feld"]
     Dataset["VegetationRuntimeDataset"]
     Boxes["Chunk-Begrenzungsboxen"]
   end
@@ -125,7 +125,7 @@ Layer-Renderer. Die
 Factory ist asynchron, damit synchrone und Worker-basierte Vorbereitung dieselbe
 Schnittstelle verwenden. Der Standard `SynchronousVegetationPreparation`
 arbeitet auf dem aufrufenden Thread. `WorkerVegetationPreparation` verschiebt
-Parser, Dataset, Patch-Feld und aktive Cell-Zulassung in einen kurzlebigen
+Parser, Dataset, profilabhängige Vorbereitung wie das Grass-Patch-Feld und aktive Cell-Zulassung in einen kurzlebigen
 Module-Worker und transferiert die erzeugten Buffer zurück. Der Consumer liefert
 nur die bundlerspezifische Worker-Factory:
 
@@ -171,7 +171,7 @@ stabile Layer-IDs. Dabei werden:
 - fehlende oder doppelte Layerzuordnungen abgelehnt;
 - Cell-Größen in Modell- und Metereinheiten berechnet;
 - progressive Anchor-Patterns aus VEGFILE-Seed und Layerconfig erzeugt;
-- aktivierte Patch-Felder einmalig erzeugt;
+- eingebaute Profildaten einmalig erzeugt, bei Grass das optionale Patch-Feld;
 - aktivierte Layer als eigene Ansicht bereitgestellt;
 - die größten aktiven `VegetationRenderBounds` für das gemeinsame grobe
   Chunk-Culling kombiniert.
@@ -294,13 +294,13 @@ ohne GPU-Ressourcen öffentlich zu machen.
 
 ## Koordinaten und Indizes
 
-| Wert | Bedeutung | Speicherung |
-| --- | --- | --- |
-| `storedChunkIndex` | Adresse eines belegten Chunks in gepackten Arrays und Texturen | VEGFILE und Visible-Chunk-Buffer |
-| `chunkGridX/Y` | Stabile Position des Chunks im logischen Grid | Einmal pro gespeichertem Chunk auf der GPU |
-| `localCellX/Y` | Cell innerhalb eines Chunks, beispielsweise 0 bis 127 | Aus Maskenindex oder Shaderarbeit abgeleitet |
-| `globalCellX/Y` | Cell im gesamten Layergrid | Nicht gespeichert; aus Grid- und lokalen Koordinaten berechnet |
-| Modellkoordinaten | Tatsächliche Position relativ zur Modellwurzel | Aus Gridursprung, Chunkgröße, Cellposition und Heightmap rekonstruiert |
+| Wert                 | Bedeutung                                                      | Speicherung                                                              |
+| -------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `storedChunkIndex` | Adresse eines belegten Chunks in gepackten Arrays und Texturen | VEGFILE und Visible-Chunk-Buffer                                         |
+| `chunkGridX/Y`     | Stabile Position des Chunks im logischen Grid                  | Einmal pro gespeichertem Chunk auf der GPU                               |
+| `localCellX/Y`     | Cell innerhalb eines Chunks, beispielsweise 0 bis 127          | Aus Maskenindex oder Shaderarbeit abgeleitet                             |
+| `globalCellX/Y`    | Cell im gesamten Layergrid                                     | Nicht gespeichert; aus Grid- und lokalen Koordinaten berechnet           |
+| Modellkoordinaten    | Tatsächliche Position relativ zur Modellwurzel                | Aus Gridursprung, Chunkgröße, Cellposition und Heightmap rekonstruiert |
 
 Die globale Cell-Koordinate entsteht nur für die stabile Identität:
 

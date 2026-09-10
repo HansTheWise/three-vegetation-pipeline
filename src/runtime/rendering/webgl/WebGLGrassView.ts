@@ -20,8 +20,9 @@ import { validateWebGLInstanceCount } from '../../gpu/webgl/limits.js';
 import { WebGLVisibleTileBuffer } from '../../gpu/webgl/WebGLVisibleTileBuffer.js';
 import type { WebGLVegetationAdapter } from '../../gpu/webgl/WebGLVegetationAdapter.js';
 import {
-  requireGrassRuntimeLayerConfig,
-} from '../../profiles/grass/GrassRenderProfile.js';
+  requireGrassRuntimeLayer,
+} from '../../profiles/grass/GrassLayerPreparation.js';
+import type { WebGLGrassGroundPatchSurface } from '../../profiles/grass/rendering/webgl/WebGLGrassGroundPatchSurface.js';
 import { WebGLGrassLayerResources } from './WebGLGrassLayerResources.js';
 import type {
   WebGLVegetationLayerRenderer,
@@ -55,12 +56,14 @@ export class WebGLGrassView implements WebGLVegetationLayerRenderer {
 
   readonly #adapter: WebGLVegetationAdapter;
   readonly #cameraPositionModel = new Vector3();
+  readonly #removeGroundPatchSurface: () => void;
 
   constructor(
     adapter: WebGLVegetationAdapter,
     layerId: number,
     preparedCells?: VegetationActiveCellData,
     lighting: WebGLVegetationLightingAdapter = createThreeSceneLightingAdapter(),
+    groundPatchSurface?: WebGLGrassGroundPatchSurface,
   ) {
     const layer = adapter.dataset.enabledLayers.find(
       (candidate) => candidate.layerId === layerId,
@@ -74,8 +77,8 @@ export class WebGLGrassView implements WebGLVegetationLayerRenderer {
     if (!layerMask) {
       throw new Error(`Runtime grass layer ${layerId} has incomplete WebGL resources.`);
     }
-    const grassLayer = requireGrassRuntimeLayerConfig(layer.config);
-    const profile = grassLayer.renderProfile;
+    const grassLayer = requireGrassRuntimeLayer(layer);
+    const profile = grassLayer.config.renderProfile;
     this.#adapter = adapter;
     this.layerId = layerId;
     this.tileDensity = new VegetationRenderTileDensity(adapter.dataset, layerId, preparedCells);
@@ -89,6 +92,7 @@ export class WebGLGrassView implements WebGLVegetationLayerRenderer {
     const resources = new WebGLGrassLayerResources(adapter.renderer, layer);
     let tileBuffer: WebGLVisibleTileBuffer | undefined;
     let activeCellBuffer: WebGLActiveCellBuffer | undefined;
+    let removeGroundPatchSurface: () => void = () => undefined;
     const densityDraws: WebGLGrassDensityDraw[] = [];
     try {
       tileBuffer = new WebGLVisibleTileBuffer(
@@ -125,11 +129,22 @@ export class WebGLGrassView implements WebGLVegetationLayerRenderer {
         const mesh = new Mesh(geometry, material);
         mesh.name = `vegetation/grass-layer-${layerId}-density-${candidateCapacity}`;
         mesh.frustumCulled = false;
-        mesh.castShadow = grassLayer.shadows.cast;
-        mesh.receiveShadow = grassLayer.shadows.receive;
+        mesh.castShadow = grassLayer.config.shadows.cast;
+        mesh.receiveShadow = grassLayer.config.shadows.receive;
         densityDraws.push({ bucketIndex, candidateCapacity, geometry, material, mesh });
       });
+      const patchField = grassLayer.profileData.groundPatchField;
+      const patchTexture = resources.groundPatchField?.texture;
+      if (groundPatchSurface && patchField && patchTexture) {
+        removeGroundPatchSurface = groundPatchSurface.install({
+          dataset: adapter.dataset,
+          layer: grassLayer,
+          field: patchField,
+          texture: patchTexture,
+        });
+      }
     } catch (error) {
+      removeGroundPatchSurface();
       for (let index = densityDraws.length - 1; index >= 0; index -= 1) {
         densityDraws[index]!.geometry.dispose();
         densityDraws[index]!.material.dispose();
@@ -142,6 +157,7 @@ export class WebGLGrassView implements WebGLVegetationLayerRenderer {
     this.resources = resources;
     this.tileBuffer = tileBuffer;
     this.activeCellBuffer = activeCellBuffer;
+    this.#removeGroundPatchSurface = removeGroundPatchSurface;
     this.densityDraws = densityDraws;
     this.geometry = this.densityDraws[0]!.geometry;
     this.material = this.densityDraws[0]!.material;
@@ -215,6 +231,7 @@ export class WebGLGrassView implements WebGLVegetationLayerRenderer {
   }
 
   dispose(): void {
+    this.#removeGroundPatchSurface();
     for (const draw of this.densityDraws) {
       draw.geometry.dispose();
       draw.material.dispose();
@@ -243,11 +260,12 @@ function createGrassMaterial(options: GrassMaterialOptions): ShaderMaterial {
   const { header } = adapter.staticResources;
   const [horizontalAxisA, horizontalAxisB] = header.coordinateSystem.horizontalAxes;
   const unitsPerMeter = header.coordinateSystem.unitsPerMeter;
-  const grassLayer = requireGrassRuntimeLayerConfig(layer.config);
+  const grassRuntimeLayer = requireGrassRuntimeLayer(layer);
+  const grassLayer = grassRuntimeLayer.config;
   const profile = grassLayer.renderProfile;
   const distanceColor = profile.colors.distanceColorTransition;
   const groundTransition = 'target' in distanceColor ? distanceColor : undefined;
-  const groundField = layer.groundPatchField;
+  const groundField = grassRuntimeLayer.profileData.groundPatchField;
   const groundTexture = options.resources.groundPatchField?.texture;
   if (groundTransition && (!groundField || !groundTexture)) {
     throw new Error(`Grass layer ${layerId} needs a ground patch field for its color transition.`);

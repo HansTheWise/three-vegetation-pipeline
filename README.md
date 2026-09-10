@@ -7,6 +7,6 @@ A modular, data-driven vegetation rendering pipeline for Three.js, designed for 
 - [Implementation roadmap](IMPLEMENTATION_ROADMAP.md)
 - [Offline pipeline](src/offline/offline-pipeline.md)
 - [Runtime pipeline](src/runtime/runtime-pipeline.md)
-- [Patch-field contract](src/runtime/patches/patches.md)
+- [Grass patch-field contract](src/runtime/profiles/grass/patches/patches.md)
 - [Standalone WebGL runtime example](examples/webgl-runtime.html)
 - [Low-level WebGL debug example](examples/webgl-debug-chunks.html)

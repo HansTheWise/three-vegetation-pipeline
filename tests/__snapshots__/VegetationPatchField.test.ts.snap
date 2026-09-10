@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`GroundPatchField > preserves the field when indexing sources (merge=false, falloff=0, seed=0) 1`] = `
+exports[`GrassGroundPatchField > preserves the field when indexing sources (merge=false, falloff=0, seed=0) 1`] = `
 {
   "achievedCoverage": 0.4654541015625,
   "hash": "48fe2db5ace81b02184945efcb6ad7b10c63f8168a23a9dd1fdc2ad4188cc09b",
@@ -8,7 +8,7 @@ exports[`GroundPatchField > preserves the field when indexing sources (merge=fal
 }
 `;
 
-exports[`GroundPatchField > preserves the field when indexing sources (merge=false, falloff=1, seed=7) 1`] = `
+exports[`GrassGroundPatchField > preserves the field when indexing sources (merge=false, falloff=1, seed=7) 1`] = `
 {
   "achievedCoverage": 0.3584329044117644,
   "hash": "dda19548ea61146ddc9f72726db93c0bc9a915fb8d222c79e10784ec71601d93",
@@ -16,7 +16,7 @@ exports[`GroundPatchField > preserves the field when indexing sources (merge=fal
 }
 `;
 
-exports[`GroundPatchField > preserves the field when indexing sources (merge=false, falloff=5, seed=42) 1`] = `
+exports[`GrassGroundPatchField > preserves the field when indexing sources (merge=false, falloff=5, seed=42) 1`] = `
 {
   "achievedCoverage": 0.07393535539215634,
   "hash": "aac094b38b4f2b04b5e9ca700f83b5004e56555580b7f840bae97902eac8991a",
@@ -24,7 +24,7 @@ exports[`GroundPatchField > preserves the field when indexing sources (merge=fal
 }
 `;
 
-exports[`GroundPatchField > preserves the field when indexing sources (merge=true, falloff=0, seed=0) 1`] = `
+exports[`GrassGroundPatchField > preserves the field when indexing sources (merge=true, falloff=0, seed=0) 1`] = `
 {
   "achievedCoverage": 0.4981689453125,
   "hash": "d1b5f1f897469eef6be2531ce7f5b0ae74a93eb1adc13c0c2169ca80d473be15",
@@ -32,7 +32,7 @@ exports[`GroundPatchField > preserves the field when indexing sources (merge=tru
 }
 `;
 
-exports[`GroundPatchField > preserves the field when indexing sources (merge=true, falloff=1, seed=7) 1`] = `
+exports[`GrassGroundPatchField > preserves the field when indexing sources (merge=true, falloff=1, seed=7) 1`] = `
 {
   "achievedCoverage": 0.49184905407475576,
   "hash": "1e9e976e0f9d831c21d44310ec85a93e8930566e177d572fa1714118821b1bf4",
@@ -40,7 +40,7 @@ exports[`GroundPatchField > preserves the field when indexing sources (merge=tru
 }
 `;
 
-exports[`GroundPatchField > preserves the field when indexing sources (merge=true, falloff=5, seed=42) 1`] = `
+exports[`GrassGroundPatchField > preserves the field when indexing sources (merge=true, falloff=5, seed=42) 1`] = `
 {
   "achievedCoverage": 0.5000694125306373,
   "hash": "697eb8e87053159947115cf668cd831b95c103a10c8c597e0d7cdb8553f69688",

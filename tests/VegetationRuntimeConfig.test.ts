@@ -5,6 +5,7 @@ import { groundColorConfig } from './fixtures/groundColorConfig.js';
 import {
   createGrassLayerConfig,
   evaluateVegetationDensityCurve,
+  type GrassRuntimeLayerConfig,
   type VegetationRuntimeConfig,
   validateVegetationRuntimeConfig,
 } from '../src/index.js';
@@ -38,7 +39,7 @@ describe('VegetationRuntimeConfig', () => {
   });
 
   it('rejects a ground target without a ground field', () => {
-    const config = structuredClone(groundColorConfig) as VegetationRuntimeConfig;
+    const config = structuredClone(groundColorConfig) as VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
     Object.assign(config.layers[0]!.patches, { ground: { enabled: false } });
     expect(() => validateVegetationRuntimeConfig(config)).toThrow('enabled ground patches');
   });
@@ -86,7 +87,7 @@ describe('VegetationRuntimeConfig', () => {
     const invalid = {
       ...vegetationRuntimeConfig,
       layers: [layer, { ...layer, key: 'other-grass' }],
-    } satisfies VegetationRuntimeConfig;
+    } satisfies VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
     expect(() => validateVegetationRuntimeConfig(invalid))
       .toThrow('Runtime layer ID 0 is duplicated.');
   });
@@ -110,10 +111,10 @@ describe('VegetationRuntimeConfig', () => {
           },
         },
       }],
-    } satisfies VegetationRuntimeConfig;
+    } satisfies VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
 
     expect(() => validateVegetationRuntimeConfig(invalid))
-      .toThrow('Vegetation patches.targetCoverage must be between 0 and 1.');
+      .toThrow('Grass patches.targetCoverage must be between 0 and 1.');
   });
 
   it('rejects invalid render-tile sizes and empty density curves', () => {

@@ -1,5 +1,6 @@
 import {
   createGrassLayerConfig,
+  type GrassRuntimeLayerConfig,
   type VegetationRuntimeConfig,
 } from '../../src/index.js';
 
@@ -86,4 +87,4 @@ export const vegetationRuntimeConfig = {
       ],
     },
   })],
-} satisfies VegetationRuntimeConfig;
+} satisfies VegetationRuntimeConfig<GrassRuntimeLayerConfig>;

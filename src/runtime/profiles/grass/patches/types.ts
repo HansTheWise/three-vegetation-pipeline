@@ -1,8 +1,8 @@
-export type DisabledPatchConfig = Readonly<{
+export type DisabledGrassPatchConfig = Readonly<{
   enabled: false;
 }>;
 
-export type EnabledGroundPatchConfig = Readonly<{
+export type EnabledGrassGroundPatchConfig = Readonly<{
   enabled: true;
   /** Additional deterministic seed mixed with the VEGFILE and layer identity. */
   seed: number;
@@ -21,16 +21,16 @@ export type EnabledGroundPatchConfig = Readonly<{
   }>;
 }>;
 
-export type GroundPatchConfig =
-  | DisabledPatchConfig
-  | EnabledGroundPatchConfig;
+export type GrassGroundPatchConfig =
+  | DisabledGrassPatchConfig
+  | EnabledGrassGroundPatchConfig;
 
-export type PatchConfig = Readonly<{
-  ground: GroundPatchConfig;
+export type GrassPatchConfig = Readonly<{
+  ground: GrassGroundPatchConfig;
 }>;
 
 /** Color-only RG8: R blends ground regions, G varies their brightness. */
-export type GroundPatchField = Readonly<{
+export type GrassGroundPatchField = Readonly<{
   layerId: number;
   data: Uint8Array;
   width: number;
@@ -46,7 +46,7 @@ export type GroundPatchField = Readonly<{
   achievedCoverage: number;
 }>;
 
-export type GroundPatchFieldSample = Readonly<{
+export type GrassGroundPatchFieldSample = Readonly<{
   coverageByte: number;
   colorVariationByte: number;
 }>;

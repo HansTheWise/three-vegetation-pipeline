@@ -287,7 +287,7 @@ describe('WebGLVegetationRuntime', () => {
           },
         },
       },
-      groundPatchField: undefined,
+      profileData: { groundPatchField: undefined },
     };
     const invalidPrepared = {
       ...prepared,

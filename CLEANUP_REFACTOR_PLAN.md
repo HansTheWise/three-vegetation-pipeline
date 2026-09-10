@@ -24,7 +24,11 @@ Stand: 10. September 2026
 - Phase 6 ist abgeschlossen: Der austauschbare Three.js-Lichtadapter besitzt
   Licht-, Shadow-, Tone-Mapping- und Color-Space-Anbindung; Grass konfiguriert
   Lichtanteile, Normalenquelle und Distanzübergang unabhängig von der Farbe.
-- Als Nächstes folgt Phase 7 mit Ground-Adapter und schlanker I-CAKA-Einbindung.
+- Phase 7 ist abgeschlossen: Patch-Erzeugung, GPU-Ressource und optionale
+  Three.js-Surface-Anbindung gehören vollständig zum Grass-Profil; I-CAKA
+  liefert nur die Campus-Materialauswahl und einen schlanken R3F-Lifecycle.
+- Als Nächstes folgt Phase 8 mit öffentlichen Paketgrenzen und portabler
+  Entwicklung.
 
 ## Ziel
 
@@ -40,7 +44,7 @@ Am Ende soll eine Anwendung:
 3. pro Frame nur Kamera und Transformationsbezug aktualisieren und
 4. alle Ressourcen über einen einzigen `dispose()`-Aufruf freigeben.
 
-Rendererprofile, Ground-Anbindung und Beleuchtungsreaktion bleiben
+Rendererprofile, profilspezifische Surface-Features und Beleuchtungsreaktion bleiben
 austauschbar. Parser, VEGFILE v1, deterministische IDs, Density-Kurven und die
 bewährte WebGL-Platzierung werden dabei nicht unnötig neu entwickelt.
 
@@ -159,7 +163,7 @@ Three.js-Anwendung oder dünner R3F-Wrapper
                  -> Grass-Geometrie und Material
                  -> ThreeSceneLightingAdapter (Standard)
             -> weitere Profile erst bei echtem Bedarf
-       -> optionaler GroundSurfaceAdapter
+                 -> optionaler GrassGroundPatchSurface
   -> runtime.object3d
   -> runtime.updateFrame()
   -> runtime.dispose()
@@ -179,12 +183,12 @@ const runtime = await createThreeVegetation({
   layerRenderers: [
     createWebGLGrassLayerRenderer({
       lighting: createThreeSceneLightingAdapter(),
+      groundPatchSurface: createThreeGrassGroundPatchSurface({
+        coordinateRoot: modelRoot,
+        matchesMaterial: (_, material) => groundMaterials.has(material),
+      }),
     }),
   ],
-  ground: createGroundPatchMaterialAdapter({
-    targets: groundMaterials,
-    albedoMode: 'replace',
-  }),
 })
 
 runtime.updateFrame()
@@ -207,7 +211,8 @@ Empfohlen wird eine kleine Zahl tragender Grenzen:
 - Camera-Adapter: Three-Kamera und Modellroot in neutralen Framezustand abbilden;
 - Layer-Renderer-Factory: Grass heute, weitere Profile später;
 - Lighting-Adapter: Three-Szenenlicht als Standard, alternatives Modell optional;
-- Ground-Surface-Adapter: Materialbindung der Hostanwendung.
+- profilspezifische Surface-Adapter: optionale Materialbindung des jeweiligen
+  Layer-Renderers, bei Grass die Patchprojektion.
 
 Parser, VEGFILE, IDs, Patternalgorithmen und einzelne mathematische Hilfsfunktionen
 erhalten keine Mikrointerfaces. Ein vollständiges Plugin-System wäre mehr Code
@@ -530,16 +535,17 @@ Gate:
 
 Commit: `refactor(lighting): add three scene lighting adapter`
 
-### Phase 7 – Ground-Adapter und schlanke I-CAKA-Einbindung
+### Phase 7 – Grass-Patchfeature und schlanke I-CAKA-Einbindung
 
 Ziel: I-CAKA enthält nur Campusentscheidungen und React/R3F-Lifecycle.
 
 Pipeline:
 
-1. Generisches Ground-Material-Patching mit vollständigem Restore/Dispose als
-   Adapter bereitstellen.
-2. Zielmaterialien beziehungsweise ein Materialprädikat, Albedo-Modus und
-   Koordinatenbezug von der Anwendung entgegennehmen.
+1. Patch-Erzeugung und Patchtypen aus dem generischen Runtime-Vertrag in das
+   Grass-Profil verschieben. Andere Layer benötigen kein `patches`-Feld.
+2. Das opinionated Grass-Ground-Patching mit vollständigem Restore/Dispose als
+   optionalen Grass-Renderer-Adapter bereitstellen. Die Anwendung liefert nur
+   Materialprädikat und Koordinatenbezug.
 3. Horizontale Achsen aus dem Dataset verwenden; keine feste `.xz`-Projektion.
 
 I-CAKA:
@@ -547,8 +553,8 @@ I-CAKA:
 1. `CampusVegetation.tsx` auf Assetzustand, Runtime-Erzeugung, einen kleinen
    `useFrame`-Aufruf, Ready-Zustand und Dispose reduzieren.
 2. `campus-grass`-Suchen aus dem Lifecycle entfernen.
-3. Lambert-Konvertierung und Ground-Patch über denselben zentralen
-   Campus-Surface-Binding-Adapter installieren und zurückbauen. Deaktivierte
+3. Die vorhandene Modelloptimierung beibehalten und den Ground-Patch über ein
+   einziges Campus-Materialprädikat an das Grass-Feature anbinden. Deaktivierte
    Vegetation verändert kein Ground-Material.
 4. Debugpanel, URL-, DPR-, Shadow- und R3F-Eventsteuerung in ein optionales
    Development-Component verschieben.
@@ -564,7 +570,7 @@ Gate:
 
 Commits:
 
-1. `feat(webgl): add ground surface adapter`
+1. `refactor(grass): own patch feature lifecycle`
 2. `refactor(vegetation): use pipeline runtime facade` im I-CAKA-Repository.
 
 ### Phase 8 – Öffentliche Paketgrenzen und portable Entwicklung
@@ -605,7 +611,7 @@ korrekt verwenden.
 Arbeiten:
 
 1. README mit Installation, Minimalbeispiel, Lifecycle, Worker-Variante,
-   Layerprofilen, Lichtadapter, Ground-Adapter und Cleanup schreiben.
+   Layerprofilen, Lichtadapter, Grass-Surface-Feature und Cleanup schreiben.
 2. Runtime-Datenfluss als aktuelle Quelle pflegen. Abgeschlossene
    Implementierungspläne entfernen oder auf kurze Vertragsdokumentation
    reduzieren.

@@ -1,37 +1,37 @@
 import type {
-  EnabledGroundPatchConfig,
-  GroundPatchConfig,
+  EnabledGrassGroundPatchConfig,
+  GrassGroundPatchConfig,
 } from './types.js';
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
-export function validateGroundPatchConfig(
-  config: GroundPatchConfig,
+export function validateGrassGroundPatchConfig(
+  config: GrassGroundPatchConfig,
 ): void {
   if (!config.enabled) return;
   validateEnabledConfig(config);
 }
 
-function validateEnabledConfig(config: EnabledGroundPatchConfig): void {
-  assertUint32(config.seed, 'Vegetation patches.seed');
-  assertPositive(config.radiusMeters.minimum, 'Vegetation patches.radiusMeters.minimum');
-  assertPositive(config.radiusMeters.maximum, 'Vegetation patches.radiusMeters.maximum');
+function validateEnabledConfig(config: EnabledGrassGroundPatchConfig): void {
+  assertUint32(config.seed, 'Grass patches.seed');
+  assertPositive(config.radiusMeters.minimum, 'Grass patches.radiusMeters.minimum');
+  assertPositive(config.radiusMeters.maximum, 'Grass patches.radiusMeters.maximum');
   if (config.radiusMeters.maximum < config.radiusMeters.minimum) {
     throw new Error(
-      'Vegetation patches.radiusMeters.maximum must be at least minimum.',
+      'Grass patches.radiusMeters.maximum must be at least minimum.',
     );
   }
-  assertBetween(config.targetCoverage, 0, 1, 'Vegetation patches.targetCoverage');
-  assertNonNegative(config.edgeFalloffMeters, 'Vegetation patches.edgeFalloffMeters');
-  assertBetween(config.shapeDistortion, 0, 1, 'Vegetation patches.shapeDistortion');
+  assertBetween(config.targetCoverage, 0, 1, 'Grass patches.targetCoverage');
+  assertNonNegative(config.edgeFalloffMeters, 'Grass patches.edgeFalloffMeters');
+  assertBetween(config.shapeDistortion, 0, 1, 'Grass patches.shapeDistortion');
   if (!HEX_COLOR.test(config.colors.baseColor)) {
-    throw new Error('Vegetation patches.colors.baseColor must be a six-digit hex color.');
+    throw new Error('Grass patches.colors.baseColor must be a six-digit hex color.');
   }
   assertBetween(
     config.colors.brightnessVariation,
     0,
     1,
-    'Vegetation patches.colors.brightnessVariation',
+    'Grass patches.colors.brightnessVariation',
   );
 }
 

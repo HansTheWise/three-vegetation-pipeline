@@ -1,4 +1,4 @@
-import type { PatchConfig } from '../patches/types.js';
+import type { GrassPatchConfig } from '../profiles/grass/patches/types.js';
 
 export type HexColor = `#${string}`;
 
@@ -118,7 +118,6 @@ export type VegetationRuntimeLayerConfig<
   layerId: number;
   key: string;
   enabled: boolean;
-  patches: PatchConfig;
   renderBounds: VegetationRenderBounds;
 
   distribution: Readonly<{
@@ -160,7 +159,9 @@ export type VegetationRuntimeLayerConfig<
 export type GrassRuntimeLayerConfig = VegetationRuntimeLayerConfig<
   GrassRenderProfileConfig,
   GrassLayerLightingConfig
->;
+> & Readonly<{
+  patches: GrassPatchConfig;
+}>;
 
 /** Pure frontend data. Algorithm and module references deliberately live elsewhere. */
 export type VegetationRuntimeConfig<

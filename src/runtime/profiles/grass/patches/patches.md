@@ -1,8 +1,8 @@
-# Globale Vegetations-Patchfelder
+# Grass-Patchfelder
 
 ## Verantwortung
 
-Das rendererunabhängige Patchmodul erzeugt aus VEGFILE-Geometrie und
+Das Grass-eigene, rendererunabhängige Patchmodul erzeugt aus VEGFILE-Geometrie und
 `layers[].patches` ein deterministisches globales RG8-Feld. Das Feld ist
 modelllokal, statisch und unabhängig von Kamera, Chunk- und Render-Tile-Grenzen.
 
@@ -15,14 +15,16 @@ Es ist keine Normal-, Bump- oder Displacement-Map.
 
 ## Laufzeitvertrag
 
-`createVegetationRuntimeDataset` erzeugt ein aktiviertes Feld einmalig. Das
-Dataset kann zusammen mit vorbereiteten Active-Cell-Daten in einem Worker
-entstehen und übertragbare Buffer an den Hauptthread zurückgeben.
+Die Grass-Profilvorbereitung erzeugt ein aktiviertes Feld einmalig und legt es
+als `profileData` des Grass-Layers ab. Dataset und vorbereitete Active-Cell-Daten
+können in einem Worker entstehen und ihre Buffer an den Hauptthread übertragen.
 
-`WebGLStaticVegetationResources` lädt dasselbe Feld einmal als lineargefilterte
-RG-Textur mit Mipmaps hoch. Der Grassrenderer kann es für den konfigurierten
-Ground-Farbübergang abfragen. Eine Hostanwendung kann dieselbe Textur über einen
-Ground-Materialadapter verwenden. Es darf keinen zweiten unabhängigen
+`WebGLGrassLayerResources` lädt dasselbe Feld einmal als lineargefilterte
+RG-Textur mit Mipmaps hoch. Der Grassrenderer verwendet es für den konfigurierten
+Ground-Farbübergang. Optional projiziert `ThreeGrassGroundPatchSurface` dieselbe
+Textur auf vom Consumer ausgewählte Three.js-Materialien. Dieses Surface-Modul,
+sein Shaderpatch und sein Cleanup gehören zum Grass-Renderer; die generische
+Layerverwaltung kennt sie nicht. Es darf keinen zweiten unabhängigen
 Ground-Noise-Pfad geben.
 
 Die statische Grasszulassung stammt aus VEG-Maske und seedbasierter

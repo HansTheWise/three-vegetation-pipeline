@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import {
   createVegetationRuntimeDataset,
+  requireGrassRuntimeLayer,
   type ParsedVegFile,
   type VegetationRuntimeConfig,
 } from '../src/index.js';
@@ -87,7 +88,8 @@ describe('createVegetationRuntimeDataset', () => {
     expect(dataset.layers[0]!.fileLayer).toBe(file.layers[0]);
     expect(dataset.layers[0]!.config).toBe(config.layers[0]);
     expect(dataset.layers[0]!.patterns.anchorsPerPattern).toBe(4);
-    expect(dataset.layers[0]!.groundPatchField).toBeUndefined();
+    expect(requireGrassRuntimeLayer(dataset.layers[0]!).profileData.groundPatchField)
+      .toBeUndefined();
   });
 
   it('creates the configured patch field once with the runtime layer', () => {
@@ -113,7 +115,8 @@ describe('createVegetationRuntimeDataset', () => {
     };
 
     const dataset = createVegetationRuntimeDataset(file, config);
-    expect(dataset.layers[0]!.groundPatchField).toMatchObject({
+    expect(requireGrassRuntimeLayer(dataset.layers[0]!).profileData.groundPatchField)
+      .toMatchObject({
       layerId: 0,
       patchCount: 0,
       achievedCoverage: 0,
@@ -151,14 +154,19 @@ describe('createVegetationRuntimeDataset', () => {
   it('combines profile bounds once for shared coarse culling', () => {
     const sourceLayer = vegetationRuntimeConfig.layers[0]!;
     const treeLayer = {
-      ...sourceLayer,
       layerId: 1,
       key: 'trees',
+      enabled: sourceLayer.enabled,
       renderBounds: {
         horizontalPaddingMeters: 3,
         belowSurfaceMeters: 0.5,
         aboveSurfaceMeters: 12,
       },
+      distribution: sourceLayer.distribution,
+      visibility: sourceLayer.visibility,
+      density: sourceLayer.density,
+      pattern: sourceLayer.pattern,
+      shadows: sourceLayer.shadows,
       lighting: { leafTranslucency: 0.5 },
       renderProfile: { type: 'test-tree', modelScale: 1 },
     };
@@ -174,6 +182,8 @@ describe('createVegetationRuntimeDataset', () => {
       belowSurfaceMeters: 0.5,
       aboveSurfaceMeters: 12,
     });
+    expect(dataset.layers[1]!.profileData).toBeUndefined();
+    expect('patches' in dataset.layers[1]!.config).toBe(false);
     expect('blade' in treeLayer).toBe(false);
   });
 });

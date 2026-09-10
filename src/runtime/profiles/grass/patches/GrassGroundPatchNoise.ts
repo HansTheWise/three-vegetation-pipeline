@@ -1,5 +1,5 @@
-import { mixVegetationHash } from '../identity/VegetationIds.js';
-import type { EnabledGroundPatchConfig } from './types.js';
+import { mixVegetationHash } from '../../../identity/VegetationIds.js';
+import type { EnabledGrassGroundPatchConfig } from './types.js';
 
 const PATCH_WARP_X_SALT = 0x12f9_15e5;
 const PATCH_WARP_Y_SALT = 0x54d3_a4b1;
@@ -24,7 +24,7 @@ export function evaluatePatchFieldValue(
   positionX: number,
   positionY: number,
   sources: readonly PatchSource[],
-  config: EnabledGroundPatchConfig,
+  config: EnabledGrassGroundPatchConfig,
   seed: number,
 ): PatchFieldValue {
   let combinedDistance = Number.POSITIVE_INFINITY;
@@ -88,7 +88,7 @@ export function evaluatePatchDistance(
 export function warpPatchPosition(
   x: number,
   y: number,
-  config: EnabledGroundPatchConfig,
+  config: EnabledGrassGroundPatchConfig,
   seed: number,
 ): Readonly<{ x: number; y: number }> {
   if (config.shapeDistortion === 0) return { x, y };
@@ -107,7 +107,7 @@ export function warpPatchPosition(
 export function combinePatchDistances(
   currentDistance: number,
   candidateDistance: number,
-  config: EnabledGroundPatchConfig,
+  config: EnabledGrassGroundPatchConfig,
 ): number {
   if (!Number.isFinite(currentDistance) || !config.allowMerging) {
     return Math.min(currentDistance, candidateDistance);

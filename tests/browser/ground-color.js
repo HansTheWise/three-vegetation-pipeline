@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createVegetationRuntimeDataset, WebGLVegetationAdapter, WebGLGrassView } from '../../src/index.ts';
+import { createVegetationRuntimeDataset, requireGrassRuntimeLayer, WebGLVegetationAdapter, WebGLGrassView } from '../../src/index.ts';
 import { groundColorConfig } from '../fixtures/groundColorConfig.ts';
 
 // Run through Vite: /tests/browser/ground-color.html. Pixel reads are numerical
@@ -108,7 +108,7 @@ try {
   }
   const target = new THREE.WebGLRenderTarget(128, 128);
   renderer.setRenderTarget(target);
-  const field = dataset.enabledLayers[0].groundPatchField;
+  const field = requireGrassRuntimeLayer(dataset.enabledLayers[0]).profileData.groundPatchField;
   const texture = view.resources.groundPatchField.texture;
   const checks = [];
   const assertColor = (distance, endpoint, variationByte, strength) => {

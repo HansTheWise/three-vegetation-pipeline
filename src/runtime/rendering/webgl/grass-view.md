@@ -11,6 +11,9 @@ wird von `WebGLGrassLayerRendererFactory` erzeugt. Ihre
 Farbpalette sowie das optionale Ground-Patch-Feld. Der gemeinsame Adapter
 enthält dagegen nur VEGFILE- und Chunk-Sichtbarkeitsdaten. `dispose()` gibt
 alle Grass-eigenen Buffer, Texturen, Geometrien und Materialien frei.
+Über `groundPatchSurface` kann dieselbe Textur zusätzlich auf ausgewählte
+Three.js-Lambert-/Standardmaterialien projiziert werden. Installation,
+Shaderpatch und Restore gehören dabei vollständig zum Grass-Renderer.
 
 ## Frame-Ablauf
 

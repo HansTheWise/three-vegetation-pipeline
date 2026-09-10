@@ -1,6 +1,6 @@
-import type { ParsedVegFile, ParsedVegLayer } from '../parser/types.js';
-import type { PatchFieldGeometry } from './GroundPatchFieldGeometry.js';
-import { isVegetationAllowedAtMeters } from './GroundPatchFieldGeometry.js';
+import type { ParsedVegFile, ParsedVegLayer } from '../../../parser/types.js';
+import type { PatchFieldGeometry } from './GrassGroundPatchFieldGeometry.js';
+import { isVegetationAllowedAtMeters } from './GrassGroundPatchFieldGeometry.js';
 import {
   combinePatchDistances,
   coverageFromDistance,
@@ -9,8 +9,8 @@ import {
   evaluatePatchDistance,
   warpPatchPosition,
   type PatchSource,
-} from './GroundPatchNoise.js';
-import type { EnabledGroundPatchConfig } from './types.js';
+} from './GrassGroundPatchNoise.js';
+import type { EnabledGrassGroundPatchConfig } from './types.js';
 
 const MAX_COVERAGE_MEASUREMENT_SAMPLES = 16_384;
 const MAX_CONSECUTIVE_PLACEMENT_REJECTIONS = 1_024;
@@ -18,7 +18,7 @@ const MAX_CONSECUTIVE_PLACEMENT_REJECTIONS = 1_024;
 export function createPatchSources(
   file: ParsedVegFile,
   layer: ParsedVegLayer,
-  config: EnabledGroundPatchConfig,
+  config: EnabledGrassGroundPatchConfig,
   geometry: PatchFieldGeometry,
   eligiblePixelIndices: readonly number[],
   seed: number,
@@ -122,7 +122,7 @@ export function createPatchSources(
 function createMeasurementPositions(
   geometry: PatchFieldGeometry,
   eligiblePixelIndices: readonly number[],
-  config: EnabledGroundPatchConfig,
+  config: EnabledGrassGroundPatchConfig,
   seed: number,
 ): Float64Array {
   const sampleCount = Math.min(
@@ -169,7 +169,7 @@ function firstMeasurementAtX(positions: Float64Array, x: number): number {
 function createPatchCandidate(
   file: ParsedVegFile,
   layer: ParsedVegLayer,
-  config: EnabledGroundPatchConfig,
+  config: EnabledGrassGroundPatchConfig,
   geometry: PatchFieldGeometry,
   eligiblePixelIndices: readonly number[],
   random: () => number,
@@ -218,7 +218,7 @@ function canPlacePatch(
   candidate: PatchSource,
   buckets: ReadonlyMap<string, readonly PatchSource[]>,
   bucketSizeMeters: number,
-  config: EnabledGroundPatchConfig,
+  config: EnabledGrassGroundPatchConfig,
 ): boolean {
   const candidateExtent = patchSourceExtent(candidate);
   // Generated stretches are in [0.8, 1.25], so no source exceeds 1.25 * max radius.

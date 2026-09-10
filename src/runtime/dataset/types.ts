@@ -5,16 +5,18 @@ import type {
 } from '../config/types.js';
 import type { VegetationPatternSet } from '../patterns/types.js';
 import type { ParsedVegFile, ParsedVegLayer } from '../parser/types.js';
-import type { GroundPatchField } from '../patches/types.js';
 
-export type VegetationRuntimeLayer = Readonly<{
+export type VegetationRuntimeLayer<
+  TConfig extends VegetationRuntimeLayerConfig = VegetationRuntimeLayerConfig,
+  TProfileData = unknown,
+> = Readonly<{
   layerId: number;
   key: string;
   enabled: boolean;
   fileLayer: ParsedVegLayer;
-  config: VegetationRuntimeLayerConfig;
+  config: TConfig;
   patterns: VegetationPatternSet;
-  groundPatchField: GroundPatchField | undefined;
+  profileData: TProfileData;
   cellSizeUnits: number;
   cellSizeMeters: number;
 }>;

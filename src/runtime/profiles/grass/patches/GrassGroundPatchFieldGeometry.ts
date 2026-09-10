@@ -1,5 +1,5 @@
-import type { ParsedVegFile, ParsedVegLayer } from '../parser/types.js';
-import type { EnabledGroundPatchConfig } from './types.js';
+import type { ParsedVegFile, ParsedVegLayer } from '../../../parser/types.js';
+import type { EnabledGrassGroundPatchConfig } from './types.js';
 
 const FIELD_SAMPLES_PER_FALLOFF = 4;
 const FIELD_SAMPLES_PER_MINIMUM_RADIUS = 8;
@@ -17,7 +17,7 @@ export type PatchFieldGeometry = Readonly<{
 
 export function createPatchFieldGeometry(
   file: ParsedVegFile,
-  config: EnabledGroundPatchConfig,
+  config: EnabledGrassGroundPatchConfig,
 ): PatchFieldGeometry {
   const { grid } = file.header;
   const { unitsPerMeter } = file.header.coordinateSystem;

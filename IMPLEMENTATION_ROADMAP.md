@@ -19,7 +19,7 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 | Offline-Reader | Fertig für VEGFILE v1 | GLB-Lesen, Modelltransformationen, neutrale Dreiecksprimitive und explizite Ablehnung nicht unterstützter Mesharten |
 | Offline-Extraktion | Fertig für VEGFILE v1 | Chunk-Grid, Heightmaps, Layer-Masken, Steigungsfilter und stabiler Seed |
 | Writer und Compiler | Fertig für VEGFILE v1 | Quantisierung, Bitpacking, CRC32, Build-Fingerprint, CLI und atomarer Dateiaustausch |
-| Runtime-Parser und Dataset | Fertig | Vollständige Formatvalidierung, typisierte Ansichten, Config-Verbindung, Patterns und globale Patch-Felder |
+| Runtime-Parser und Dataset | Fertig | Vollständige Formatvalidierung, typisierte Ansichten, Config-Verbindung, Patterns und profilabhängige Vorbereitungsdaten |
 | Deterministische Identität | Fertig | Cell-, Anchor- und Element-Hashes mit CPU-/GLSL-Vertrag |
 | Sichtbarkeit und Density | Fertig für Grass | Chunk- und Tile-Frustum-Culling sowie kontinuierliche Cell-, Anchor- und Elementbudgets |
 | WebGL-Grassrenderer | Fertig für den aktuellen Funktionsstand | GPU-Platzierung, Heightmap-Sampling, Geometrie, Farben, Ground-Übergang, Kameraausrichtung, Szenenlicht und eingehende Schatten |
@@ -27,7 +27,7 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 | Öffentliche Runtime-Fassade | Fertig für den aktuellen Grass-Renderer | `createWebGLVegetationRuntime`, `createThreeVegetation`, gemeinsamer Lifecycle, Frame-Diagnostik sowie Three-Kamera- und Scene-Adapter |
 | Austauschbare Renderprofile | Fertig für WebGL | Neutrale Layerwerte, diskriminierte Profile, gemeinsamer Bounds-Vertrag, anpassbares Grass-Preset und Renderer-Registry |
 | Lichtadapter | Fertig für WebGL/Three.js | Austauschbarer Materialvertrag, nativer Three.js-Licht-/Shadow-/Exposure-Pfad und layerspezifische Grass-Lichtreaktion |
-| Ground-Adapter | Offen | Ground-Patching liegt noch im Consumer |
+| Grass-Patchfeature | Fertig für Three.js/WebGL | Grass-eigene Feldgenerierung, GPU-Ressource und optionaler Three.js-Surface-Adapter; der Consumer liefert nur die Materialauswahl |
 
 ## Nächste Schritte
 
@@ -102,11 +102,15 @@ ein optionaler Licht-Distanzübergang sind ausdrückliche Layerwerte. Farb- und
 Lichtübergang sind entkoppelt; I-CAKA bildet die bisherige Darstellung mit
 identischen, separaten Kurven ab und überschreibt Shadow-Flags nicht erneut.
 
-### 7. Ground anbinden und I-CAKA verschlanken
+### 7. Grass-Patches anbinden und I-CAKA verschlanken — abgeschlossen
 
-- Ground-Material-Patching generisch anbieten und Materialauswahl sowie
-  Albedo-Strategie dem Consumer überlassen;
-- I-CAKA auf einen kleinen R3F-Lifecycle-Wrapper reduzieren.
+- Patch-Feld, GPU-Textur und Three.js-Surface-Anbindung als opinionated
+  Grass-Feature halten; die generische Layerverwaltung kennt diesen Vertrag
+  nicht;
+- horizontale Achsen aus dem Dataset lesen und vollständiges Restore/Dispose
+  garantieren;
+- I-CAKA über `createThreeVegetation` anbinden und auf Campus-Materialauswahl,
+  Assetzustand, R3F-Frameaufruf und optionale Debugoberfläche reduzieren.
 
 ### 8. Paket und Release absichern
 

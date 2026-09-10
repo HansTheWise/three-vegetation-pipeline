@@ -5,10 +5,10 @@ import {
   evaluatePatchDistance,
   evaluatePatchFieldValue,
   type PatchSource,
-} from '../src/runtime/patches/GroundPatchNoise.js';
-import type { EnabledGroundPatchConfig } from '../src/runtime/patches/types.js';
+} from '../src/runtime/profiles/grass/patches/GrassGroundPatchNoise.js';
+import type { EnabledGrassGroundPatchConfig } from '../src/runtime/profiles/grass/patches/types.js';
 
-const config: EnabledGroundPatchConfig = {
+const config: EnabledGrassGroundPatchConfig = {
   enabled: true, seed: 0, radiusMeters: { minimum: 6, maximum: 6 },
   targetCoverage: 0.65, allowMerging: true, edgeFalloffMeters: 5,
   shapeDistortion: 0, colors: { baseColor: '#3aa935', brightnessVariation: 0.05 },

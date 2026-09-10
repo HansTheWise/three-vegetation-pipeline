@@ -9,7 +9,7 @@ import type {
 } from './types.js';
 import { MAX_CELL_PATTERN_COUNT } from '../identity/CellHashLayout.js';
 import { MAX_ELEMENT_COLOR_COUNT } from '../identity/ElementHashLayout.js';
-import { validatePatchConfig } from '../patches/validatePatchConfig.js';
+import { validateGrassPatchConfig } from '../profiles/grass/patches/validateGrassPatchConfig.js';
 import { evaluateVegetationDensityCurve } from './evaluateVegetationDensityCurve.js';
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
@@ -44,7 +44,6 @@ function validateLayer(layer: VegetationRuntimeLayerConfig): void {
   const label = `Runtime layer "${layer.key}"`;
   assertInteger(layer.layerId, `${label}.layerId`, 0);
   if (layer.key.trim().length === 0) throw new Error(`${label}.key must not be empty.`);
-  validatePatchConfig(layer.patches);
   validateRenderBounds(layer, label);
   if (!isRecord(layer.renderProfile)
     || typeof layer.renderProfile.type !== 'string'
@@ -83,6 +82,7 @@ function validateLayer(layer: VegetationRuntimeLayerConfig): void {
 
   if (layer.renderProfile.type === 'grass') {
     const grassLayer = layer as GrassRuntimeLayerConfig;
+    validateGrassPatchConfig(grassLayer.patches);
     validateGrassRenderProfile(
       grassLayer.renderProfile as GrassRenderProfileConfig,
       grassLayer,
@@ -144,7 +144,7 @@ function validateGrassLighting(layer: GrassRuntimeLayerConfig, label: string): v
 
 function validateGrassRenderProfile(
   profile: GrassRenderProfileConfig,
-  layer: VegetationRuntimeLayerConfig,
+  layer: GrassRuntimeLayerConfig,
   label: string,
 ): void {
   const profileLabel = `${label}.renderProfile`;

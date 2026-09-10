@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { evaluatePatchDistance, warpPatchPosition } from '../src/runtime/patches/GroundPatchNoise.js';
+import { evaluatePatchDistance, warpPatchPosition } from '../src/runtime/profiles/grass/patches/GrassGroundPatchNoise.js';
 
 import {
-  createGroundPatchField,
-  sampleGroundPatchField,
-  type EnabledGroundPatchConfig,
+  createGrassGroundPatchField,
+  sampleGrassGroundPatchField,
+  type EnabledGrassGroundPatchConfig,
   type ParsedVegFile,
-  validateGroundPatchConfig,
+  validateGrassGroundPatchConfig,
 } from '../src/index.js';
 
 const patchConfig = {
@@ -25,15 +25,15 @@ const patchConfig = {
     baseColor: '#39a83a',
     brightnessVariation: 0.08,
   },
-} as const satisfies EnabledGroundPatchConfig;
+} as const satisfies EnabledGrassGroundPatchConfig;
 
-describe('GroundPatchField', () => {
+describe('GrassGroundPatchField', () => {
   it.each([
     [true, 0, 0], [true, 1, 7], [true, 5, 42],
     [false, 0, 0], [false, 1, 7], [false, 5, 42],
   ] as const)('preserves the field when indexing sources (merge=%s, falloff=%s, seed=%s)',
     (allowMerging, edgeFalloffMeters, seed) => {
-      const field = createGroundPatchField(createParsedFile(), 0, {
+      const field = createGrassGroundPatchField(createParsedFile(), 0, {
         ...patchConfig, allowMerging, edgeFalloffMeters, seed,
       })!;
       expect({
@@ -45,8 +45,8 @@ describe('GroundPatchField', () => {
 
   it('creates a bit-identical global RG8 field for the same input', () => {
     const file = createParsedFile();
-    const first = createGroundPatchField(file, 0, patchConfig)!;
-    const second = createGroundPatchField(file, 0, patchConfig)!;
+    const first = createGrassGroundPatchField(file, 0, patchConfig)!;
+    const second = createGrassGroundPatchField(file, 0, patchConfig)!;
 
     expect(first).toMatchObject({
       layerId: 0,
@@ -66,23 +66,23 @@ describe('GroundPatchField', () => {
 
   it('changes the field when either deterministic seed changes', () => {
     const file = createParsedFile();
-    const patchSeedChange = createGroundPatchField(file, 0, {
+    const patchSeedChange = createGrassGroundPatchField(file, 0, {
       ...patchConfig,
       seed: patchConfig.seed + 1,
     })!;
-    const vegSeedChange = createGroundPatchField({
+    const vegSeedChange = createGrassGroundPatchField({
       ...file,
       header: { ...file.header, seed: file.header.seed + 1 },
     }, 0, patchConfig)!;
-    const baseline = createGroundPatchField(file, 0, patchConfig)!;
+    const baseline = createGrassGroundPatchField(file, 0, patchConfig)!;
 
     expect(patchSeedChange.data).not.toEqual(baseline.data);
     expect(vegSeedChange.data).not.toEqual(baseline.data);
   });
 
   it('does not use stored chunk order as a spatial identity', () => {
-    const ordered = createGroundPatchField(createParsedFile(), 0, patchConfig)!;
-    const reordered = createGroundPatchField(createParsedFile({
+    const ordered = createGrassGroundPatchField(createParsedFile(), 0, patchConfig)!;
+    const reordered = createGrassGroundPatchField(createParsedFile({
       chunkLookup: [1, 0],
     }), 0, patchConfig)!;
 
@@ -90,14 +90,14 @@ describe('GroundPatchField', () => {
   });
 
   it('approaches target coverage over vegetation-eligible samples', () => {
-    const field = createGroundPatchField(createParsedFile(), 0, patchConfig)!;
+    const field = createGrassGroundPatchField(createParsedFile(), 0, patchConfig)!;
 
     expect(field.eligibleSampleCount).toBe(field.width * field.height);
     expect(field.achievedCoverage).toBeCloseTo(patchConfig.targetCoverage, 1);
   });
 
   it('keeps ineligible mask regions empty', () => {
-    const field = createGroundPatchField(
+    const field = createGrassGroundPatchField(
       createParsedFile({ activeStoredChunks: [0] }),
       0,
       patchConfig,
@@ -113,22 +113,22 @@ describe('GroundPatchField', () => {
   });
 
   it('samples continuously across a VEGFILE chunk boundary', () => {
-    const field = createGroundPatchField(createParsedFile(), 0, patchConfig)!;
+    const field = createGrassGroundPatchField(createParsedFile(), 0, patchConfig)!;
     const boundaryX = 8;
-    const left = sampleGroundPatchField(field, boundaryX - 0.001, 12);
-    const right = sampleGroundPatchField(field, boundaryX + 0.001, 12);
+    const left = sampleGrassGroundPatchField(field, boundaryX - 0.001, 12);
+    const right = sampleGrassGroundPatchField(field, boundaryX + 0.001, 12);
 
     expect(Math.abs(left.coverageByte - right.coverageByte)).toBeLessThanOrEqual(1);
     expect(Math.abs(left.colorVariationByte - right.colorVariationByte)).toBeLessThanOrEqual(1);
   });
 
   it('derives resolution from radius and edge falloff', () => {
-    const hardEdgeField = createGroundPatchField(createParsedFile(), 0, {
+    const hardEdgeField = createGrassGroundPatchField(createParsedFile(), 0, {
       ...patchConfig,
       radiusMeters: { minimum: 4, maximum: 4 },
       edgeFalloffMeters: 0,
     })!;
-    const wideFalloffField = createGroundPatchField(createParsedFile(), 0, {
+    const wideFalloffField = createGrassGroundPatchField(createParsedFile(), 0, {
       ...patchConfig,
       radiusMeters: { minimum: 4, maximum: 4 },
       edgeFalloffMeters: 1,
@@ -164,7 +164,7 @@ describe('GroundPatchField', () => {
   });
 
   it('bounds global field memory even for very small requested edge falloff', () => {
-    const field = createGroundPatchField(createParsedFile(), 0, {
+    const field = createGrassGroundPatchField(createParsedFile(), 0, {
       ...patchConfig, edgeFalloffMeters: 0.001, targetCoverage: 0,
     })!;
     expect(Math.max(field.width, field.height)).toBe(1024);
@@ -172,8 +172,8 @@ describe('GroundPatchField', () => {
   });
 
   it('supports separated and merging source-patch placement', () => {
-    const merging = createGroundPatchField(createParsedFile(), 0, patchConfig)!;
-    const separated = createGroundPatchField(createParsedFile(), 0, {
+    const merging = createGrassGroundPatchField(createParsedFile(), 0, patchConfig)!;
+    const separated = createGrassGroundPatchField(createParsedFile(), 0, {
       ...patchConfig,
       allowMerging: false,
     })!;
@@ -184,32 +184,32 @@ describe('GroundPatchField', () => {
   });
 
   it('skips every allocation for a disabled config', () => {
-    expect(createGroundPatchField(createParsedFile(), 999, { enabled: false }))
+    expect(createGrassGroundPatchField(createParsedFile(), 999, { enabled: false }))
       .toBeUndefined();
   });
 
   it('rejects invalid radii, coverage, distortion, seed and color values', () => {
-    expect(() => validateGroundPatchConfig({
+    expect(() => validateGrassGroundPatchConfig({
       ...patchConfig,
       radiusMeters: { minimum: 4, maximum: 2 },
     })).toThrow('radiusMeters.maximum must be at least minimum');
-    expect(() => validateGroundPatchConfig({
+    expect(() => validateGrassGroundPatchConfig({
       ...patchConfig,
       targetCoverage: 1.1,
     })).toThrow('targetCoverage must be between 0 and 1');
-    expect(() => validateGroundPatchConfig({
+    expect(() => validateGrassGroundPatchConfig({
       ...patchConfig,
       shapeDistortion: Number.NaN,
     })).toThrow('shapeDistortion must be between 0 and 1');
-    expect(() => validateGroundPatchConfig({
+    expect(() => validateGrassGroundPatchConfig({
       ...patchConfig,
       seed: -1,
     })).toThrow('seed must be an unsigned 32-bit integer');
-    expect(() => validateGroundPatchConfig({
+    expect(() => validateGrassGroundPatchConfig({
       ...patchConfig,
       colors: { ...patchConfig.colors, baseColor: '#green' },
     })).toThrow('baseColor must be a six-digit hex color');
-    expect(() => validateGroundPatchConfig({
+    expect(() => validateGrassGroundPatchConfig({
       ...patchConfig,
       colors: { ...patchConfig.colors, brightnessVariation: 1.1 },
     })).toThrow('brightnessVariation must be between 0 and 1');

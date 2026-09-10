@@ -15,11 +15,13 @@ import {
   createThreeSceneLightingAdapter,
   grassFragmentShader,
   grassVertexShader,
+  requireGrassRuntimeLayer,
   WebGLGrassView,
   WebGLVegetationAdapter,
   type ParsedVegFile,
   type VegetationRuntimeConfig,
   type WebGLVegetationLightingAdapter,
+  type WebGLGrassGroundPatchSurface,
 } from '../src/index.js';
 
 function createRenderer(): WebGLRenderer {
@@ -69,7 +71,9 @@ describe('WebGLGrassView', () => {
   it('shares the ground texture and binds independent curves in every density bucket', () => {
     const adapter = createAdapter(groundColorConfig);
     const view = new WebGLGrassView(adapter, 0);
-    const field = adapter.dataset.enabledLayers[0]!.groundPatchField!;
+    const field = requireGrassRuntimeLayer(
+      adapter.dataset.enabledLayers[0]!,
+    ).profileData.groundPatchField!;
     const resource = view.resources.groundPatchField!;
     expect(resource.texture.image.data).toBe(field.data);
     expect(resource.texture.format).toBe(RGFormat);
@@ -182,6 +186,30 @@ describe('WebGLGrassView', () => {
       vertexShader: grassVertexShader,
       fragmentShader: grassFragmentShader,
     });
+  });
+
+  it('lets the Grass renderer own optional ground-patch surface installation', () => {
+    const remove = vi.fn();
+    const install = vi.fn((context: Parameters<WebGLGrassGroundPatchSurface['install']>[0]) => {
+      void context;
+      return remove;
+    });
+    const surface: WebGLGrassGroundPatchSurface = { install };
+    const view = new WebGLGrassView(
+      createAdapter(groundColorConfig),
+      0,
+      undefined,
+      createThreeSceneLightingAdapter(),
+      surface,
+    );
+
+    expect(install).toHaveBeenCalledOnce();
+    expect(install.mock.calls[0]![0]).toMatchObject({
+      layer: { config: { renderProfile: { type: 'grass' } } },
+      field: { layerId: 0 },
+    });
+    view.dispose();
+    expect(remove).toHaveBeenCalledOnce();
   });
 
   it.each([
