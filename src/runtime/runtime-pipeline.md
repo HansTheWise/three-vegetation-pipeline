@@ -18,7 +18,7 @@ const vegetation = await createThreeVegetation({
 })
 
 vegetation.updateFrame()
-vegetation.setLayerEnabled('grass', false)
+vegetation.setLayerEnabled('meadow-grass', false)
 vegetation.dispose()
 ```
 
@@ -32,7 +32,7 @@ Lichtgrenze verwendet standardmäßig direkt den nativen Three.js-Lichtpfad.
 und deshalb mit GPU-Ressourcen initialisiert wurden. Ein in der Config
 deaktivierter Layer wird nicht verdeckt im Hintergrund vorbereitet.
 
-###### Datenfluss
+## Datenfluss
 
 ```mermaid
 flowchart LR
@@ -292,6 +292,11 @@ internen Buffer- oder Rendererklassen mehr selbst auf. Eine wiederverwendete,
 schreibgeschützte Diagnosestruktur liefert Chunk-, Tile- und Kandidatenzahlen,
 ohne GPU-Ressourcen öffentlich zu machen.
 
+Ein optionales `groundPatchSurface` bleibt Eigentum des Grass-Renderers.
+`ThreeGrassGroundPatchSurface` erhält vom Consumer nur den gemeinsamen
+Koordinatenroot und das Materialprädikat. Installation, horizontale Datasetachsen,
+Shaderpatch und vollständiges Restore liegen innerhalb der Pipeline.
+
 ## Koordinaten und Indizes
 
 | Wert                 | Bedeutung                                                      | Speicherung                                                              |
@@ -337,7 +342,7 @@ stehen in `identity/identity.md`.
 ```text
 sichtbare Chunks
 → aktive Render-Tiles
-→ einmalig patch-gefilterte Cells
+→ einmalig maskenaktive, seed-sortierte Cells
 → kontinuierliche Cell-/Anchor-/Elementbudgets
 → GPU-Kapazitätsbucket
 → kompakte aktive Cells

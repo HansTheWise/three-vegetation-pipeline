@@ -119,19 +119,22 @@ und sein Pointer-Picking.
 ```ts
 const debug = new WebGLVegetationDebug({ adapter, grass, camera, scene, panelParent });
 debug.update(deltaSeconds);
-const visibilityCamera = debug.cullingCamera;
-// Bestehendes Frustum-Culling UND updateDensity verwenden visibilityCamera.
+vegetation.updateFrame(debug.cullingCamera);
 // Mit der ursprünglichen camera rendern; CPU-Zeit separat messen.
 debug.recordFrame(deltaSeconds, vegetationCpuMilliseconds);
 debug.beginGpuFrame();
 renderer.render(scene, camera);
 debug.endGpuFrame();
-// Vor grass.dispose() und adapter.dispose():
 debug.dispose();
+vegetation.dispose();
 ```
 
-Die lokale Cell-Fläche und die Boxen hängen am Grasobjekt. Das Frustum hängt
-an der Welt-Szene außerhalb transformierter Modellgruppen. Das DOM-Panel zeigt
+`vegetation` ist der `ThreeVegetationSceneAdapter`; sein `updateFrame` führt
+gemeinsames Culling und layerspezifische Density mit derselben Debugkamera aus.
+`adapter` und `grass` werden nur für die optionale Diagnoseansicht aus der
+erzeugten Grass-Layerinstanz übernommen. Die lokale Cell-Fläche und die Boxen
+hängen am Grasobjekt. Das Frustum hängt an der Welt-Szene außerhalb
+transformierter Modellgruppen. Das DOM-Panel zeigt
 Zähler zweimal pro Sekunde; die Renderer-Einstellungen werden nur gelesen.
 Die Cell-Fläche zeigt die ursprüngliche VEGFILE-Maske mit maximalen Ankern, keine
 dynamische LOD-Darstellung. Die seedbasierte Cell-Coverage wirkt erst über die

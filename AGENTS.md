@@ -175,7 +175,7 @@ When the user corrects your approach, append a one-line rule here before ending 
 - Provide one default Three.js scene adapter that reads camera/root matrices into reusable frame data and routes layer lighting through Three.js scene-light, incoming-shadow, tone-mapping and output-color chunks; never require a parallel manual camera, light or exposure bridge in a consumer.
 - Do not accept distance-based camera-facing from builds or shader-string checks alone; first force full facing across the visible range and verify the camera response in the served WebGL runtime.
 - Keep vegetation patch coverage static and independent of distance LOD; let the ground detail cover density transitions instead of preserving patch cores through distance-prioritized Cell selection.
-- Patch integration must replace the old ground noise with the same field used for grass admission, preserve existing distance curves, and perform expensive startup generation outside the UI thread.
+- Patch integration must replace the old ground noise with the same field used for Grass ground and blade-color transitions; Cell admission remains density-driven, and expensive startup generation stays outside the UI thread.
 - Use `edgeFalloffMeters` for individual patch-color blending and the transition to base color, not only for the union coverage edge; keep geometric union smoothing independent.
 - For soft meadow ground, use broad falloff and moderate domain distortion; moving generation into a worker does not replace profiling and removing full-field/per-source startup rescans.
 - Do not assume patch coverage belongs per Cell or in the VEGFILE; compare a low-resolution global R8 field with deterministic runtime generation using measured file-size and startup costs first.

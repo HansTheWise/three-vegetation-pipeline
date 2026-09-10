@@ -48,7 +48,10 @@ Rendererprofile, profilspezifische Surface-Features und Beleuchtungsreaktion ble
 austauschbar. Parser, VEGFILE v1, deterministische IDs, Density-Kurven und die
 bewährte WebGL-Platzierung werden dabei nicht unnötig neu entwickelt.
 
-## Nachgewiesener Ausgangszustand
+## Nachgewiesener Ausgangszustand vor Phase 0 (historisch)
+
+Dieser Snapshot bleibt zur Nachvollziehbarkeit erhalten. Er beschreibt nicht den
+aktuellen Stand nach Abschluss der Phasen 0 bis 7.
 
 ### Pipeline-Repository
 
@@ -86,7 +89,7 @@ Der Phase-1-Abschluss enthält einen echten Browser-Render gegen die produktiven
 I-CAKA-Assets. Worker, Ground-Patch und produktiver Shader liefen ohne gemeldete
 Shaderfehler. Die visuelle Abnahme bleibt unabhängig davon Aufgabe des Benutzers.
 
-## Wichtigste Korrekturen
+## Korrekturen aus der Ausgangsanalyse (historisch)
 
 ### Priorität 0: vor dem ersten Commit
 
@@ -145,7 +148,7 @@ Shaderfehler. Die visuelle Abnahme bleibt unabhängig davon Aufgabe des Benutzer
    Patchvertrag ersetzt. Die README ist weiterhin zu kurz für eine echte
    Paketnutzung.
 
-## Empfohlene Zielarchitektur
+## Umgesetzte Zielarchitektur bis Phase 7
 
 ```text
 Three.js-Anwendung oder dünner R3F-Wrapper
@@ -161,25 +164,30 @@ Three.js-Anwendung oder dünner R3F-Wrapper
             -> GrassRenderProfile
                  -> Placement/Density
                  -> Grass-Geometrie und Material
+                 -> optionaler GrassGroundPatchSurface
                  -> ThreeSceneLightingAdapter (Standard)
             -> weitere Profile erst bei echtem Bedarf
-                 -> optionaler GrassGroundPatchSurface
   -> runtime.object3d
   -> runtime.updateFrame()
   -> runtime.dispose()
 ```
 
-Die minimale öffentliche Verwendung soll ungefähr so aussehen:
+Die in Phase 7 verwendete öffentliche API sieht so aus:
 
 ```ts
-const runtime = await createThreeVegetation({
+const preparation = new WorkerVegetationPreparation(() => new Worker(
+  new URL('./vegetation.worker.ts', import.meta.url),
+  { type: 'module' },
+))
+
+const vegetation = await createThreeVegetation({
   renderer,
   scene,
   camera,
   source: vegetationBytes,
   config: vegetationConfig,
   coordinateRoot: modelRoot,
-  preparation: createWorkerPreparationAdapter(),
+  preparation,
   layerRenderers: [
     createWebGLGrassLayerRenderer({
       lighting: createThreeSceneLightingAdapter(),
@@ -191,14 +199,14 @@ const runtime = await createThreeVegetation({
   ],
 })
 
-runtime.updateFrame()
-runtime.dispose()
+vegetation.updateFrame()
+vegetation.dispose()
 ```
 
-Die endgültigen Namen werden erst beim API-Test festgelegt. Wichtig ist der
-Vertrag, nicht diese exakte Syntax. Wer die automatische Szenenbindung nicht
-verwenden möchte, kann weiterhin die niedrigere Runtime-Fassade verwenden,
-`object3d` selbst einhängen und die internen Adapter gezielt ersetzen.
+Diese Namen und Verträge sind bis Phase 7 implementiert. Wer die automatische
+Szenenbindung nicht verwenden möchte, kann weiterhin die niedrigere
+`createWebGLVegetationRuntime`-Fassade verwenden, `object3d` selbst einhängen
+und Kamera-, Preparation-, Layer-Renderer- und Lichtadapter gezielt ersetzen.
 
 ## Architekturentscheidungen
 
@@ -272,7 +280,7 @@ den Datasetvertrag.
 
 ## Arbeitsphasen
 
-### Phase 0 – Entscheidungen und Baseline einfrieren
+### Phase 0 – Entscheidungen und Baseline einfrieren — abgeschlossen
 
 Ziel: Den akzeptierten sichtbaren Stand eindeutig beschreiben, bevor Code
 bereinigt wird.
@@ -297,7 +305,7 @@ Gate:
 - Jede unversionierte Datei hat eine bewusste Entscheidung.
 - Noch kein Architekturrefactor.
 
-### Phase 1 – Gegenwärtigen Stand commit-fähig bereinigen
+### Phase 1 – Gegenwärtigen Stand commit-fähig bereinigen — abgeschlossen
 
 Ziel: Den heutigen Funktionsumfang ohne öffentliche Neugestaltung sauber
 sichern.
@@ -340,7 +348,7 @@ Commit-Grenze:
 Zwei Repositories können keinen atomaren gemeinsamen Commit bilden. Der
 I-CAKA-Commit muss deshalb auf einen konkret geprüften Pipeline-Commit zeigen.
 
-### Phase 2 – Projektverantwortung und eine Quelle pro Vertrag
+### Phase 2 – Projektverantwortung und eine Quelle pro Vertrag — abgeschlossen
 
 Ziel: Generische Bibliothek und Campus-Consumer klar trennen.
 
@@ -369,7 +377,7 @@ Gate:
 
 Commit: `refactor(core): separate library and icaka ownership`
 
-### Phase 3 – Globale Runtime- und Layerverträge korrigieren
+### Phase 3 – Globale Runtime- und Layerverträge korrigieren — abgeschlossen
 
 Ziel: Layerunabhängige Renderinfrastruktur, layerspezifische Entscheidungen und
 profilabhängige Implementierungen eindeutig trennen.
@@ -422,7 +430,7 @@ Gate:
 
 Commit: `refactor(runtime): separate layer core and render profiles`
 
-### Phase 4 – Kleine Runtime-Fassade und transaktionaler Lifecycle
+### Phase 4 – Kleine Runtime-Fassade und transaktionaler Lifecycle — abgeschlossen
 
 Ziel: Anwendungen müssen keine Pipeline-Infrastruktur mehr selbst orchestrieren.
 
@@ -461,7 +469,7 @@ Gate:
 
 Commit: `refactor(webgl): add vegetation runtime lifecycle facade`
 
-### Phase 5 – Layer-Renderer und GPU-Ressourcen modularisieren
+### Phase 5 – Layer-Renderer und GPU-Ressourcen modularisieren — abgeschlossen
 
 Ziel: `WebGLGrassView` ist eine eingebaute Strategie, nicht der Runtime-Kern.
 
@@ -487,7 +495,7 @@ Gate:
 
 Commit: `refactor(webgl): support replaceable layer renderers`
 
-### Phase 6 – Three.js-Lichtadapter isolieren
+### Phase 6 – Three.js-Lichtadapter isolieren — abgeschlossen
 
 Ziel: Einheitliche, konfigurierbare Reaktion auf Szenenlicht ohne parallele
 Lichtquelle oder I-CAKA-spezifische Uniformbrücke.
@@ -535,7 +543,7 @@ Gate:
 
 Commit: `refactor(lighting): add three scene lighting adapter`
 
-### Phase 7 – Grass-Patchfeature und schlanke I-CAKA-Einbindung
+### Phase 7 – Grass-Patchfeature und schlanke I-CAKA-Einbindung — abgeschlossen
 
 Ziel: I-CAKA enthält nur Campusentscheidungen und React/R3F-Lifecycle.
 
@@ -651,8 +659,8 @@ sie nicht vorweg implementieren.
 
 ## Reihenfolge und Stop-Regeln
 
-- Phase 1 wird zuerst abgeschlossen und committed. Erst danach beginnt der
-  Breaking Refactor.
+- Die Phasen 0 bis 7 wurden in dieser Reihenfolge abgeschlossen und jeweils
+  committed. Phase 8 beginnt auf den grünen Gates von Phase 7.
 - Jede Phase startet auf grünen Gates der vorherigen Phase und endet mit einem
   eigenen überprüfbaren Commit.
 - Ändert ein Schritt das sichtbare Bild, ist er kein reiner Cleanup mehr und
