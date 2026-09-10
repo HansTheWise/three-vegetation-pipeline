@@ -70,9 +70,8 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 
 Die Runtime besitzt nun Objektbaum, Chunk-/Tile-Frameupdate, Layerumschaltung,
 Diagnostik und idempotentes Cleanup. Fehlgeschlagene GPU-Erzeugungsstufen räumen
-vorher angelegte Ressourcen wieder auf. I-CAKA verwendet bereits den
-pipelineeigenen Worker-Vertrag; die vollständige Component-Migration folgt nach
-den Renderer-, Licht- und Ground-Grenzen.
+vorher angelegte Ressourcen wieder auf. I-CAKA verwendet den pipelineeigenen
+Worker-Vertrag und seit Phase 7 die vollständige `createThreeVegetation`-Fassade.
 
 ### 5. Layer-Renderer und GPU-Ressourcen modularisieren — abgeschlossen
 
