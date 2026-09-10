@@ -59,7 +59,7 @@ export class WebGLVegetationDebug {
       ? context as WebGL2RenderingContext
       : null;
     this.#gpuTimer = this.#gpuContext?.getExtension('EXT_disjoint_timer_query_webgl2') ?? null;
-    this.cells = new WebGLDebugChunkView(adapter, { layerId: grass.layerId });
+    this.cells = new WebGLDebugChunkView(adapter, grass.resources);
     this.cells.mesh.visible = false;
     this.boxes = createChunkBoundingBoxOutlines(createRuntimeChunkBoundingBoxes(adapter.dataset));
     this.boxes.visible = false;

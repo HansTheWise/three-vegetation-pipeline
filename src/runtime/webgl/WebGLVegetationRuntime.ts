@@ -13,11 +13,16 @@ import type {
   VegetationPreparationAdapter,
   VegetationRuntimeSource,
 } from '../preparation/types.js';
-import { WebGLGrassView } from '../rendering/webgl/WebGLGrassView.js';
+import { WebGLGrassLayerRendererFactory } from '../rendering/webgl/WebGLGrassLayerRendererFactory.js';
+import type {
+  WebGLVegetationLayerRenderer,
+  WebGLVegetationLayerRendererFactory,
+} from '../rendering/webgl/WebGLVegetationLayerRenderer.js';
 
 export type WebGLVegetationLayerDiagnostics = Readonly<{
   layerId: number;
   key: string;
+  profileType: string;
   enabled: boolean;
   visibleTileCount: number;
   visibleCandidateCount: number;
@@ -37,12 +42,14 @@ export type CreateWebGLVegetationRuntimeOptions = Readonly<{
   source: VegetationRuntimeSource;
   config: VegetationRuntimeConfig;
   preparation?: VegetationPreparationAdapter;
+  layerRenderers?: readonly WebGLVegetationLayerRendererFactory[];
   signal?: AbortSignal;
 }>;
 
 type MutableLayerDiagnostics = {
   layerId: number;
   key: string;
+  profileType: string;
   enabled: boolean;
   visibleTileCount: number;
   visibleCandidateCount: number;
@@ -53,7 +60,7 @@ type MutableLayerDiagnostics = {
 
 type RuntimeLayer = Readonly<{
   datasetLayer: VegetationRuntimeLayer;
-  view: WebGLGrassView;
+  renderer: WebGLVegetationLayerRenderer;
   diagnostics: MutableLayerDiagnostics;
 }>;
 
@@ -77,8 +84,10 @@ export class WebGLVegetationRuntime {
   private constructor(
     renderer: WebGLRenderer,
     prepared: PreparedVegetationRuntime,
+    rendererFactories: ReadonlyMap<string, WebGLVegetationLayerRendererFactory>,
   ) {
     validatePreparedActiveCells(prepared);
+    validateLayerRenderers(prepared, rendererFactories);
     this.object3d.name = 'vegetation/runtime';
     const createdLayers: RuntimeLayer[] = [];
     let adapter: WebGLVegetationAdapter | undefined;
@@ -86,14 +95,17 @@ export class WebGLVegetationRuntime {
     try {
       adapter = new WebGLVegetationAdapter(renderer, prepared.dataset);
       for (const datasetLayer of prepared.dataset.enabledLayers) {
-        const view = new WebGLGrassView(
+        const layerRenderer = rendererFactories.get(datasetLayer.config.renderProfile.type)!.create({
           adapter,
-          datasetLayer.layerId,
-          prepared.activeCells.find((cells) => cells.layerId === datasetLayer.layerId),
-        );
+          layer: datasetLayer,
+          activeCells: prepared.activeCells.find(
+            (cells) => cells.layerId === datasetLayer.layerId,
+          )!,
+        });
         const diagnostics: MutableLayerDiagnostics = {
           layerId: datasetLayer.layerId,
           key: datasetLayer.key,
+          profileType: datasetLayer.config.renderProfile.type,
           enabled: true,
           visibleTileCount: 0,
           visibleCandidateCount: 0,
@@ -101,15 +113,15 @@ export class WebGLVegetationRuntime {
           frustumTestedTileCount: 0,
           frustumCulledTileCount: 0,
         };
-        createdLayers.push({ datasetLayer, view, diagnostics });
-        this.object3d.add(view.mesh);
+        createdLayers.push({ datasetLayer, renderer: layerRenderer, diagnostics });
+        this.object3d.add(layerRenderer.object3d);
       }
       visibility = new FrustumChunkVisibility(
         createRuntimeChunkBoundingBoxes(prepared.dataset),
       );
     } catch (error) {
       for (let index = createdLayers.length - 1; index >= 0; index -= 1) {
-        createdLayers[index]!.view.dispose();
+        createdLayers[index]!.renderer.dispose();
       }
       adapter?.dispose();
       throw error;
@@ -139,7 +151,11 @@ export class WebGLVegetationRuntime {
       error.name = 'AbortError';
       throw error;
     }
-    return new WebGLVegetationRuntime(options.renderer, prepared);
+    return new WebGLVegetationRuntime(
+      options.renderer,
+      prepared,
+      createLayerRendererRegistry(options.layerRenderers ?? []),
+    );
   }
 
   get disposed(): boolean {
@@ -171,11 +187,7 @@ export class WebGLVegetationRuntime {
     this.#mutableDiagnostics.visibleChunkCount = visibleChunkCount;
     for (const layer of this.#layers) {
       if (!layer.diagnostics.enabled) continue;
-      layer.view.updateDensity(
-        frameState.cameraPositionModel,
-        frameState.clipFromModelMatrix,
-        frameState.clipSpaceDepthRange,
-      );
+      layer.renderer.updateFrame(frameState);
       updateLayerDiagnostics(layer);
     }
   }
@@ -192,7 +204,7 @@ export class WebGLVegetationRuntime {
       throw new Error(`Initialized vegetation layer ${String(layer)} does not exist.`);
     }
     runtimeLayer.diagnostics.enabled = enabled;
-    runtimeLayer.view.mesh.visible = enabled;
+    runtimeLayer.renderer.object3d.visible = enabled;
     if (!enabled) clearLayerDiagnostics(runtimeLayer.diagnostics);
   }
 
@@ -201,7 +213,7 @@ export class WebGLVegetationRuntime {
     this.#disposed = true;
     this.object3d.clear();
     for (let index = this.#layers.length - 1; index >= 0; index -= 1) {
-      this.#layers[index]!.view.dispose();
+      this.#layers[index]!.renderer.dispose();
     }
     this.#adapter.dispose();
     this.#mutableDiagnostics.visibleChunkCount = 0;
@@ -238,11 +250,12 @@ function validatePreparedActiveCells(prepared: PreparedVegetationRuntime): void 
 }
 
 function updateLayerDiagnostics(layer: RuntimeLayer): void {
-  layer.diagnostics.visibleTileCount = layer.view.visibleTileCount;
-  layer.diagnostics.visibleCandidateCount = layer.view.visibleCandidateCount;
-  layer.diagnostics.executedCandidateCount = layer.view.executedCandidateCount;
-  layer.diagnostics.frustumTestedTileCount = layer.view.tileDensity.frustumTestedTileCount;
-  layer.diagnostics.frustumCulledTileCount = layer.view.tileDensity.frustumCulledTileCount;
+  const rendererDiagnostics = layer.renderer.diagnostics;
+  layer.diagnostics.visibleTileCount = rendererDiagnostics.visibleTileCount;
+  layer.diagnostics.visibleCandidateCount = rendererDiagnostics.visibleCandidateCount;
+  layer.diagnostics.executedCandidateCount = rendererDiagnostics.executedCandidateCount;
+  layer.diagnostics.frustumTestedTileCount = rendererDiagnostics.frustumTestedTileCount;
+  layer.diagnostics.frustumCulledTileCount = rendererDiagnostics.frustumCulledTileCount;
 }
 
 function clearLayerDiagnostics(diagnostics: MutableLayerDiagnostics): void {
@@ -251,4 +264,41 @@ function clearLayerDiagnostics(diagnostics: MutableLayerDiagnostics): void {
   diagnostics.executedCandidateCount = 0;
   diagnostics.frustumTestedTileCount = 0;
   diagnostics.frustumCulledTileCount = 0;
+}
+
+function createLayerRendererRegistry(
+  customFactories: readonly WebGLVegetationLayerRendererFactory[],
+): ReadonlyMap<string, WebGLVegetationLayerRendererFactory> {
+  const grassFactory = new WebGLGrassLayerRendererFactory();
+  const registry = new Map<string, WebGLVegetationLayerRendererFactory>([
+    [grassFactory.profileType, grassFactory],
+  ]);
+  const customProfileTypes = new Set<string>();
+  for (const factory of customFactories) {
+    if (factory.profileType.length === 0) {
+      throw new Error('WebGL vegetation layer renderer profileType must not be empty.');
+    }
+    if (customProfileTypes.has(factory.profileType)) {
+      throw new Error(
+        `Duplicate WebGL vegetation layer renderer for profile "${factory.profileType}".`,
+      );
+    }
+    customProfileTypes.add(factory.profileType);
+    registry.set(factory.profileType, factory);
+  }
+  return registry;
+}
+
+function validateLayerRenderers(
+  prepared: PreparedVegetationRuntime,
+  rendererFactories: ReadonlyMap<string, WebGLVegetationLayerRendererFactory>,
+): void {
+  for (const layer of prepared.dataset.enabledLayers) {
+    const profileType = layer.config.renderProfile.type;
+    if (!rendererFactories.has(profileType)) {
+      throw new Error(
+        `No WebGL vegetation layer renderer is registered for profile "${profileType}".`,
+      );
+    }
+  }
 }

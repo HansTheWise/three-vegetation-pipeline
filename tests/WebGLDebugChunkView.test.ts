@@ -75,11 +75,15 @@ function createRuntimeDataset() {
 describe('WebGLDebugChunkView', () => {
   it('uses the original VEG mask and rejects missing layers', () => {
     const adapter = new WebGLVegetationAdapter(createRenderer(), createRuntimeDataset());
-    const view = new WebGLDebugChunkView(adapter);
+    const grass = new WebGLGrassView(adapter, 0);
+    const view = new WebGLDebugChunkView(adapter, grass.resources);
     expect(view.material.uniforms.layerMask!.value).toBe(adapter.staticResources.layerMasks[0]!.texture);
-    expect(view.material.uniforms.layerMask!.value).toBe(adapter.staticResources.layerMasks[0]!.texture);
-    expect(() => new WebGLDebugChunkView(adapter, { layerId: 123 })).toThrow();
+    expect(() => new WebGLDebugChunkView(adapter, {
+      layerId: 123,
+      pattern: grass.resources.pattern,
+    })).toThrow('has no VEGFILE mask');
     view.dispose();
+    grass.dispose();
     adapter.dispose();
   });
   it('binds adapter textures and model-local grid metadata to the debug material', () => {
@@ -87,7 +91,8 @@ describe('WebGLDebugChunkView', () => {
       createRenderer(),
       createRuntimeDataset(),
     );
-    const view = new WebGLDebugChunkView(adapter, {
+    const grass = new WebGLGrassView(adapter, 0);
+    const view = new WebGLDebugChunkView(adapter, grass.resources, {
       opacity: 0.5,
       heightOffsetMeters: 0.25,
     });
@@ -104,7 +109,7 @@ describe('WebGLDebugChunkView', () => {
     expect(view.material.uniforms.heightData!.value)
       .toBe(adapter.staticResources.heightDataTexture);
     expect(view.material.uniforms.patternPositions!.value)
-      .toBe(adapter.staticResources.patterns[0]!.texture);
+      .toBe(grass.resources.pattern.texture);
     expect(view.material.uniforms.visibleAnchorCount!.value).toBe(4);
     expect(view.material.uniforms.gridOrigin!.value.toArray()).toEqual([-5, 3]);
     expect(view.material.uniforms.chunkSize!.value).toBe(10);
@@ -120,7 +125,8 @@ describe('WebGLDebugChunkView', () => {
       createRenderer(),
       createRuntimeDataset(),
     );
-    const view = new WebGLDebugChunkView(adapter);
+    const grass = new WebGLGrassView(adapter, 0);
+    const view = new WebGLDebugChunkView(adapter, grass.resources);
     adapter.updateVisibleChunks(Uint32Array.from([1, 0]), 2);
 
     expect(view.geometry.instanceCount).toBe(0);
@@ -133,7 +139,8 @@ describe('WebGLDebugChunkView', () => {
       createRenderer(),
       createRuntimeDataset(),
     );
-    const view = new WebGLDebugChunkView(adapter, {
+    const grass = new WebGLGrassView(adapter, 0);
+    const view = new WebGLDebugChunkView(adapter, grass.resources, {
       shader: {
         vertexShader: 'custom vertex shader',
         fragmentShader: 'custom fragment shader',
@@ -149,7 +156,8 @@ describe('WebGLDebugChunkView', () => {
       createRenderer(),
       createRuntimeDataset(),
     );
-    const view = new WebGLDebugChunkView(adapter);
+    const grass = new WebGLGrassView(adapter, 0);
+    const view = new WebGLDebugChunkView(adapter, grass.resources);
     const geometryDisposed = vi.fn();
     const materialDisposed = vi.fn();
     view.geometry.addEventListener('dispose', geometryDisposed);
@@ -166,11 +174,12 @@ describe('WebGLDebugChunkView', () => {
       createRenderer(),
       createRuntimeDataset(),
     );
+    const grass = new WebGLGrassView(adapter, 0);
 
-    expect(() => new WebGLDebugChunkView(adapter, { opacity: 2 })).toThrow(
+    expect(() => new WebGLDebugChunkView(adapter, grass.resources, { opacity: 2 })).toThrow(
       'Debug chunk opacity must be between 0 and 1.',
     );
-    expect(() => new WebGLDebugChunkView(adapter, { heightOffsetMeters: -1 })).toThrow(
+    expect(() => new WebGLDebugChunkView(adapter, grass.resources, { heightOffsetMeters: -1 })).toThrow(
       'Debug chunk height offset must be a non-negative finite number.',
     );
   });

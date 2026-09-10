@@ -18,8 +18,10 @@ Stand: 10. September 2026
 - Phase 4 ist abgeschlossen: Runtime-Fassade, transaktionaler Lifecycle,
   synchrone und Worker-basierte Vorbereitung sowie Three-Kamera- und
   Scene-Adapter bilden den einfachen Integrationseinstieg.
-- Als Nächstes folgt Phase 5 mit austauschbaren Layer-Renderern und der Trennung
-  gemeinsamer von profilspezifischen GPU-Ressourcen.
+- Phase 5 ist abgeschlossen: Layer-Renderer werden über Profiltypen ausgewählt;
+  gemeinsame VEGFILE-GPU-Daten und profilspezifische Grass-Ressourcen besitzen
+  getrennte Lifecycle-Grenzen.
+- Als Nächstes folgt Phase 6 mit dem isolierten Three.js-Lichtadapter.
 
 ## Ziel
 

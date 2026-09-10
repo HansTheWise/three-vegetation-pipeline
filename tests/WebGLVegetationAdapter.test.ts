@@ -1,7 +1,5 @@
 import {
   FloatType,
-  LinearFilter,
-  LinearMipmapLinearFilter,
   RedIntegerFormat,
   RGFormat,
   RGIntegerFormat,
@@ -172,7 +170,7 @@ describe('WebGLStaticVegetationResources', () => {
     expect(resources.layerMasks[0]!.texture.image).toMatchObject({ width: 1, height: 2 });
     expect(resources.layerMasks[0]!.texture.image.data).toBe(file.layers[0]!.maskData);
     expect(resources.layerMasks[1]!.texture.image).toMatchObject({ width: 2, height: 2 });
-    expect(initTexture).toHaveBeenCalledTimes(8);
+    expect(initTexture).toHaveBeenCalledTimes(5);
   });
 
   it.each([
@@ -187,33 +185,6 @@ describe('WebGLStaticVegetationResources', () => {
     );
 
     expect(resources.heightDataTexture.type).toBe(type);
-  });
-
-  it('uploads deterministic pattern anchors once for configured layers', () => {
-    const { renderer, initTexture } = createRenderer();
-    const resources = new WebGLStaticVegetationResources(
-      renderer,
-      createRuntimeDataset(),
-    );
-
-    expect(resources.patterns).toHaveLength(1);
-    expect(resources.patterns[0]).toMatchObject({
-      layerId: 7,
-      rotatePerCell: true,
-      reflectPerCell: true,
-    });
-    expect(resources.patterns[0]!.patternSet.anchorsPerPattern).toBe(4);
-    const colors = vegetationRuntimeConfig.layers[0]!.renderProfile.colors;
-    expect(resources.patterns[0]!.texture.image).toMatchObject({ width: 4, height: 4 });
-    expect(resources.patterns[0]!.bottomColors)
-      .toMatchObject({ colorCount: colors.bottomColors.length });
-    expect(resources.patterns[0]!.bottomColors.texture.image)
-      .toMatchObject({ width: colors.bottomColors.length, height: 1 });
-    expect(resources.patterns[0]!.topColors)
-      .toMatchObject({ colorCount: colors.topColors.length });
-    expect(resources.patterns[0]!.topColors.texture.image)
-      .toMatchObject({ width: colors.topColors.length, height: 1 });
-    expect(initTexture).toHaveBeenCalledTimes(8);
   });
 
   it('rejects static textures larger than the renderer supports', () => {
@@ -274,49 +245,17 @@ describe('WebGLVisibleTileBuffer', () => {
 });
 
 describe('WebGLVegetationAdapter', () => {
-  it('uploads the shared RG patch field once and disposes it with the adapter', () => {
-    const dataset = createRuntimeDataset();
-    const source = dataset.layers[0]!;
-    const data = Uint8Array.from([0, 128, 255, 200, 128, 30, 255, 128]);
-    const layer = { ...source, groundPatchField: {
-      layerId: source.layerId, data, width: 2, height: 2,
-      texelSizeUnits: 1, texelSizeMeters: 1, originX: 0, originY: 0,
-      baseColor: '#39a83a' as const, brightnessVariation: 0.1,
-      patchCount: 1, eligibleSampleCount: 4, achievedCoverage: 0.5,
-    } };
-    const { renderer } = createRenderer();
-    const adapter = new WebGLVegetationAdapter(renderer, {
-      ...dataset, layers: [layer, dataset.layers[1]!], enabledLayers: [layer],
-    });
-    const texture = adapter.staticResources.groundPatchFields[0]!.texture;
-    expect(texture.image.data).toBe(data);
-    expect(texture.format).toBe(RGFormat);
-    expect(texture.magFilter).toBe(LinearFilter);
-    expect(texture.minFilter).toBe(LinearMipmapLinearFilter);
-    expect(texture.generateMipmaps).toBe(true);
-    const disposed = vi.fn();
-    texture.addEventListener('dispose', disposed);
-    adapter.dispose();
-    expect(disposed).toHaveBeenCalledOnce();
-  });
-
   it('updates visibility and disposes every owned texture', () => {
     const { renderer } = createRenderer();
     const adapter = new WebGLVegetationAdapter(
       renderer,
       createRuntimeDataset(),
     );
-    expect(adapter.staticResources.groundPatchFields).toHaveLength(0);
     const textures: DataTexture[] = [
       adapter.staticResources.storedChunkGridCoordinatesTexture,
       adapter.staticResources.chunkHeightRangesTexture,
       adapter.staticResources.heightDataTexture,
       ...adapter.staticResources.layerMasks.map((layer) => layer.texture),
-      ...adapter.staticResources.patterns.map((pattern) => pattern.texture),
-      ...adapter.staticResources.patterns.flatMap((pattern) => [
-        pattern.bottomColors.texture,
-        pattern.topColors.texture,
-      ]),
       adapter.visibleChunkBuffer.texture,
     ];
     const disposeListeners = textures.map(() => vi.fn());

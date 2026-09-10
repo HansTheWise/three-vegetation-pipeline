@@ -16,15 +16,17 @@ Die statischen Daten liegen in `DataTexture`-Ressourcen:
 - minimale und maximale Chunkhöhe: `RG32F`;
 - quantisierte Heightmap: `R8UI`, `R16UI` oder `R32UI`;
 - bitgepackte Maske pro Vegetationsschicht: `R32UI`.
-- normalisierte Pattern-Anker pro konfigurierter Vegetationsschicht: `RG32F`.
 
 Die Texturbreite der Heightmap entspricht `valuesPerChunk`, ihre Höhe der
 Anzahl gespeicherter Chunks. Bei Masken entspricht die Breite
 `maskWordsPerChunk`. Alle anderen statischen Texturen sowie der sichtbare
 Chunkspeicher verwenden aktuell eine Zeile mit einem Texel pro Chunk.
-Die Patterntextur verwendet einen Anker pro Spalte und ein Pattern pro Zeile.
-Sie wird aus VEGFILE-Seed und Runtime-Config erzeugt und ebenfalls nur einmal
-hochgeladen.
+
+Pattern, Farbpaletten, Patchfelder, Geometry und Material sind keine
+gemeinsamen VEGFILE-Ressourcen. Sie gehören dem jeweiligen Layer-Renderer und
+werden von diesem erzeugt und freigegeben. Dadurch kann ein anderes
+Renderprofil den gemeinsamen Adapter verwenden, ohne Grass-Ressourcen
+anzulegen.
 
 `WebGLVisibleChunkBuffer` reserviert beim Erzeugen Platz für alle gespeicherten
 Chunks. `update` überschreibt nur das vorhandene `Uint32Array`; es wird kein

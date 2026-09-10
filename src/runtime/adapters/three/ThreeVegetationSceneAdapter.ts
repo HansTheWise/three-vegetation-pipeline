@@ -2,6 +2,7 @@ import type { Camera, Object3D, Scene, WebGLRenderer } from 'three';
 
 import type { VegetationRuntimeConfig } from '../../config/types.js';
 import type { VegetationPreparationAdapter, VegetationRuntimeSource } from '../../preparation/types.js';
+import type { WebGLVegetationLayerRendererFactory } from '../../rendering/webgl/WebGLVegetationLayerRenderer.js';
 import {
   createWebGLVegetationRuntime,
   type WebGLVegetationRuntime,
@@ -20,6 +21,7 @@ export type CreateThreeVegetationOptions = Readonly<{
   source: VegetationRuntimeSource;
   config: VegetationRuntimeConfig;
   preparation?: VegetationPreparationAdapter;
+  layerRenderers?: readonly WebGLVegetationLayerRendererFactory[];
   cameraAdapter?: ThreeVegetationCameraAdapter;
   signal?: AbortSignal;
 }>;
@@ -78,6 +80,7 @@ export async function createThreeVegetation(
     source: options.source,
     config: options.config,
     ...(options.preparation ? { preparation: options.preparation } : {}),
+    ...(options.layerRenderers ? { layerRenderers: options.layerRenderers } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   });
   try {

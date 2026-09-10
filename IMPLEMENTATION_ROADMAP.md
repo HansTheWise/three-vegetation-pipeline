@@ -25,7 +25,7 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 | WebGL-Grassrenderer | Fertig für den aktuellen Funktionsstand | GPU-Platzierung, Heightmap-Sampling, Geometrie, Farben, Ground-Übergang, Kameraausrichtung, Szenenlicht und eingehende Schatten |
 | Debug und Messung | Vorhanden | Chunk-/Cell-/Frustumdarstellung, Kandidaten- und GPU-Diagnostik, Browsercheck und Patch-Benchmark |
 | Öffentliche Runtime-Fassade | Fertig für den aktuellen Grass-Renderer | `createWebGLVegetationRuntime`, `createThreeVegetation`, gemeinsamer Lifecycle, Frame-Diagnostik sowie Three-Kamera- und Scene-Adapter |
-| Austauschbare Renderprofile | Vertrag fertig | Neutrale Layerwerte, diskriminierte Profile, gemeinsamer Bounds-Vertrag und anpassbares Grass-Preset; Renderer-Registry folgt |
+| Austauschbare Renderprofile | Fertig für WebGL | Neutrale Layerwerte, diskriminierte Profile, gemeinsamer Bounds-Vertrag, anpassbares Grass-Preset und Renderer-Registry |
 | Licht- und Ground-Adapter | Teilweise vorhanden | Three.js-Szenenlicht funktioniert, besitzt aber noch keine eigene Adaptergrenze; Ground-Patching liegt im Consumer |
 
 ## Nächste Schritte
@@ -73,12 +73,18 @@ vorher angelegte Ressourcen wieder auf. I-CAKA verwendet bereits den
 pipelineeigenen Worker-Vertrag; die vollständige Component-Migration folgt nach
 den Renderer-, Licht- und Ground-Grenzen.
 
-### 5. Layer-Renderer und GPU-Ressourcen modularisieren
+### 5. Layer-Renderer und GPU-Ressourcen modularisieren — abgeschlossen
 
 - gemeinsame VEGFILE-GPU-Ressourcen von Grass-Ressourcen trennen;
 - Layer-Renderer über eine kleine Factory-/Registry-Grenze erzeugen;
 - Grass über das eingebaute Profil registrieren und einen neutralen
   Testrenderer als Vertragstest verwenden.
+
+Gemeinsame VEGFILE-Texturen und der Visible-Chunk-Buffer werden einmalig vom
+WebGL-Adapter gehalten. Die Runtime wählt Renderer über `renderProfile.type`;
+Grass besitzt seine Pattern-, Farb-, Patch-, Density-, Geometry- und
+Materialressourcen nun selbst. Vertragstests decken ein fremdes Profil, den
+Austausch des eingebauten Grass-Renderers und vollständiges Cleanup ab.
 
 ### 6. Three.js-Licht und Ground anbinden
 

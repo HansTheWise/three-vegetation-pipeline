@@ -54,7 +54,7 @@ try {
     throw new Error('Production shader did not compile');
   }
   const field = dataset.enabledLayers[0].groundPatchField;
-  const texture = adapter.staticResources.groundPatchFields[0].texture;
+  const texture = view.resources.groundPatchField.texture;
   const checks = [];
   const assertColor = (distance, endpoint, variationByte, strength) => {
     for (let i = 0; i < field.data.length; i += 2) {

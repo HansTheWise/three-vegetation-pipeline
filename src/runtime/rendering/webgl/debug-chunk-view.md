@@ -1,8 +1,10 @@
 # WebGL-Debugansicht für sichtbare Chunks
 
-`WebGLDebugChunkView` ist ein austauschbarer Test-Renderer für die Runtime-
+`WebGLDebugChunkView` ist eine Grass-spezifische Diagnoseansicht der Runtime-
 Pipeline. Er erzeugt eine der Heightmap folgende instanziierte Fläche und
-zeichnet davon eine Instanz pro aktuell sichtbarem Chunk.
+zeichnet davon eine Instanz pro aktuell sichtbarem Chunk. Austauschbare
+produktive Layer-Renderer verwenden stattdessen den
+`WebGLVegetationLayerRendererFactory`-Vertrag.
 
 Der Vertex-Shader liest für jede Instanz:
 
@@ -17,7 +19,8 @@ und eine Spiegelung. Farbige Punkte markieren die Anker in Indexreihenfolge.
 ```ts
 const runtimeDataset = createVegetationRuntimeDataset(parsedVegFile, runtimeConfig);
 const gpuAdapter = new WebGLVegetationAdapter(renderer, runtimeDataset);
-const debugChunks = new WebGLDebugChunkView(gpuAdapter);
+const grass = new WebGLGrassView(gpuAdapter, layerId);
+const debugChunks = new WebGLDebugChunkView(gpuAdapter, grass.resources);
 scene.add(debugChunks.mesh);
 
 // Der Adapter wird wie gewohnt vor dem Rendern aktualisiert.
@@ -25,6 +28,8 @@ gpuAdapter.updateVisibleChunks(visibleChunkIndices, visibleChunkCount);
 
 // Beim Entfernen der Ansicht:
 debugChunks.dispose();
+grass.dispose();
+gpuAdapter.dispose();
 ```
 
 Ein anderer Shader kann über die Option `shader` eingesetzt werden. Er muss

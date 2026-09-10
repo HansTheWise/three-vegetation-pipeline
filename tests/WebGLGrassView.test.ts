@@ -1,4 +1,11 @@
-import { Color, GLSL3, type WebGLRenderer } from 'three';
+import {
+  Color,
+  GLSL3,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  RGFormat,
+  type WebGLRenderer,
+} from 'three';
 import { describe, expect, it, vi } from 'vitest';
 
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
@@ -61,7 +68,12 @@ describe('WebGLGrassView', () => {
     const adapter = createAdapter(groundColorConfig);
     const view = new WebGLGrassView(adapter, 0);
     const field = adapter.dataset.enabledLayers[0]!.groundPatchField!;
-    const resource = adapter.staticResources.groundPatchFields[0]!;
+    const resource = view.resources.groundPatchField!;
+    expect(resource.texture.image.data).toBe(field.data);
+    expect(resource.texture.format).toBe(RGFormat);
+    expect(resource.texture.magFilter).toBe(LinearFilter);
+    expect(resource.texture.minFilter).toBe(LinearMipmapLinearFilter);
+    expect(resource.texture.generateMipmaps).toBe(true);
     for (const { material } of view.densityDraws) {
       expect(material.defines.GROUND_COLOR_TRANSITION).toBe(1);
       expect(material.uniforms.groundPatchField!.value).toBe(resource.texture);
@@ -77,7 +89,7 @@ describe('WebGLGrassView', () => {
     const disposed = vi.fn();
     resource.texture.addEventListener('dispose', disposed);
     view.dispose();
-    expect(disposed).not.toHaveBeenCalled();
+    expect(disposed).toHaveBeenCalledOnce();
     adapter.dispose();
     expect(disposed).toHaveBeenCalledOnce();
   });
@@ -110,7 +122,7 @@ describe('WebGLGrassView', () => {
     expect(view.material.uniforms.activeCellIndices!.value).toBe(view.activeCellBuffer.texture);
     expect(view.material.uniforms.visibleTileRecords!.value).toBe(view.tileBuffer.texture);
     expect(view.material.uniforms.patternPositions!.value)
-      .toBe(adapter.staticResources.patterns[0]!.texture);
+      .toBe(view.resources.pattern.texture);
     expect(view.material.uniforms.bladeHeight!.value.toArray()).toEqual([
       bladeConfig.heightMeters.minimum * 2,
       bladeConfig.heightMeters.maximum * 2,
@@ -121,6 +133,26 @@ describe('WebGLGrassView', () => {
     expect(view.candidatesPerVisibleChunk).toBe(16);
     expect(view.tileDensity.activeCellIndices).toHaveLength(6);
     expect(view.mesh.frustumCulled).toBe(false);
+  });
+
+  it('owns deterministic pattern anchors and Grass color palettes', () => {
+    const view = new WebGLGrassView(createAdapter(), 0);
+    const colors = vegetationRuntimeConfig.layers[0]!.renderProfile.colors;
+
+    expect(view.resources.pattern).toMatchObject({
+      rotatePerCell: true,
+      reflectPerCell: true,
+    });
+    expect(view.resources.pattern.patternSet.anchorsPerPattern).toBe(4);
+    expect(view.resources.pattern.texture.image).toMatchObject({ width: 4, height: 4 });
+    expect(view.resources.pattern.bottomColors)
+      .toMatchObject({ colorCount: colors.bottomColors.length });
+    expect(view.resources.pattern.bottomColors.texture.image)
+      .toMatchObject({ width: colors.bottomColors.length, height: 1 });
+    expect(view.resources.pattern.topColors)
+      .toMatchObject({ colorCount: colors.topColors.length });
+    expect(view.resources.pattern.topColors.texture.image)
+      .toMatchObject({ width: colors.topColors.length, height: 1 });
   });
 
   it('updates one shared Tile buffer and bounds padded GPU candidates below 2x', () => {
@@ -193,18 +225,24 @@ describe('WebGLGrassView', () => {
     expect(grassFragmentShader).toContain('#include <colorspace_fragment>');
   });
 
-  it('disposes bucket resources and both shared textures once', () => {
+  it('disposes bucket, density, pattern, and palette resources once', () => {
     const view = new WebGLGrassView(createAdapter(), 0);
     const geometryDisposed = view.densityDraws.map(() => vi.fn());
     const materialDisposed = view.densityDraws.map(() => vi.fn());
     const tileBufferDisposed = vi.fn();
     const activeCellsDisposed = vi.fn();
+    const patternDisposed = vi.fn();
+    const bottomColorsDisposed = vi.fn();
+    const topColorsDisposed = vi.fn();
     view.densityDraws.forEach((draw, index) => {
       draw.geometry.addEventListener('dispose', geometryDisposed[index]!);
       draw.material.addEventListener('dispose', materialDisposed[index]!);
     });
     view.tileBuffer.texture.addEventListener('dispose', tileBufferDisposed);
     view.activeCellBuffer.texture.addEventListener('dispose', activeCellsDisposed);
+    view.resources.pattern.texture.addEventListener('dispose', patternDisposed);
+    view.resources.pattern.bottomColors.texture.addEventListener('dispose', bottomColorsDisposed);
+    view.resources.pattern.topColors.texture.addEventListener('dispose', topColorsDisposed);
 
     view.dispose();
 
@@ -212,5 +250,8 @@ describe('WebGLGrassView', () => {
     materialDisposed.forEach((listener) => expect(listener).toHaveBeenCalledOnce());
     expect(tileBufferDisposed).toHaveBeenCalledOnce();
     expect(activeCellsDisposed).toHaveBeenCalledOnce();
+    expect(patternDisposed).toHaveBeenCalledOnce();
+    expect(bottomColorsDisposed).toHaveBeenCalledOnce();
+    expect(topColorsDisposed).toHaveBeenCalledOnce();
   });
 });

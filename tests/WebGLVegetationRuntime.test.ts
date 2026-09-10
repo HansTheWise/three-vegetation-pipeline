@@ -1,6 +1,7 @@
 import {
   BufferGeometry,
   DataTexture,
+  Group,
   PerspectiveCamera,
   Scene,
   type Texture,
@@ -17,6 +18,7 @@ import {
   type ParsedVegFile,
   type PreparedVegetationRuntime,
   type VegetationPreparationAdapter,
+  type WebGLVegetationLayerRendererFactory,
   type VegetationDataset,
 } from '../src/index.js';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
@@ -117,9 +119,118 @@ describe('WebGLVegetationRuntime', () => {
     expect(renderer.initTexture).not.toHaveBeenCalled();
   });
 
+  it('routes a custom profile through shared preparation and chunk culling without Grass resources', async () => {
+    const renderer = createRenderer();
+    const prepared = createPreparedRuntimeWithProfile('test-canopy');
+    const object3d = new Group();
+    const updateFrame = vi.fn();
+    const dispose = vi.fn();
+    const factory: WebGLVegetationLayerRendererFactory = {
+      profileType: 'test-canopy',
+      create: vi.fn((context) => {
+        expect(context.adapter.dataset).toBe(prepared.dataset);
+        expect(context.layer).toBe(prepared.dataset.enabledLayers[0]);
+        expect(context.activeCells).toBe(prepared.activeCells[0]);
+        return {
+          object3d,
+          diagnostics: {
+            visibleTileCount: 3,
+            visibleCandidateCount: 5,
+            executedCandidateCount: 8,
+            frustumTestedTileCount: 4,
+            frustumCulledTileCount: 1,
+          },
+          updateFrame,
+          dispose,
+        };
+      }),
+    };
+
+    const runtime = await createWebGLVegetationRuntime({
+      renderer,
+      source: new Uint8Array(),
+      config: vegetationRuntimeConfig,
+      preparation: createPreparation(prepared),
+      layerRenderers: [factory],
+    });
+    const textureNames = renderer.initTexture.mock.calls.map(([texture]) => texture.name);
+    expect(textureNames).not.toContain('vegetation/layer-0-patterns');
+    expect(textureNames).not.toContain('vegetation/layer-0-bottom-colors');
+    expect(runtime.object3d.children).toEqual([object3d]);
+
+    const frameState = {
+      cameraPositionModel: { x: 0, y: 0, z: 0 },
+      clipFromModelMatrix: identityMatrix,
+      clipSpaceDepthRange: 'negative-one-to-one' as const,
+    };
+    runtime.updateFrame(frameState);
+    expect(updateFrame).toHaveBeenCalledWith(frameState);
+    expect(runtime.diagnostics.visibleChunkCount).toBe(1);
+    expect(runtime.diagnostics.layers[0]).toMatchObject({
+      profileType: 'test-canopy',
+      visibleTileCount: 3,
+      visibleCandidateCount: 5,
+      executedCandidateCount: 8,
+      frustumTestedTileCount: 4,
+      frustumCulledTileCount: 1,
+    });
+
+    runtime.dispose();
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it('rejects an unregistered profile before allocating shared GPU resources', async () => {
+    const renderer = createRenderer();
+
+    await expect(createWebGLVegetationRuntime({
+      renderer,
+      source: new Uint8Array(),
+      config: vegetationRuntimeConfig,
+      preparation: createPreparation(createPreparedRuntimeWithProfile('tree')),
+    })).rejects.toThrow('No WebGL vegetation layer renderer is registered for profile "tree".');
+    expect(renderer.initTexture).not.toHaveBeenCalled();
+  });
+
+  it('lets a custom factory replace the built-in Grass renderer', async () => {
+    const renderer = createRenderer();
+    const dispose = vi.fn();
+    const factory: WebGLVegetationLayerRendererFactory = {
+      profileType: 'grass',
+      create: vi.fn(() => ({
+        object3d: new Group(),
+        diagnostics: {
+          visibleTileCount: 0,
+          visibleCandidateCount: 0,
+          executedCandidateCount: 0,
+          frustumTestedTileCount: 0,
+          frustumCulledTileCount: 0,
+        },
+        updateFrame: vi.fn(),
+        dispose,
+      })),
+    };
+
+    const runtime = await createWebGLVegetationRuntime({
+      renderer,
+      source: new Uint8Array(),
+      config: vegetationRuntimeConfig,
+      preparation: createPreparation(createPreparedRuntime()),
+      layerRenderers: [factory],
+    });
+
+    expect(factory.create).toHaveBeenCalledOnce();
+    expect(renderer.initTexture.mock.calls.map(([texture]) => texture.name))
+      .not.toContain('vegetation/layer-0-patterns');
+    runtime.dispose();
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
   it.each([
     'vegetation/chunk-height-ranges',
     'vegetation/visible-chunk-indices',
+    'vegetation/layer-0-patterns',
+    'vegetation/layer-0-bottom-colors',
+    'vegetation/layer-0-density-tiles',
     'vegetation/layer-0-active-cells',
   ])('releases every allocated texture when %s creation fails', async (failureName) => {
     const dispose = vi.spyOn(DataTexture.prototype, 'dispose');
@@ -274,6 +385,26 @@ function createPreparedRuntime(): PreparedVegetationRuntime {
     dataset,
     activeCells: [createVegetationActiveCellData(dataset, 0)],
     preparationMilliseconds: 12.5,
+  };
+}
+
+function createPreparedRuntimeWithProfile(profileType: string): PreparedVegetationRuntime {
+  const prepared = createPreparedRuntime();
+  const sourceLayer = prepared.dataset.enabledLayers[0]!;
+  const layer = {
+    ...sourceLayer,
+    config: {
+      ...sourceLayer.config,
+      renderProfile: { type: profileType },
+    },
+  };
+  return {
+    ...prepared,
+    dataset: {
+      ...prepared.dataset,
+      layers: [layer],
+      enabledLayers: [layer],
+    },
   };
 }
 

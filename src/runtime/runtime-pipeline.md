@@ -57,8 +57,13 @@ flowchart LR
   end
 
   subgraph InitGPU["Einmalig im WebGL-Adapter"]
-    Static["statische GPU-Ressourcen<br/>Grid, Höhen, Masken, Patterns"]
+    Static["gemeinsame GPU-Ressourcen<br/>Grid, Höhen, Masken"]
     VisibleBuffer["Visible-Chunk-Buffer"]
+  end
+
+  subgraph LayerGPU["Einmalig pro Layer-Renderer"]
+    Registry["Renderer-Registry<br/>Auswahl über Profiltyp"]
+    ProfileResources["Profilressourcen<br/>Grass: Pattern, Paletten, Patchfeld"]
   end
 
   subgraph FrameCPU["Pro Frame auf der CPU"]
@@ -84,6 +89,7 @@ flowchart LR
   Dataset --> Boxes
   Dataset --> Static
   Dataset --> VisibleBuffer
+  Dataset --> Registry --> ProfileResources
 
   Camera --> CameraAdapter --> Matrix --> Runtime --> Frustum
   SceneAdapter --> CameraAdapter
@@ -97,6 +103,7 @@ flowchart LR
   CellHash --> Debug
 
   Static --> Production
+  ProfileResources --> Production
   VisibleBuffer --> Production
   CellHash --> Production
   CellHash --> AnchorHash
@@ -109,7 +116,8 @@ flowchart LR
 ### Runtime-Fassade und Vorbereitung
 
 `createWebGLVegetationRuntime` besitzt Dataset, gemeinsame Bounds,
-Frustum-Culling, WebGL-Ressourcen und die aktuell eingebauten Grass-Views. Die
+Frustum-Culling, gemeinsame WebGL-Ressourcen und die registrierten
+Layer-Renderer. Die
 Factory ist asynchron, damit synchrone und Worker-basierte Vorbereitung dieselbe
 Schnittstelle verwenden. Der Standard `SynchronousVegetationPreparation`
 arbeitet auf dem aufrufenden Thread. `WorkerVegetationPreparation` verschiebt
@@ -195,12 +203,25 @@ berechnet. Sie sind Zahlendaten und keine unsichtbaren Three.js-Meshes.
 - Gridkoordinaten pro gespeichertem Chunk;
 - minimale und maximale Chunkhöhe;
 - quantisierte Heightmaps;
-- bitgepackte Layer-Masken;
-- normalisierte Pattern-Anker;
-- aktivierte globale RG-Patch-Felder mit linearer Filterung und Mipmaps.
+- bitgepackte Layer-Masken.
 
 `WebGLVisibleChunkBuffer` reserviert zusätzlich einmalig Platz für maximal alle
 gespeicherten Chunkindizes.
+
+### 5. Layer-Renderer
+
+Die Runtime wählt für jeden aktivierten Layer über
+`renderProfile.type` genau eine `WebGLVegetationLayerRendererFactory`. Das
+eingebaute Profil `grass` erzeugt eine `WebGLGrassView`. Zusätzliche Profile
+werden beim Erzeugen der Runtime über `layerRenderers` registriert; eine
+benutzerdefinierte Factory desselben Profiltyps ersetzt die eingebaute.
+
+Jeder Renderer erhält dasselbe Dataset, den gemeinsamen WebGL-Adapter und die
+vorbereiteten aktiven Cells seines Layers. Er besitzt ausschließlich seine
+profilspezifischen Ressourcen. Bei Grass sind das Patterntextur, Farbpaletten,
+optionales RG-Patch-Feld, Density-Tile- und Active-Cell-Buffer sowie Geometrien
+und Materialien. Gemeinsame VEGFILE-Texturen und die sichtbaren Chunkindizes
+werden dadurch nicht pro Layer-Renderer dupliziert.
 
 ## Verarbeitung pro Frame
 
@@ -241,7 +262,8 @@ produktiven Vegetationsrenderer getrennt.
 
 ### 4. Statischer WebGL-Grasrenderer
 
-`WebGLGrassView` verwendet eine einmalig vorberechnete, seedbasiert gemischte
+Die eingebaute `WebGLGrassView` verwendet eine einmalig vorberechnete,
+seedbasiert gemischte
 Liste maskenaktiver Cells. Nach dem Chunk-Culling verwirft ein zweiter
 Frustumtest nicht sichtbare Render-Tiles. Drei kontinuierliche Distanzkurven
 bestimmen für die verbleibenden Tiles die Cell-, Anchor- und Elementbudgets.

@@ -5,6 +5,13 @@ Aufbau erzeugt `VegetationRenderTileDensity` aus der Vegetationsmaske eine
 kompakte, deterministisch geordnete Liste aktiver Cells. Maskeninaktive Cells
 starten deshalb keinen Vertex-Shader mehr.
 
+Die Ansicht ist der eingebaute Renderer für `renderProfile.type: 'grass'` und
+wird von `WebGLGrassLayerRendererFactory` erzeugt. Ihre
+`WebGLGrassLayerResources` besitzen Patterntextur, untere und obere
+Farbpalette sowie das optionale Ground-Patch-Feld. Der gemeinsame Adapter
+enthält dagegen nur VEGFILE- und Chunk-Sichtbarkeitsdaten. `dispose()` gibt
+alle Grass-eigenen Buffer, Texturen, Geometrien und Materialien frei.
+
 ## Frame-Ablauf
 
 ```text

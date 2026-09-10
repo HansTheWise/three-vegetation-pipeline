@@ -13,6 +13,7 @@ import {
 
 import type { Axis } from '../../../offline/config/types.js';
 import type { WebGLVegetationAdapter } from '../../gpu/webgl/WebGLVegetationAdapter.js';
+import type { WebGLGrassLayerResources } from './WebGLGrassLayerResources.js';
 import { debugChunkFragmentShader } from './shaders/debugChunkFragmentShader.js';
 import { debugChunkVertexShader } from './shaders/debugChunkVertexShader.js';
 import type { WebGLShaderSource } from './types.js';
@@ -23,7 +24,6 @@ export type WebGLDebugChunkViewOptions = Readonly<{
   oddChunkColor?: ColorRepresentation;
   opacity?: number;
   heightOffsetMeters?: number;
-  layerId?: number;
 }>;
 
 const defaultShader: WebGLShaderSource = {
@@ -39,6 +39,7 @@ export class WebGLDebugChunkView {
 
   constructor(
     adapter: WebGLVegetationAdapter,
+    grassResources: Pick<WebGLGrassLayerResources, 'layerId' | 'pattern'>,
     options: WebGLDebugChunkViewOptions = {},
   ) {
     const opacity = options.opacity ?? 0.65;
@@ -48,17 +49,12 @@ export class WebGLDebugChunkView {
     const { header } = adapter.staticResources;
     const [horizontalAxisA, horizontalAxisB] = header.coordinateSystem.horizontalAxes;
     const shader = options.shader ?? defaultShader;
-    const patternResource = options.layerId === undefined
-      ? adapter.staticResources.patterns[0]
-      : adapter.staticResources.patterns.find((pattern) => pattern.layerId === options.layerId);
-    if (!patternResource) {
-      throw new Error('Debug cell view requires runtime pattern resources.');
-    }
+    const patternResource = grassResources.pattern;
     const layerMask = adapter.staticResources.layerMasks.find(
-      (resource) => resource.layerId === patternResource.layerId,
+      (resource) => resource.layerId === grassResources.layerId,
     );
     if (!layerMask) {
-      throw new Error(`Debug pattern layer ${patternResource.layerId} has no VEGFILE mask.`);
+      throw new Error(`Debug pattern layer ${grassResources.layerId} has no VEGFILE mask.`);
     }
     this.geometry = createChunkTileGeometry(header.heightMap.resolution);
     this.material = new RawShaderMaterial({
@@ -81,7 +77,7 @@ export class WebGLDebugChunkView {
         layerMask: { value: layerMask.texture },
         patternPositions: { value: patternResource.texture },
         seed: { value: header.seed },
-        layerId: { value: patternResource.layerId },
+        layerId: { value: grassResources.layerId },
         patternCount: { value: patternResource.patternSet.patternCount },
         maskResolution: { value: layerMask.maskResolution },
         visibleAnchorCount: { value: patternResource.patternSet.anchorsPerPattern },

@@ -16,6 +16,7 @@ import type { Axis } from '../../../offline/config/types.js';
 import type { ClipSpaceDepthRange, Matrix4Elements } from '../../chunking/types.js';
 import { VegetationRenderTileDensity } from '../../density/VegetationRenderTileDensity.js';
 import type { ModelPosition, VegetationActiveCellData } from '../../density/types.js';
+import type { VegetationFrameState } from '../../frame/types.js';
 import { WebGLActiveCellBuffer } from '../../gpu/webgl/WebGLActiveCellBuffer.js';
 import { validateWebGLInstanceCount } from '../../gpu/webgl/limits.js';
 import { WebGLVisibleTileBuffer } from '../../gpu/webgl/WebGLVisibleTileBuffer.js';
@@ -23,6 +24,11 @@ import type { WebGLVegetationAdapter } from '../../gpu/webgl/WebGLVegetationAdap
 import {
   requireGrassRuntimeLayerConfig,
 } from '../../profiles/grass/GrassRenderProfile.js';
+import { WebGLGrassLayerResources } from './WebGLGrassLayerResources.js';
+import type {
+  WebGLVegetationLayerRenderer,
+  WebGLVegetationLayerRendererDiagnostics,
+} from './WebGLVegetationLayerRenderer.js';
 import { grassFragmentShader } from './shaders/grassFragmentShader.js';
 import { grassVertexShader } from './shaders/grassVertexShader.js';
 
@@ -35,11 +41,13 @@ export type WebGLGrassDensityDraw = Readonly<{
 }>;
 
 /** Draws exact continuous tile densities through bounded GPU capacity buckets. */
-export class WebGLGrassView {
+export class WebGLGrassView implements WebGLVegetationLayerRenderer {
   readonly geometry: InstancedBufferGeometry;
   readonly material: ShaderMaterial;
   readonly mesh: Mesh<InstancedBufferGeometry, ShaderMaterial>;
+  readonly object3d: Mesh<InstancedBufferGeometry, ShaderMaterial>;
   readonly densityDraws: readonly WebGLGrassDensityDraw[];
+  readonly resources: WebGLGrassLayerResources;
   readonly layerId: number;
   readonly candidatesPerVisibleChunk: number;
   readonly tileDensity: VegetationRenderTileDensity;
@@ -60,13 +68,10 @@ export class WebGLGrassView {
     if (!layer) {
       throw new Error(`Enabled runtime grass layer ${layerId} does not exist.`);
     }
-    const patternResource = adapter.staticResources.patterns.find(
-      (candidate) => candidate.layerId === layerId,
-    );
     const layerMask = adapter.staticResources.layerMasks.find(
       (candidate) => candidate.layerId === layerId,
     );
-    if (!patternResource || !layerMask) {
+    if (!layerMask) {
       throw new Error(`Runtime grass layer ${layerId} has incomplete WebGL resources.`);
     }
     const grassLayer = requireGrassRuntimeLayerConfig(layer.config);
@@ -75,12 +80,13 @@ export class WebGLGrassView {
     this.layerId = layerId;
     this.tileDensity = new VegetationRenderTileDensity(adapter.dataset, layerId, preparedCells);
     this.candidatesPerVisibleChunk = layerMask.maskResolution ** 2
-      * patternResource.patternSet.anchorsPerPattern
+      * layer.patterns.anchorsPerPattern
       * layer.config.distribution.elementsPerAnchor;
     const maximumInstanceCount = this.tileDensity.tileCapacity
       * this.tileDensity.maximumCandidatesPerTile;
     validateWebGLInstanceCount(maximumInstanceCount, `Grass layer ${layerId}`);
 
+    const resources = new WebGLGrassLayerResources(adapter.renderer, layer);
     let tileBuffer: WebGLVisibleTileBuffer | undefined;
     let activeCellBuffer: WebGLActiveCellBuffer | undefined;
     const densityDraws: WebGLGrassDensityDraw[] = [];
@@ -95,6 +101,7 @@ export class WebGLGrassView {
         this.tileDensity.activeCellIndices,
         `vegetation/layer-${layerId}-active-cells`,
       );
+      const createdResources = resources;
       const createdTileBuffer = tileBuffer;
       const createdActiveCellBuffer = activeCellBuffer;
       this.tileDensity.bucketCapacities.forEach((candidateCapacity, bucketIndex) => {
@@ -108,6 +115,7 @@ export class WebGLGrassView {
             tileBuffer: createdTileBuffer,
             activeCellBuffer: createdActiveCellBuffer,
             cameraPositionModel: this.#cameraPositionModel,
+            resources: createdResources,
           });
         } catch (error) {
           geometry.dispose();
@@ -127,14 +135,17 @@ export class WebGLGrassView {
       }
       activeCellBuffer?.dispose();
       tileBuffer?.dispose();
+      resources.dispose();
       throw error;
     }
+    this.resources = resources;
     this.tileBuffer = tileBuffer;
     this.activeCellBuffer = activeCellBuffer;
     this.densityDraws = densityDraws;
     this.geometry = this.densityDraws[0]!.geometry;
     this.material = this.densityDraws[0]!.material;
     this.mesh = this.densityDraws[0]!.mesh;
+    this.object3d = this.mesh;
     for (let bucketIndex = 1; bucketIndex < this.densityDraws.length; bucketIndex += 1) {
       this.mesh.add(this.densityDraws[bucketIndex]!.mesh);
     }
@@ -152,6 +163,26 @@ export class WebGLGrassView {
   /** Submitted blade instances including capacity-bucket padding, not vertex invocations. */
   get executedCandidateCount(): number {
     return this.densityDraws.reduce((sum, draw) => sum + draw.geometry.instanceCount, 0);
+  }
+
+  get frustumTestedTileCount(): number {
+    return this.tileDensity.frustumTestedTileCount;
+  }
+
+  get frustumCulledTileCount(): number {
+    return this.tileDensity.frustumCulledTileCount;
+  }
+
+  get diagnostics(): WebGLVegetationLayerRendererDiagnostics {
+    return this;
+  }
+
+  updateFrame(frameState: VegetationFrameState): void {
+    this.updateDensity(
+      frameState.cameraPositionModel,
+      frameState.clipFromModelMatrix,
+      frameState.clipSpaceDepthRange,
+    );
   }
 
   /** Updates continuous tile density from the model-local culling camera. */
@@ -189,6 +220,7 @@ export class WebGLGrassView {
     }
     this.tileBuffer.dispose();
     this.activeCellBuffer.dispose();
+    this.resources.dispose();
   }
 }
 
@@ -199,14 +231,13 @@ type GrassMaterialOptions = Readonly<{
   tileBuffer: WebGLVisibleTileBuffer;
   activeCellBuffer: WebGLActiveCellBuffer;
   cameraPositionModel: Vector3;
+  resources: WebGLGrassLayerResources;
 }>;
 
 function createGrassMaterial(options: GrassMaterialOptions): ShaderMaterial {
   const { adapter, layerId } = options;
   const layer = adapter.dataset.enabledLayers.find((candidate) => candidate.layerId === layerId)!;
-  const patternResource = adapter.staticResources.patterns.find(
-    (candidate) => candidate.layerId === layerId,
-  )!;
+  const patternResource = options.resources.pattern;
   const { header } = adapter.staticResources;
   const [horizontalAxisA, horizontalAxisB] = header.coordinateSystem.horizontalAxes;
   const unitsPerMeter = header.coordinateSystem.unitsPerMeter;
@@ -215,9 +246,7 @@ function createGrassMaterial(options: GrassMaterialOptions): ShaderMaterial {
   const distanceColor = profile.colors.distanceColorTransition;
   const groundTransition = 'target' in distanceColor ? distanceColor : undefined;
   const groundField = layer.groundPatchField;
-  const groundTexture = adapter.staticResources.groundPatchFields.find(
-    (field) => field.layerId === layerId,
-  )?.texture;
+  const groundTexture = options.resources.groundPatchField?.texture;
   if (groundTransition && (!groundField || !groundTexture)) {
     throw new Error(`Grass layer ${layerId} needs a ground patch field for its color transition.`);
   }
