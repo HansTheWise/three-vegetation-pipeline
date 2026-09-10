@@ -138,9 +138,6 @@ function readLayerMetadata(view: DataView, layerIndex: number) {
 }
 function createWriterConfig(heightValueBits: HeightValueBits): VegWriterConfig {
   return {
-    format: 'veg',
-    fileVersion: 1,
-    byteOrder: 'little-endian',
     heightValueBits,
   };
 }

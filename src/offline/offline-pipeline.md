@@ -51,7 +51,14 @@ flowchart LR
 
 Die GLB-Datei liefert Geometrie, Hierarchie, Transformationen, Mesh- und
 Materialnamen. Die Offline-Config legt Auswahlregeln, Koordinatensystem,
-Chunkgröße, Heightmap- und Maskenauflösungen, Seed sowie das Writerformat fest.
+Chunkgröße, Heightmap- und Maskenauflösungen, Seed sowie die Höhenquantisierung
+fest.
+
+Feststehende Implementierungsentscheidungen werden nicht als scheinbare
+Auswahlfelder ausgegeben: Der aktuelle Compiler liest GLB über Three.js,
+arbeitet modelllokal, verwendet ein festes Chunk-/Samplingverfahren und schreibt
+VEGFILE v1 little-endian. Erst ein zweiter tatsächlich implementierter Weg
+rechtfertigt dafür einen Strategievertrag.
 
 Der Configvertrag liegt in `config/types.ts`. Projektbezogene
 Extraktionskonfigurationen bleiben im jeweiligen Consumer.

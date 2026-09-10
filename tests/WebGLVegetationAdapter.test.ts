@@ -203,7 +203,7 @@ describe('WebGLStaticVegetationResources', () => {
       reflectPerCell: true,
     });
     expect(resources.patterns[0]!.patternSet.anchorsPerPattern).toBe(4);
-    const colors = vegetationRuntimeConfig.layers[0]!.colors;
+    const colors = vegetationRuntimeConfig.layers[0]!.renderProfile.colors;
     expect(resources.patterns[0]!.texture.image).toMatchObject({ width: 4, height: 4 });
     expect(resources.patterns[0]!.bottomColors)
       .toMatchObject({ colorCount: colors.bottomColors.length });

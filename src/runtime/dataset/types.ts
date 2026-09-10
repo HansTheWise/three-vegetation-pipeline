@@ -1,4 +1,8 @@
-import type { VegetationRuntimeConfig, VegetationRuntimeLayerConfig } from '../config/types.js';
+import type {
+  VegetationRenderBounds,
+  VegetationRuntimeConfig,
+  VegetationRuntimeLayerConfig,
+} from '../config/types.js';
 import type { VegetationPatternSet } from '../patterns/types.js';
 import type { ParsedVegFile, ParsedVegLayer } from '../parser/types.js';
 import type { GroundPatchField } from '../patches/types.js';
@@ -21,4 +25,6 @@ export type VegetationRuntimeDataset = Readonly<{
   config: VegetationRuntimeConfig;
   layers: readonly VegetationRuntimeLayer[];
   enabledLayers: readonly VegetationRuntimeLayer[];
+  /** Conservative bounds shared by coarse runtime culling. */
+  renderBounds: VegetationRenderBounds;
 }>;

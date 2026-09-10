@@ -118,7 +118,7 @@ function writeHeader(
   for (let index = 0; index < VEG_MAGIC_BYTES.length; index += 1) {
     view.setUint8(VEG_HEADER_OFFSET.magic + index, VEG_MAGIC_BYTES[index]!);
   }
-  view.setUint16(VEG_HEADER_OFFSET.version, config.fileVersion, true);
+  view.setUint16(VEG_HEADER_OFFSET.version, VEG_FORMAT_VERSION, true);
   view.setUint16(VEG_HEADER_OFFSET.headerSize, VEG_HEADER_SIZE, true);
   view.setUint32(VEG_HEADER_OFFSET.flags, 0, true);
   view.setUint32(VEG_HEADER_OFFSET.fileSize, layout.fileSize, true);
@@ -268,13 +268,6 @@ function writeMasks(
 }
 
 function validateWriterConfig(config: VegWriterConfig): void {
-  if (config.format !== 'veg') throw new Error('Writer format must be "veg".');
-  if (config.fileVersion !== VEG_FORMAT_VERSION) {
-    throw new Error(`Unsupported .veg file version ${config.fileVersion}.`);
-  }
-  if (config.byteOrder !== 'little-endian') {
-    throw new Error('VEGFILE v1 uses little-endian byte order.');
-  }
   if (![8, 16, 32].includes(config.heightValueBits)) {
     throw new Error('heightValueBits must be 8, 16 or 32.');
   }

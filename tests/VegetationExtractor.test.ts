@@ -141,7 +141,6 @@ describe('extractVegetation', () => {
     const invalidAxes = {
       ...createConfig(),
       coordinateSystem: {
-        space: 'model-local',
         upAxis: 'z',
         horizontalAxes: ['x', 'z'],
         unitsPerMeter: 1,
@@ -180,14 +179,11 @@ type ConfigOverrides = Readonly<{
 function createConfig(overrides: ConfigOverrides = {}): VegetationExtractionConfig {
   return {
     coordinateSystem: {
-      space: 'model-local',
       upAxis: 'z',
       horizontalAxes: ['x', 'y'],
       unitsPerMeter: 1,
     },
     source: {
-      format: 'glb',
-      reader: 'three-gltf-loader',
       includeInvisibleObjects: false,
       heightSurfaceSelector: {
         any: [{
@@ -203,18 +199,13 @@ function createConfig(overrides: ConfigOverrides = {}): VegetationExtractionConf
         manualValue: 42,
       },
       grid: {
-        strategy: 'fixed-world-size',
         chunkSize: 4,
-        origin: { mode: 'snap-to-height-surface-bounds' },
-        boundsSource: 'height-surfaces',
         includeEmptyChunks: false,
       },
       heightMap: {
         resolution: 3,
-        samplePlacement: 'include-chunk-borders',
       },
       vegetationMask: {
-        cellActivation: 'triangle-overlap',
         allowLayerOverlap: overrides.allowLayerOverlap ?? true,
       },
       vegetationLayers: overrides.layers ?? [createLayer(0, 'grass', 'grass')],

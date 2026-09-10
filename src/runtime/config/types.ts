@@ -27,38 +27,25 @@ export type VegetationPatternConfig = Readonly<{
   reflectPerCell: boolean;
 }>;
 
-export type VegetationRuntimeLayerConfig = Readonly<{
-  /** Stable layer ID read from the .veg layer metadata. */
-  layerId: number;
-  key: string;
-  enabled: boolean;
-  patches: PatchConfig;
+export type VegetationRenderBounds = Readonly<{
+  horizontalPaddingMeters: number;
+  belowSurfaceMeters: number;
+  aboveSurfaceMeters: number;
+}>;
 
-  distribution: Readonly<{
-    /** Tuft centers per active Cell at full density. */
-    anchorsPerCell: number;
-    /** Grass blades per tuft at full density. */
-    elementsPerAnchor: number;
-    /** Maximum radial root offset, clipped to the Cell boundary. */
-    elementRadiusMeters: number;
-  }>;
+export type VegetationRenderProfileConfig = Readonly<{
+  type: string;
+}> & Readonly<Record<string, unknown>>;
 
-  visibility: Readonly<{
-    maximumDistanceMeters: number;
-  }>;
+export type VegetationLayerLightingConfig = Readonly<Record<string, unknown>>;
 
-  density: Readonly<{
-    /** Maximum number of vegetation Cells along one render-tile edge. */
-    renderTileSizeCells: number;
-    /** Fraction of mask-active Cells admitted into the tile. */
-    activeCells: readonly VegetationDensityCurvePoint[];
-    /** Fraction of the admitted Cells' maximum Anchor capacity. */
-    activeAnchors: readonly VegetationDensityCurvePoint[];
-    /** Fraction of the admitted Anchors' maximum Element capacity. */
-    activeElements: readonly VegetationDensityCurvePoint[];
-  }>;
+export type GrassLayerLightingConfig = VegetationLayerLightingConfig & Readonly<{
+  /** Direct sun contribution before an optional ground-color transition. */
+  directLightWeight: number;
+}>;
 
-  pattern: Omit<VegetationPatternConfig, 'anchorsPerCell'>;
+export type GrassRenderProfileConfig = VegetationRenderProfileConfig & Readonly<{
+  type: 'grass';
 
   blade: Readonly<{
     segments: number;
@@ -99,19 +86,64 @@ export type VegetationRuntimeLayerConfig = Readonly<{
       top: VegetationColorDistanceCurve;
     }>;
   }>;
-
-  lighting: Readonly<{
-    /** Near-grass direct sun contribution; ground-color transitions converge to full Lambert light. */
-    directLightWeight: number;
-  }>;
-
-  shadows: Readonly<{
-    receive: boolean;
-  }>;
 }>;
 
+export type VegetationRuntimeLayerConfig<
+  TProfile extends VegetationRenderProfileConfig = VegetationRenderProfileConfig,
+  TLighting extends VegetationLayerLightingConfig = VegetationLayerLightingConfig,
+> = Readonly<{
+  /** Stable layer ID read from the .veg layer metadata. */
+  layerId: number;
+  key: string;
+  enabled: boolean;
+  patches: PatchConfig;
+  renderBounds: VegetationRenderBounds;
+
+  distribution: Readonly<{
+    /** Anchors per active Cell at full density. */
+    anchorsPerCell: number;
+    /** Renderable Elements per Anchor at full density. */
+    elementsPerAnchor: number;
+    /** Maximum radial Element offset, clipped to the Cell boundary. */
+    elementRadiusMeters: number;
+  }>;
+
+  visibility: Readonly<{
+    maximumDistanceMeters: number;
+  }>;
+
+  density: Readonly<{
+    /** Maximum number of vegetation Cells along one render-tile edge. */
+    renderTileSizeCells: number;
+    /** Fraction of mask-active Cells admitted into the tile. */
+    activeCells: readonly VegetationDensityCurvePoint[];
+    /** Fraction of the admitted Cells' maximum Anchor capacity. */
+    activeAnchors: readonly VegetationDensityCurvePoint[];
+    /** Fraction of the admitted Anchors' maximum Element capacity. */
+    activeElements: readonly VegetationDensityCurvePoint[];
+  }>;
+
+  pattern: Omit<VegetationPatternConfig, 'anchorsPerCell'>;
+
+  lighting: TLighting;
+
+  shadows: Readonly<{
+    cast: boolean;
+    receive: boolean;
+  }>;
+
+  renderProfile: TProfile;
+}>;
+
+export type GrassRuntimeLayerConfig = VegetationRuntimeLayerConfig<
+  GrassRenderProfileConfig,
+  GrassLayerLightingConfig
+>;
+
 /** Pure frontend data. Algorithm and module references deliberately live elsewhere. */
-export type VegetationRuntimeConfig = Readonly<{
-  configVersion: 2;
-  layers: readonly VegetationRuntimeLayerConfig[];
+export type VegetationRuntimeConfig<
+  TLayer extends VegetationRuntimeLayerConfig = VegetationRuntimeLayerConfig,
+> = Readonly<{
+  configVersion: 3;
+  layers: readonly TLayer[];
 }>;

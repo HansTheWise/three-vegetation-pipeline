@@ -48,7 +48,7 @@ flowchart LR
   DatasetBuilder --> Patterns --> Dataset
   DatasetBuilder --> Patches --> Dataset
   DatasetBuilder --> Dataset
-  Parsed --> Boxes
+  Dataset --> Boxes
   Dataset --> Static
   Dataset --> VisibleBuffer
 
@@ -89,7 +89,14 @@ stabile Layer-IDs. Dabei werden:
 - Cell-Größen in Modell- und Metereinheiten berechnet;
 - progressive Anchor-Patterns aus VEGFILE-Seed und Layerconfig erzeugt;
 - aktivierte Patch-Felder einmalig erzeugt;
-- aktivierte Layer als eigene Ansicht bereitgestellt.
+- aktivierte Layer als eigene Ansicht bereitgestellt;
+- die größten aktiven `VegetationRenderBounds` für das gemeinsame grobe
+  Chunk-Culling kombiniert.
+
+Gemeinsame Layerwerte enthalten Pattern, Verteilung, Density/LOD,
+Sichtbarkeit, Lighting und Shadows. Geometrie- und Shaderwerte liegen hinter
+dem diskriminierten `renderProfile`. Das eingebaute Grass-Profil wird dadurch
+nicht zum Pflichtschema für spätere Baum- oder Buschmodule.
 
 Das Dataset kopiert die großen VEGFILE-Datenbereiche nicht.
 
@@ -100,7 +107,8 @@ vorbereiteten Arrays; die kamerabhängigen Distanzbudgets bleiben unverändert.
 
 ### 3. Chunk-Begrenzungsboxen
 
-`createChunkBoundingBoxes` erzeugt für jeden gespeicherten Chunk sechs Werte:
+`createRuntimeChunkBoundingBoxes` erzeugt für jeden gespeicherten Chunk sechs
+Werte und berücksichtigt dabei die kombinierten Profil-Bounds:
 
 ```text
 minimumX, minimumY, minimumZ, maximumX, maximumY, maximumZ
@@ -137,7 +145,8 @@ visibleChunkIndices[0 .. visibleChunkCount)
 
 Die groben Chunk-Boxen bleiben der erste günstige Filter. Die anschließende
 Tile-Dichteberechnung prüft jede maskenaktive Render-Tile-Box mit denselben
-Frustumebenen, bevor sie Distanzbudgets berechnet oder einen GPU-Record schreibt.
+Frustumebenen und den Bounds des jeweiligen Layers, bevor sie Distanzbudgets
+berechnet oder einen GPU-Record schreibt.
 
 ### 2. Upload der sichtbaren Chunks
 

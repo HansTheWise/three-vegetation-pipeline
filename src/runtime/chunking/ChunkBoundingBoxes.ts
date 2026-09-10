@@ -1,21 +1,23 @@
 import type { Axis } from '../../offline/config/types.js';
+import type { VegetationRenderBounds } from '../config/types.js';
+import type { VegetationRuntimeDataset } from '../dataset/types.js';
 import type { ParsedVegFile } from '../parser/types.js';
 import type { ChunkBoundingBoxes } from './types.js';
 
-const HORIZONTAL_PADDING_METERS = 0.25;
-const BELOW_PADDING_METERS = 0;
-const ABOVE_PADDING_METERS = 0.25;
 const COORDINATES_PER_BOUNDING_BOX = 6;
 
 /** Builds one model-local bounding box for each stored vegetation chunk. */
-export function createChunkBoundingBoxes(file: ParsedVegFile): ChunkBoundingBoxes {
-  validatePadding(HORIZONTAL_PADDING_METERS, 'horizontal');
-  validatePadding(BELOW_PADDING_METERS, 'below');
-  validatePadding(ABOVE_PADDING_METERS, 'above');
+export function createChunkBoundingBoxes(
+  file: ParsedVegFile,
+  renderBounds: VegetationRenderBounds,
+): ChunkBoundingBoxes {
+  validatePadding(renderBounds.horizontalPaddingMeters, 'horizontal');
+  validatePadding(renderBounds.belowSurfaceMeters, 'below');
+  validatePadding(renderBounds.aboveSurfaceMeters, 'above');
   const unitsPerMeter = file.header.coordinateSystem.unitsPerMeter;
-  const horizontalPaddingUnits = HORIZONTAL_PADDING_METERS * unitsPerMeter;
-  const belowPaddingUnits = BELOW_PADDING_METERS * unitsPerMeter;
-  const abovePaddingUnits = ABOVE_PADDING_METERS * unitsPerMeter;
+  const horizontalPaddingUnits = renderBounds.horizontalPaddingMeters * unitsPerMeter;
+  const belowPaddingUnits = renderBounds.belowSurfaceMeters * unitsPerMeter;
+  const abovePaddingUnits = renderBounds.aboveSurfaceMeters * unitsPerMeter;
   const minMaxCoordinates = new Float32Array(
     file.header.storedChunkCount * COORDINATES_PER_BOUNDING_BOX,
   );
@@ -59,6 +61,13 @@ export function createChunkBoundingBoxes(file: ParsedVegFile): ChunkBoundingBoxe
     storedChunkCount: file.header.storedChunkCount,
     minMaxCoordinates,
   };
+}
+
+/** Uses the largest enabled layer bounds for one shared coarse culling pass. */
+export function createRuntimeChunkBoundingBoxes(
+  dataset: VegetationRuntimeDataset,
+): ChunkBoundingBoxes {
+  return createChunkBoundingBoxes(dataset.file, dataset.renderBounds);
 }
 
 function setBoundingBoxAxis(

@@ -106,7 +106,7 @@ describe('WebGLGrassView', () => {
   it('binds compact active Cells and fixed layer resources', () => {
     const adapter = createAdapter();
     const view = new WebGLGrassView(adapter, 0);
-    const bladeConfig = vegetationRuntimeConfig.layers[0]!.blade;
+    const bladeConfig = vegetationRuntimeConfig.layers[0]!.renderProfile.blade;
     expect(view.material.uniforms.activeCellIndices!.value).toBe(view.activeCellBuffer.texture);
     expect(view.material.uniforms.visibleTileRecords!.value).toBe(view.tileBuffer.texture);
     expect(view.material.uniforms.patternPositions!.value)

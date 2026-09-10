@@ -1,6 +1,6 @@
 # Implementierungsroadmap
 
-Stand: 9. September 2026
+Stand: 10. September 2026
 
 ## Zielbild
 
@@ -25,7 +25,7 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 | WebGL-Grassrenderer | Fertig für den aktuellen Funktionsstand | GPU-Platzierung, Heightmap-Sampling, Geometrie, Farben, Ground-Übergang, Kameraausrichtung, Szenenlicht und eingehende Schatten |
 | Debug und Messung | Vorhanden | Chunk-/Cell-/Frustumdarstellung, Kandidaten- und GPU-Diagnostik, Browsercheck und Patch-Benchmark |
 | Öffentliche Runtime-Fassade | Offen | Anwendung verdrahtet Parser, Culling, GPU-Adapter, Renderer und Cleanup noch selbst |
-| Austauschbare Renderprofile | Offen | Grass ist direkt in Runtime-Config und WebGL-Ressourcen eingebettet |
+| Austauschbare Renderprofile | Vertrag fertig | Neutrale Layerwerte, diskriminierte Profile, gemeinsamer Bounds-Vertrag und anpassbares Grass-Preset; Renderer-Registry folgt |
 | Licht- und Ground-Adapter | Teilweise vorhanden | Three.js-Szenenlicht funktioniert, besitzt aber noch keine eigene Adaptergrenze; Ground-Patching liegt im Consumer |
 
 ## Nächste Schritte
@@ -46,7 +46,7 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 - Campus-Surface-Namen ausschließlich im I-CAKA-Consumer halten;
 - portable Unit-Tests von expliziten Consumer-Integrationstests trennen.
 
-### 3. Runtime- und Renderprofilverträge stabilisieren
+### 3. Runtime- und Renderprofilverträge stabilisieren — abgeschlossen
 
 - globale Renderer-, Chunking- und Culling-Infrastruktur von allen
   layerspezifischen Einstellungen trennen;
@@ -54,9 +54,7 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 - profilabhängige Geometrie- und Shaderwerte aus dem neutralen Layervertrag
   lösen und Grass als anpassbares Standardpreset bereitstellen;
 - gemeinsame, profilabhängige Render-Bounds im globalen Chunk- und
-  Tile-Culling verwenden;
-- gemeinsame WebGL-Assetressourcen von Grass-Ressourcen trennen;
-- Layer-Renderer über eine kleine Factory-/Registry-Grenze erzeugen.
+  Tile-Culling verwenden.
 
 ### 4. Öffentliche Runtime-Fassade ergänzen
 
@@ -69,7 +67,14 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 - Fehler während der Initialisierung transaktional aufräumen;
 - synchrone und Worker-basierte Vorbereitung über dieselbe Grenze anbieten.
 
-### 5. Three.js-Licht und Ground anbinden
+### 5. Layer-Renderer und GPU-Ressourcen modularisieren
+
+- gemeinsame VEGFILE-GPU-Ressourcen von Grass-Ressourcen trennen;
+- Layer-Renderer über eine kleine Factory-/Registry-Grenze erzeugen;
+- Grass über das eingebaute Profil registrieren und einen neutralen
+  Testrenderer als Vertragstest verwenden.
+
+### 6. Three.js-Licht und Ground anbinden
 
 - vorhandene Three.js-Licht-, Shadow-, Tone-Mapping- und Color-Space-Chunks als
   Standard-Lichtadapter kapseln;
@@ -81,7 +86,7 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
   Albedo-Strategie dem Consumer überlassen;
 - I-CAKA auf einen kleinen R3F-Lifecycle-Wrapper reduzieren.
 
-### 6. Paket und Release absichern
+### 7. Paket und Release absichern
 
 - stabile Root- und Subpath-Exports definieren;
 - Paket in einem temporären Three.js-Verbraucher installieren und bauen;

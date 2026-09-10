@@ -18,6 +18,11 @@ GLB-Datei
 
 Die Kommandozeile übernimmt lediglich Pfade und lädt die Config. Reader, Extraktion und Binärkodierung bleiben in ihren jeweiligen Modulen.
 
+Die Config enthält nur veränderbare Werte. GLB-Reader, modelllokaler Raum,
+Chunk-/Samplingverfahren sowie VEGFILE-v1-Format und Byte-Reihenfolge sind
+Eigenschaften der implementierten Pipeline und keine wirkungslosen
+Ein-Auswahl-Optionen.
+
 ## Kommandozeile
 
 Der lokale Befehl baut zuerst den Compiler und erzeugt anschließend die Datei:

@@ -1,5 +1,5 @@
 import { validateVegetationRuntimeConfig } from '../config/validateVegetationRuntimeConfig.js';
-import type { VegetationRuntimeConfig } from '../config/types.js';
+import type { VegetationRenderBounds, VegetationRuntimeConfig } from '../config/types.js';
 import { createVegetationPatterns } from '../patterns/VegetationPatterns.js';
 import { VEGETATION_ID_UINT32_MAX } from '../identity/VegetationIds.js';
 import type { ParsedVegFile } from '../parser/types.js';
@@ -54,12 +54,31 @@ export function createVegetationRuntimeDataset(
     };
   });
 
+  const enabledLayers = layers.filter((layer) => layer.enabled);
   return {
     file,
     config,
     layers,
-    enabledLayers: layers.filter((layer) => layer.enabled),
+    enabledLayers,
+    renderBounds: combineRenderBounds(enabledLayers.map((layer) => layer.config.renderBounds)),
   };
+}
+
+function combineRenderBounds(
+  layerBounds: readonly VegetationRenderBounds[],
+): VegetationRenderBounds {
+  return layerBounds.reduce<VegetationRenderBounds>((combined, bounds) => ({
+    horizontalPaddingMeters: Math.max(
+      combined.horizontalPaddingMeters,
+      bounds.horizontalPaddingMeters,
+    ),
+    belowSurfaceMeters: Math.max(combined.belowSurfaceMeters, bounds.belowSurfaceMeters),
+    aboveSurfaceMeters: Math.max(combined.aboveSurfaceMeters, bounds.aboveSurfaceMeters),
+  }), {
+    horizontalPaddingMeters: 0,
+    belowSurfaceMeters: 0,
+    aboveSurfaceMeters: 0,
+  });
 }
 
 function validateGlobalCellCoordinates(

@@ -18,7 +18,7 @@ import {
 } from 'three';
 
 import {
-  createChunkBoundingBoxes,
+  createRuntimeChunkBoundingBoxes,
   createVegetationRuntimeDataset,
   FrustumChunkVisibility,
   WebGLVegetationDebug,
@@ -62,7 +62,7 @@ const gpuAdapter = new WebGLVegetationAdapter(
   renderer,
   runtimeDataset,
 );
-const chunkBoundingBoxes = createChunkBoundingBoxes(parsedVegFile);
+const chunkBoundingBoxes = createRuntimeChunkBoundingBoxes(runtimeDataset);
 const chunkVisibility = new FrustumChunkVisibility(
   chunkBoundingBoxes,
 );

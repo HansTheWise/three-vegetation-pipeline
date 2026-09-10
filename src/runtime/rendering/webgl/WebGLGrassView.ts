@@ -17,12 +17,14 @@ import type { ClipSpaceDepthRange, Matrix4Elements } from '../../chunking/types.
 import { VegetationRenderTileDensity } from '../../density/VegetationRenderTileDensity.js';
 import type { ModelPosition, VegetationActiveCellData } from '../../density/types.js';
 import { WebGLActiveCellBuffer } from '../../gpu/webgl/WebGLActiveCellBuffer.js';
+import { validateWebGLInstanceCount } from '../../gpu/webgl/limits.js';
 import { WebGLVisibleTileBuffer } from '../../gpu/webgl/WebGLVisibleTileBuffer.js';
 import type { WebGLVegetationAdapter } from '../../gpu/webgl/WebGLVegetationAdapter.js';
+import {
+  requireGrassRuntimeLayerConfig,
+} from '../../profiles/grass/GrassRenderProfile.js';
 import { grassFragmentShader } from './shaders/grassFragmentShader.js';
 import { grassVertexShader } from './shaders/grassVertexShader.js';
-
-const MAXIMUM_WEBGL_INSTANCE_COUNT = 0x8000_0000;
 
 export type WebGLGrassDensityDraw = Readonly<{
   bucketIndex: number;
@@ -67,6 +69,8 @@ export class WebGLGrassView {
     if (!patternResource || !layerMask) {
       throw new Error(`Runtime grass layer ${layerId} has incomplete WebGL resources.`);
     }
+    const grassLayer = requireGrassRuntimeLayerConfig(layer.config);
+    const profile = grassLayer.renderProfile;
     this.#adapter = adapter;
     this.layerId = layerId;
     this.tileDensity = new VegetationRenderTileDensity(adapter.dataset, layerId, preparedCells);
@@ -75,10 +79,7 @@ export class WebGLGrassView {
       * layer.config.distribution.elementsPerAnchor;
     const maximumInstanceCount = this.tileDensity.tileCapacity
       * this.tileDensity.maximumCandidatesPerTile;
-    if (!Number.isSafeInteger(maximumInstanceCount)
-      || maximumInstanceCount > MAXIMUM_WEBGL_INSTANCE_COUNT) {
-      throw new Error(`Grass layer ${layerId} exceeds the safe WebGL instance range.`);
-    }
+    validateWebGLInstanceCount(maximumInstanceCount, `Grass layer ${layerId}`);
 
     this.tileBuffer = new WebGLVisibleTileBuffer(
       adapter.renderer,
@@ -93,7 +94,7 @@ export class WebGLGrassView {
     this.densityDraws = Array.from(
       this.tileDensity.bucketCapacities,
       (candidateCapacity, bucketIndex): WebGLGrassDensityDraw => {
-        const geometry = createGrassBladeGeometry(layer.config.blade.segments);
+        const geometry = createGrassBladeGeometry(profile.blade.segments);
         const material = createGrassMaterial({
           adapter,
           layerId,
@@ -105,8 +106,8 @@ export class WebGLGrassView {
         const mesh = new Mesh(geometry, material);
         mesh.name = `vegetation/grass-layer-${layerId}-density-${candidateCapacity}`;
         mesh.frustumCulled = false;
-        mesh.castShadow = false;
-        mesh.receiveShadow = layer.config.shadows.receive;
+        mesh.castShadow = grassLayer.shadows.cast;
+        mesh.receiveShadow = grassLayer.shadows.receive;
         return { bucketIndex, candidateCapacity, geometry, material, mesh };
       },
     );
@@ -188,7 +189,9 @@ function createGrassMaterial(options: GrassMaterialOptions): ShaderMaterial {
   const { header } = adapter.staticResources;
   const [horizontalAxisA, horizontalAxisB] = header.coordinateSystem.horizontalAxes;
   const unitsPerMeter = header.coordinateSystem.unitsPerMeter;
-  const distanceColor = layer.config.colors.distanceColorTransition;
+  const grassLayer = requireGrassRuntimeLayerConfig(layer.config);
+  const profile = grassLayer.renderProfile;
+  const distanceColor = profile.colors.distanceColorTransition;
   const groundTransition = 'target' in distanceColor ? distanceColor : undefined;
   const groundField = layer.groundPatchField;
   const groundTexture = adapter.staticResources.groundPatchFields.find(
@@ -197,7 +200,7 @@ function createGrassMaterial(options: GrassMaterialOptions): ShaderMaterial {
   if (groundTransition && (!groundField || !groundTexture)) {
     throw new Error(`Grass layer ${layerId} needs a ground patch field for its color transition.`);
   }
-  const thickness = layer.config.bladeThicknessDistanceScaling;
+  const thickness = profile.bladeThicknessDistanceScaling;
   return new ShaderMaterial({
     name: `vegetation/grass-layer-${layerId}-density-${options.candidateCapacity}`,
     glslVersion: GLSL3,
@@ -241,42 +244,42 @@ function createGrassMaterial(options: GrassMaterialOptions): ShaderMaterial {
       upAxis: { value: createAxisVector(header.coordinateSystem.upAxis) },
       bladeHeight: {
         value: new Vector2(
-          layer.config.blade.heightMeters.minimum * unitsPerMeter,
-          layer.config.blade.heightMeters.maximum * unitsPerMeter,
+          profile.blade.heightMeters.minimum * unitsPerMeter,
+          profile.blade.heightMeters.maximum * unitsPerMeter,
         ),
       },
       bladeWidth: {
         value: new Vector2(
-          layer.config.blade.widthMeters.minimum * unitsPerMeter,
-          layer.config.blade.widthMeters.maximum * unitsPerMeter,
+          profile.blade.widthMeters.minimum * unitsPerMeter,
+          profile.blade.widthMeters.maximum * unitsPerMeter,
         ),
       },
-      bladeTopWidthRatio: { value: layer.config.blade.topWidthRatio },
+      bladeTopWidthRatio: { value: profile.blade.topWidthRatio },
       maximumBladeTiltRadians: {
-        value: degreesToRadians(layer.config.blade.maximumTiltDegrees),
+        value: degreesToRadians(profile.blade.maximumTiltDegrees),
       },
       cameraFacingDistance: {
         value: new Vector2(
-          layer.config.blade.cameraFacing.startsAtMeters,
-          layer.config.blade.cameraFacing.reachesFullAtMeters,
+          profile.blade.cameraFacing.startsAtMeters,
+          profile.blade.cameraFacing.reachesFullAtMeters,
         ),
       },
       maximumBladeOffset: {
         value: layer.config.distribution.elementRadiusMeters * unitsPerMeter,
       },
       useTwoSampleHeight: {
-        value: layer.config.blade.heightSampling === 'diagonal-average',
+        value: profile.blade.heightSampling === 'diagonal-average',
       },
       bladeThicknessDistance: {
         value: new Vector2(thickness.startsIncreasingAtMeters, thickness.reachesMaximumAtMeters),
       },
       bladeThicknessScale: { value: new Vector2(thickness.defaultScale, thickness.maximumScale) },
       bladeThicknessCurveStrength: { value: thickness.curveStrength },
-      directLightWeight: { value: layer.config.lighting.directLightWeight },
+      directLightWeight: { value: grassLayer.lighting.directLightWeight },
       verticalColorTransition: {
         value: new Vector2(
-          layer.config.colors.verticalColorTransition.startsAtBladeRatio,
-          layer.config.colors.verticalColorTransition.endsAtBladeRatio,
+          profile.colors.verticalColorTransition.startsAtBladeRatio,
+          profile.colors.verticalColorTransition.endsAtBladeRatio,
         ),
       },
       ...('target' in distanceColor ? {

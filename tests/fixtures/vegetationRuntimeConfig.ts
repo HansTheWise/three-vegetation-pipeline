@@ -1,9 +1,12 @@
-import type { VegetationRuntimeConfig } from '../../src/index.js';
+import {
+  createGrassLayerConfig,
+  type VegetationRuntimeConfig,
+} from '../../src/index.js';
 
 /** Neutral runtime fixture shared by pipeline unit tests and examples. */
 export const vegetationRuntimeConfig = {
-  configVersion: 2,
-  layers: [{
+  configVersion: 3,
+  layers: [createGrassLayerConfig({
     layerId: 0,
     key: 'meadow-grass',
     enabled: true,
@@ -23,49 +26,43 @@ export const vegetationRuntimeConfig = {
       rotatePerCell: true,
       reflectPerCell: true,
     },
-    blade: {
-      segments: 2,
-      heightSampling: 'bilinear',
-      heightMeters: {
-        minimum: 0.4,
-        maximum: 0.5,
+    grass: {
+      blade: {
+        segments: 2,
+        heightSampling: 'bilinear',
+        heightMeters: { minimum: 0.4, maximum: 0.5 },
+        widthMeters: { minimum: 0.05, maximum: 0.08 },
+        topWidthRatio: 0.5,
+        maximumTiltDegrees: 35,
+        cameraFacing: { startsAtMeters: 80, reachesFullAtMeters: 140 },
       },
-      widthMeters: {
-        minimum: 0.05,
-        maximum: 0.08,
+      bladeThicknessDistanceScaling: {
+        defaultScale: 1,
+        maximumScale: 2,
+        startsIncreasingAtMeters: 50,
+        reachesMaximumAtMeters: 500,
+        curveStrength: 2,
       },
-      topWidthRatio: 0.5,
-      maximumTiltDegrees: 35,
-      cameraFacing: {
-        startsAtMeters: 80,
-        reachesFullAtMeters: 140,
-      },
-    },
-    bladeThicknessDistanceScaling: {
-      defaultScale: 1,
-      maximumScale: 2,
-      startsIncreasingAtMeters: 50,
-      reachesMaximumAtMeters: 500,
-      curveStrength: 2,
-    },
-    colors: {
-      bottomColors: ['#274203'],
-      topColors: ['#355d0b', '#3d6414', '#476d1f'],
-      verticalColorTransition: {
-        startsAtBladeRatio: 0.01,
-        endsAtBladeRatio: 0.99,
-      },
-      distanceColorTransition: {
-        farTint: '#fefefe',
-        startsAtMeters: 10,
-        endsAtMeters: 500,
-        curveStrength: 10,
+      colors: {
+        bottomColors: ['#274203'],
+        topColors: ['#355d0b', '#3d6414', '#476d1f'],
+        verticalColorTransition: {
+          startsAtBladeRatio: 0.01,
+          endsAtBladeRatio: 0.99,
+        },
+        distanceColorTransition: {
+          farTint: '#fefefe',
+          startsAtMeters: 10,
+          endsAtMeters: 500,
+          curveStrength: 10,
+        },
       },
     },
     lighting: {
       directLightWeight: 0.35,
     },
     shadows: {
+      cast: false,
       receive: true,
     },
     density: {
@@ -88,5 +85,5 @@ export const vegetationRuntimeConfig = {
         { distanceMeters: 500, ratio: 0 },
       ],
     },
-  }],
-} as const satisfies VegetationRuntimeConfig;
+  })],
+} satisfies VegetationRuntimeConfig;

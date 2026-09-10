@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import { groundColorConfig } from './fixtures/groundColorConfig.js';
 import {
+  createGrassLayerConfig,
   evaluateVegetationDensityCurve,
   type VegetationRuntimeConfig,
   validateVegetationRuntimeConfig,
@@ -26,8 +27,11 @@ describe('VegetationRuntimeConfig', () => {
       { startsAtMeters: 30, endsAtMeters: 120, curveStrength: -1 },
       { startsAtMeters: 30, endsAtMeters: 120, curveStrength: Number.NaN },
     ]) {
-      const config = structuredClone(groundColorConfig) as VegetationRuntimeConfig;
-      Object.assign(config.layers[0]!.colors.distanceColorTransition, { [endpoint]: invalid });
+      const config = structuredClone(groundColorConfig);
+      Object.assign(
+        config.layers[0]!.renderProfile.colors.distanceColorTransition,
+        { [endpoint]: invalid },
+      );
       expect(() => validateVegetationRuntimeConfig(config))
         .toThrow(`distanceColorTransition.${endpoint}`);
     }
@@ -42,10 +46,11 @@ describe('VegetationRuntimeConfig', () => {
   it('accepts continuous density values', () => {
     expect(() => validateVegetationRuntimeConfig(vegetationRuntimeConfig)).not.toThrow();
     const layer = vegetationRuntimeConfig.layers[0]!;
-    expect(layer.shadows).toEqual({ receive: true });
+    expect(layer.shadows).toEqual({ cast: false, receive: true });
     expect(layer.lighting).toEqual({ directLightWeight: 0.35 });
-    expect(layer.blade).toMatchObject({ segments: 2, heightSampling: 'bilinear' });
-    expect(layer.blade.cameraFacing).toEqual({
+    expect(layer.renderProfile.type).toBe('grass');
+    expect(layer.renderProfile.blade).toMatchObject({ segments: 2, heightSampling: 'bilinear' });
+    expect(layer.renderProfile.blade.cameraFacing).toEqual({
       startsAtMeters: 80,
       reachesFullAtMeters: 140,
     });
@@ -175,11 +180,17 @@ describe('VegetationRuntimeConfig', () => {
     const layer = vegetationRuntimeConfig.layers[0]!;
     const invalidSegments = {
       ...vegetationRuntimeConfig,
-      layers: [{ ...layer, blade: { ...layer.blade, segments: 0 } }],
+      layers: [{ ...layer, renderProfile: {
+        ...layer.renderProfile,
+        blade: { ...layer.renderProfile.blade, segments: 0 },
+      } }],
     } as VegetationRuntimeConfig;
     const invalidSampling = {
       ...vegetationRuntimeConfig,
-      layers: [{ ...layer, blade: { ...layer.blade, heightSampling: 'nearest' } }],
+      layers: [{ ...layer, renderProfile: {
+        ...layer.renderProfile,
+        blade: { ...layer.renderProfile.blade, heightSampling: 'nearest' },
+      } }],
     } as unknown as VegetationRuntimeConfig;
     expect(() => validateVegetationRuntimeConfig(invalidSegments))
       .toThrow('blade.segments must be an integer greater than or equal to 1.');
@@ -191,9 +202,12 @@ describe('VegetationRuntimeConfig', () => {
     const layer = vegetationRuntimeConfig.layers[0]!;
     const invalid = {
       ...vegetationRuntimeConfig,
-      layers: [{ ...layer, blade: {
-        ...layer.blade,
-        cameraFacing: { startsAtMeters: 140, reachesFullAtMeters: 80 },
+      layers: [{ ...layer, renderProfile: {
+        ...layer.renderProfile,
+        blade: {
+          ...layer.renderProfile.blade,
+          cameraFacing: { startsAtMeters: 140, reachesFullAtMeters: 80 },
+        },
       } }],
     } satisfies VegetationRuntimeConfig;
     expect(() => validateVegetationRuntimeConfig(invalid))
@@ -214,13 +228,19 @@ describe('VegetationRuntimeConfig', () => {
     const layer = vegetationRuntimeConfig.layers[0]!;
     const invalidColor = {
       ...vegetationRuntimeConfig,
-      layers: [{ ...layer, colors: { ...layer.colors, bottomColors: ['#grass'] } }],
+      layers: [{ ...layer, renderProfile: {
+        ...layer.renderProfile,
+        colors: { ...layer.renderProfile.colors, bottomColors: ['#grass'] },
+      } }],
     } as unknown as VegetationRuntimeConfig;
     const invalidRange = {
       ...vegetationRuntimeConfig,
-      layers: [{ ...layer, blade: {
-        ...layer.blade,
-        heightMeters: { minimum: 0.3, maximum: 0.2 },
+      layers: [{ ...layer, renderProfile: {
+        ...layer.renderProfile,
+        blade: {
+          ...layer.renderProfile.blade,
+          heightMeters: { minimum: 0.3, maximum: 0.2 },
+        },
       } }],
     } satisfies VegetationRuntimeConfig;
     const tooManyPatterns = {
@@ -237,10 +257,71 @@ describe('VegetationRuntimeConfig', () => {
     expect(() => validateVegetationRuntimeConfig(invalidCount)).toThrow('anchorsPerCell');
   });
 
-  it('reports old runtime schemas without interpreting them as version 2', () => {
-    const config = { ...vegetationRuntimeConfig, configVersion: 1 };
+  it('reports old runtime schemas without interpreting them as version 3', () => {
+    const config = { ...vegetationRuntimeConfig, configVersion: 2 };
     expect(() => validateVegetationRuntimeConfig(config as unknown as VegetationRuntimeConfig))
-      .toThrow('Use version 2');
+      .toThrow('Use version 3');
+  });
+
+  it('accepts a non-grass layer without grass profile fields', () => {
+    const layer = vegetationRuntimeConfig.layers[0]!;
+    const customLayer = {
+      ...layer,
+      key: 'tree-layer',
+      renderBounds: {
+        horizontalPaddingMeters: 3,
+        belowSurfaceMeters: 0.5,
+        aboveSurfaceMeters: 12,
+      },
+      lighting: { leafTranslucency: 0.5 },
+      renderProfile: { type: 'test-tree', modelScale: 1 },
+    };
+    const config = {
+      ...vegetationRuntimeConfig,
+      layers: [customLayer],
+    } satisfies VegetationRuntimeConfig;
+
+    expect('blade' in customLayer).toBe(false);
+    expect(customLayer.lighting).toEqual({ leafTranslucency: 0.5 });
+    expect(() => validateVegetationRuntimeConfig(config)).not.toThrow();
+  });
+
+  it('creates a complete grass preset and derives bounds from profile overrides', () => {
+    const layer = createGrassLayerConfig({
+      layerId: 4,
+      key: 'tall-grass',
+      grass: {
+        blade: {
+          heightMeters: { minimum: 1.5, maximum: 2 },
+          maximumTiltDegrees: 30,
+        },
+      },
+      shadows: { cast: true },
+    });
+    const config = { configVersion: 3, layers: [layer] } satisfies VegetationRuntimeConfig;
+
+    expect(() => validateVegetationRuntimeConfig(config)).not.toThrow();
+    expect(layer.shadows).toEqual({ cast: true, receive: true });
+    expect(layer.renderProfile.blade.segments).toBe(2);
+    expect(layer.renderBounds.aboveSurfaceMeters).toBe(2);
+    expect(layer.renderBounds.horizontalPaddingMeters).toBeGreaterThan(1);
+  });
+
+  it('rejects grass bounds that do not contain the configured geometry', () => {
+    const layer = vegetationRuntimeConfig.layers[0]!;
+    const config = {
+      ...vegetationRuntimeConfig,
+      layers: [{
+        ...layer,
+        renderBounds: {
+          ...layer.renderBounds,
+          aboveSurfaceMeters: layer.renderProfile.blade.heightMeters.maximum - 0.01,
+        },
+      }],
+    } satisfies VegetationRuntimeConfig;
+
+    expect(() => validateVegetationRuntimeConfig(config))
+      .toThrow('renderBounds.aboveSurfaceMeters does not contain the grass profile');
   });
 });
 

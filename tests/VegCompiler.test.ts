@@ -143,14 +143,11 @@ describe('VegCompiler', () => {
 function createConfig(): VegCompilerConfig {
   return {
     coordinateSystem: {
-      space: 'model-local',
       upAxis: 'z',
       horizontalAxes: ['x', 'y'],
       unitsPerMeter: 1,
     },
     source: {
-      format: 'glb',
-      reader: 'three-gltf-loader',
       includeInvisibleObjects: false,
       heightSurfaceSelector: {
         any: [{
@@ -163,18 +160,13 @@ function createConfig(): VegCompilerConfig {
     extraction: {
       seed: { mode: 'manual', manualValue: 42 },
       grid: {
-        strategy: 'fixed-world-size',
         chunkSize: 4,
-        origin: { mode: 'snap-to-height-surface-bounds' },
-        boundsSource: 'height-surfaces',
         includeEmptyChunks: false,
       },
       heightMap: {
         resolution: 3,
-        samplePlacement: 'include-chunk-borders',
       },
       vegetationMask: {
-        cellActivation: 'triangle-overlap',
         allowLayerOverlap: true,
       },
       vegetationLayers: [{
@@ -201,9 +193,6 @@ function createConfig(): VegCompilerConfig {
       }],
     },
     output: {
-      format: 'veg',
-      fileVersion: 1,
-      byteOrder: 'little-endian',
       heightValueBits: 16,
     },
   };

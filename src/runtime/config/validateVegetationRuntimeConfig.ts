@@ -1,4 +1,6 @@
 import type {
+  GrassRenderProfileConfig,
+  GrassRuntimeLayerConfig,
   HexColor,
   NumericRange,
   VegetationDensityCurvePoint,
@@ -16,8 +18,8 @@ const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 export function validateVegetationRuntimeConfig(
   config: VegetationRuntimeConfig,
 ): void {
-  if (config.configVersion !== 2) {
-    throw new Error(`Unsupported runtime config version ${String(config.configVersion)}. Use version 2 with continuous density curves.`);
+  if (config.configVersion !== 3) {
+    throw new Error(`Unsupported runtime config version ${String(config.configVersion)}. Use version 3 with separated layer render profiles.`);
   }
   if (config.layers.length === 0) {
     throw new Error('Runtime config must contain at least one vegetation layer.');
@@ -43,6 +45,15 @@ function validateLayer(layer: VegetationRuntimeLayerConfig): void {
   assertInteger(layer.layerId, `${label}.layerId`, 0);
   if (layer.key.trim().length === 0) throw new Error(`${label}.key must not be empty.`);
   validatePatchConfig(layer.patches);
+  validateRenderBounds(layer, label);
+  if (!isRecord(layer.renderProfile)
+    || typeof layer.renderProfile.type !== 'string'
+    || layer.renderProfile.type.trim().length === 0) {
+    throw new Error(`${label}.renderProfile.type must not be empty.`);
+  }
+  if (!isRecord(layer.lighting)) {
+    throw new Error(`${label}.lighting must be an object.`);
+  }
 
   const maximumDistance = layer.visibility.maximumDistanceMeters;
   assertPositive(maximumDistance, `${label}.visibility.maximumDistanceMeters`);
@@ -70,87 +81,149 @@ function validateLayer(layer: VegetationRuntimeLayerConfig): void {
   assertInteger(layer.distribution.elementsPerAnchor, `${label}.distribution.elementsPerAnchor`, 1);
   assertNonNegative(layer.distribution.elementRadiusMeters, `${label}.distribution.elementRadiusMeters`);
 
-  validateRange(layer.blade.heightMeters, `${label}.blade.heightMeters`, true);
-  validateRange(layer.blade.widthMeters, `${label}.blade.widthMeters`, true);
-  assertInteger(layer.blade.segments, `${label}.blade.segments`, 1);
-  if (layer.blade.heightSampling !== 'bilinear'
-    && layer.blade.heightSampling !== 'diagonal-average') {
-    throw new Error(`${label}.blade.heightSampling is unsupported.`);
+  if (layer.renderProfile.type === 'grass') {
+    const grassLayer = layer as GrassRuntimeLayerConfig;
+    validateGrassRenderProfile(
+      grassLayer.renderProfile as GrassRenderProfileConfig,
+      grassLayer,
+      label,
+    );
+    assertBetween(
+      grassLayer.lighting.directLightWeight,
+      0,
+      1,
+      `${label}.lighting.directLightWeight`,
+    );
   }
-  assertBetween(layer.blade.topWidthRatio, 0, 1, `${label}.blade.topWidthRatio`);
-  assertBetween(layer.blade.maximumTiltDegrees, 0, 90, `${label}.blade.maximumTiltDegrees`);
+
+  if (typeof layer.shadows.cast !== 'boolean' || typeof layer.shadows.receive !== 'boolean') {
+    throw new Error(`${label}.shadows.cast and receive must be boolean.`);
+  }
+}
+
+function validateGrassRenderProfile(
+  profile: GrassRenderProfileConfig,
+  layer: VegetationRuntimeLayerConfig,
+  label: string,
+): void {
+  const profileLabel = `${label}.renderProfile`;
+  validateRange(profile.blade.heightMeters, `${profileLabel}.blade.heightMeters`, true);
+  validateRange(profile.blade.widthMeters, `${profileLabel}.blade.widthMeters`, true);
+  assertInteger(profile.blade.segments, `${profileLabel}.blade.segments`, 1);
+  if (profile.blade.heightSampling !== 'bilinear'
+    && profile.blade.heightSampling !== 'diagonal-average') {
+    throw new Error(`${profileLabel}.blade.heightSampling is unsupported.`);
+  }
+  assertBetween(profile.blade.topWidthRatio, 0, 1, `${profileLabel}.blade.topWidthRatio`);
+  assertBetween(
+    profile.blade.maximumTiltDegrees,
+    0,
+    90,
+    `${profileLabel}.blade.maximumTiltDegrees`,
+  );
   validateDistancePair(
-    layer.blade.cameraFacing.startsAtMeters,
-    layer.blade.cameraFacing.reachesFullAtMeters,
-    `${label}.blade.cameraFacing`,
+    profile.blade.cameraFacing.startsAtMeters,
+    profile.blade.cameraFacing.reachesFullAtMeters,
+    `${profileLabel}.blade.cameraFacing`,
   );
 
-  const thickness = layer.bladeThicknessDistanceScaling;
-  assertPositive(thickness.defaultScale, `${label}.bladeThicknessDistanceScaling.defaultScale`);
-  assertPositive(thickness.maximumScale, `${label}.bladeThicknessDistanceScaling.maximumScale`);
+  const thickness = profile.bladeThicknessDistanceScaling;
+  assertPositive(thickness.defaultScale, `${profileLabel}.bladeThicknessDistanceScaling.defaultScale`);
+  assertPositive(thickness.maximumScale, `${profileLabel}.bladeThicknessDistanceScaling.maximumScale`);
   if (thickness.maximumScale < thickness.defaultScale) {
     throw new Error(
-      `${label}.bladeThicknessDistanceScaling.maximumScale must be at least defaultScale.`,
+      `${profileLabel}.bladeThicknessDistanceScaling.maximumScale must be at least defaultScale.`,
     );
   }
   validateDistancePair(
     thickness.startsIncreasingAtMeters,
     thickness.reachesMaximumAtMeters,
-    `${label}.bladeThicknessDistanceScaling`,
+    `${profileLabel}.bladeThicknessDistanceScaling`,
   );
-  assertPositive(thickness.curveStrength, `${label}.bladeThicknessDistanceScaling.curveStrength`);
+  assertPositive(
+    thickness.curveStrength,
+    `${profileLabel}.bladeThicknessDistanceScaling.curveStrength`,
+  );
 
-  if (layer.colors.bottomColors.length === 0) {
-    throw new Error(`${label}.colors.bottomColors must not be empty.`);
+  if (profile.colors.bottomColors.length === 0) {
+    throw new Error(`${profileLabel}.colors.bottomColors must not be empty.`);
   }
-  if (layer.colors.bottomColors.length > MAX_ELEMENT_COLOR_COUNT) {
+  if (profile.colors.bottomColors.length > MAX_ELEMENT_COLOR_COUNT) {
     throw new Error(
-      `${label}.colors.bottomColors must not contain more than ${MAX_ELEMENT_COLOR_COUNT} colors.`,
+      `${profileLabel}.colors.bottomColors must not contain more than ${MAX_ELEMENT_COLOR_COUNT} colors.`,
     );
   }
-  layer.colors.bottomColors.forEach((color, index) => {
-    validateColor(color, `${label}.colors.bottomColors[${index}]`);
+  profile.colors.bottomColors.forEach((color, index) => {
+    validateColor(color, `${profileLabel}.colors.bottomColors[${index}]`);
   });
-  if (layer.colors.topColors.length === 0) {
-    throw new Error(`${label}.colors.topColors must not be empty.`);
+  if (profile.colors.topColors.length === 0) {
+    throw new Error(`${profileLabel}.colors.topColors must not be empty.`);
   }
-  if (layer.colors.topColors.length > MAX_ELEMENT_COLOR_COUNT) {
+  if (profile.colors.topColors.length > MAX_ELEMENT_COLOR_COUNT) {
     throw new Error(
-      `${label}.colors.topColors must not contain more than ${MAX_ELEMENT_COLOR_COUNT} colors.`,
+      `${profileLabel}.colors.topColors must not contain more than ${MAX_ELEMENT_COLOR_COUNT} colors.`,
     );
   }
-  layer.colors.topColors.forEach((color, index) => {
-    validateColor(color, `${label}.colors.topColors[${index}]`);
+  profile.colors.topColors.forEach((color, index) => {
+    validateColor(color, `${profileLabel}.colors.topColors[${index}]`);
   });
-  const vertical = layer.colors.verticalColorTransition;
-  assertBetween(vertical.startsAtBladeRatio, 0, 1, `${label}.colors.verticalColorTransition.startsAtBladeRatio`);
-  assertBetween(vertical.endsAtBladeRatio, 0, 1, `${label}.colors.verticalColorTransition.endsAtBladeRatio`);
+  const vertical = profile.colors.verticalColorTransition;
+  assertBetween(vertical.startsAtBladeRatio, 0, 1, `${profileLabel}.colors.verticalColorTransition.startsAtBladeRatio`);
+  assertBetween(vertical.endsAtBladeRatio, 0, 1, `${profileLabel}.colors.verticalColorTransition.endsAtBladeRatio`);
   if (vertical.endsAtBladeRatio < vertical.startsAtBladeRatio) {
-    throw new Error(`${label}.colors.verticalColorTransition must end at or after it starts.`);
+    throw new Error(`${profileLabel}.colors.verticalColorTransition must end at or after it starts.`);
   }
-  const distanceColor = layer.colors.distanceColorTransition;
+  const distanceColor = profile.colors.distanceColorTransition;
   if ('target' in distanceColor) {
     if (distanceColor.target !== 'ground' || !layer.patches.ground.enabled) {
-      throw new Error(`${label}.colors.distanceColorTransition requires target ground and enabled ground patches.`);
+      throw new Error(`${profileLabel}.colors.distanceColorTransition requires target ground and enabled ground patches.`);
     }
     for (const endpoint of ['bottom', 'top'] as const) {
       const curve = distanceColor[endpoint];
-      const path = `${label}.colors.distanceColorTransition.${endpoint}`;
+      const path = `${profileLabel}.colors.distanceColorTransition.${endpoint}`;
       validateDistancePair(curve.startsAtMeters, curve.endsAtMeters, path);
       assertNonNegative(curve.curveStrength, `${path}.curveStrength`);
     }
   } else {
-    validateColor(distanceColor.farTint, `${label}.colors.distanceColorTransition.farTint`);
+    validateColor(distanceColor.farTint, `${profileLabel}.colors.distanceColorTransition.farTint`);
     validateDistancePair(
       distanceColor.startsAtMeters,
       distanceColor.endsAtMeters,
-      `${label}.colors.distanceColorTransition`,
+      `${profileLabel}.colors.distanceColorTransition`,
     );
-    assertPositive(distanceColor.curveStrength, `${label}.colors.distanceColorTransition.curveStrength`);
+    assertPositive(distanceColor.curveStrength, `${profileLabel}.colors.distanceColorTransition.curveStrength`);
   }
 
-  assertBetween(layer.lighting.directLightWeight, 0, 1, `${label}.lighting.directLightWeight`);
+  const requiredHorizontalPadding = layer.distribution.elementRadiusMeters
+    + Math.sin(profile.blade.maximumTiltDegrees * Math.PI / 180)
+      * profile.blade.heightMeters.maximum
+    + profile.blade.widthMeters.maximum
+      * profile.bladeThicknessDistanceScaling.maximumScale / 2;
+  if (layer.renderBounds.horizontalPaddingMeters < requiredHorizontalPadding) {
+    throw new Error(
+      `${label}.renderBounds.horizontalPaddingMeters does not contain the grass profile.`,
+    );
+  }
+  if (layer.renderBounds.aboveSurfaceMeters < profile.blade.heightMeters.maximum) {
+    throw new Error(
+      `${label}.renderBounds.aboveSurfaceMeters does not contain the grass profile.`,
+    );
+  }
+}
 
+function validateRenderBounds(layer: VegetationRuntimeLayerConfig, label: string): void {
+  assertNonNegative(
+    layer.renderBounds.horizontalPaddingMeters,
+    `${label}.renderBounds.horizontalPaddingMeters`,
+  );
+  assertNonNegative(
+    layer.renderBounds.belowSurfaceMeters,
+    `${label}.renderBounds.belowSurfaceMeters`,
+  );
+  assertNonNegative(
+    layer.renderBounds.aboveSurfaceMeters,
+    `${label}.renderBounds.aboveSurfaceMeters`,
+  );
 }
 
 function validateDensityCurve(
@@ -220,4 +293,8 @@ function assertBetween(value: number, minimum: number, maximum: number, path: st
   if (!Number.isFinite(value) || value < minimum || value > maximum) {
     throw new Error(`${path} must be between ${minimum} and ${maximum}.`);
   }
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

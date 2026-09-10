@@ -5,17 +5,20 @@ Vegetations-Chunks aus einem validierten `ParsedVegFile`. Anschließend prüft e
 diese Boxen pro Frame gegen den sichtbaren Bereich der Kamera, das Frustum.
 
 ```text
-ParsedVegFile -> createChunkBoundingBoxes
-                         + projection * view * model
-                         -> FrustumChunkVisibility.updateVisibleChunks
-                         -> visibleChunkIndices + visibleChunkCount
+VegetationRuntimeDataset -> createRuntimeChunkBoundingBoxes
+                                      + projection * view * model
+                                      -> FrustumChunkVisibility.updateVisibleChunks
+                                      -> visibleChunkIndices + visibleChunkCount
 ```
 
 Die Begrenzungsboxen sind reine Zahlendaten und keine Three.js-Objekte. Ihre
 horizontale Ausdehnung stammt aus Grid-Ursprung, Gridposition und Chunkgröße;
 die vertikale Ausdehnung aus `chunkHeightRanges`. Das Padding wird in Metern
-über die Konstanten am Anfang von `ChunkBoundingBoxes.ts` eingestellt und über
-`unitsPerMeter` in Modellkoordinaten übersetzt.
+vom `VegetationRenderBounds`-Vertrag geliefert und über `unitsPerMeter` in
+Modellkoordinaten übersetzt. Das Dataset kombiniert dafür die größten Bounds
+der aktivierten Layer. So bleibt der grobe Chunk-Pass einmalig und konservativ,
+auch wenn beispielsweise Grass und deutlich höhere Bäume dieselben Chunks
+verwenden.
 
 `FrustumChunkVisibility.updateVisibleChunks` erhält eine spaltenweise gespeicherte
 kombinierte Matrix `projection * view * model`. Dadurch dürfen die `.veg`-Daten
@@ -30,4 +33,6 @@ angelegt. Pro Frame werden nur seine ersten `visibleChunkCount` Einträge
 Objekte.
 
 Das Modul prüft ausschließlich das Kamera-Frustum. Distanzdichte und
-Occlusion-Culling bleiben getrennte Schritte.
+Occlusion-Culling bleiben getrennte Schritte. Das anschließende Tile-Culling
+verwendet dieselbe Bounds-Struktur, dort jedoch mit den Werten des konkreten
+Layers.

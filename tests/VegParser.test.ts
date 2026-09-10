@@ -159,9 +159,6 @@ function createFile(heightValueBits: HeightValueBits): Uint8Array {
   return writeVegFile(
     createDataset(),
     {
-      format: 'veg',
-      fileVersion: 1,
-      byteOrder: 'little-endian',
       heightValueBits,
     },
     { buildFingerprint: TEST_BUILD_FINGERPRINT },

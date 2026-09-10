@@ -1,6 +1,6 @@
 import { PerspectiveCamera, Vector2, Vector3, type Object3D } from 'three';
 
-import { createChunkBoundingBoxes } from '../chunking/ChunkBoundingBoxes.js';
+import { createRuntimeChunkBoundingBoxes } from '../chunking/ChunkBoundingBoxes.js';
 import type { WebGLVegetationAdapter } from '../gpu/webgl/WebGLVegetationAdapter.js';
 import { WebGLDebugChunkView } from '../rendering/webgl/WebGLDebugChunkView.js';
 import type { WebGLGrassView } from '../rendering/webgl/WebGLGrassView.js';
@@ -61,7 +61,7 @@ export class WebGLVegetationDebug {
     this.#gpuTimer = this.#gpuContext?.getExtension('EXT_disjoint_timer_query_webgl2') ?? null;
     this.cells = new WebGLDebugChunkView(adapter, { layerId: grass.layerId });
     this.cells.mesh.visible = false;
-    this.boxes = createChunkBoundingBoxOutlines(createChunkBoundingBoxes(adapter.dataset.file));
+    this.boxes = createChunkBoundingBoxOutlines(createRuntimeChunkBoundingBoxes(adapter.dataset));
     this.boxes.visible = false;
     grass.mesh.add(this.cells.mesh, this.boxes);
     scene.add(this.frustum.group);

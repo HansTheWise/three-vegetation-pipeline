@@ -19,12 +19,15 @@ export const groundColorConfig = {
         colors: { baseColor: '#67b846', brightnessVariation: 0.1 },
       },
     },
-    colors: {
-      ...layer.colors,
-      distanceColorTransition: {
-        target: 'ground',
-        bottom: { startsAtMeters: 30, endsAtMeters: 120, curveStrength: 0 },
-        top: { startsAtMeters: 60, endsAtMeters: 180, curveStrength: 2 },
+    renderProfile: {
+      ...layer.renderProfile,
+      colors: {
+        ...layer.renderProfile.colors,
+        distanceColorTransition: {
+          target: 'ground',
+          bottom: { startsAtMeters: 30, endsAtMeters: 120, curveStrength: 0 },
+          top: { startsAtMeters: 60, endsAtMeters: 180, curveStrength: 2 },
+        },
       },
     },
   }],

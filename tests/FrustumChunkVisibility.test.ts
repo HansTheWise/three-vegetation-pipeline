@@ -13,6 +13,12 @@ const identityMatrix = new Float64Array([
   0, 0, 0, 1,
 ]);
 
+const renderBounds = {
+  horizontalPaddingMeters: 0.25,
+  belowSurfaceMeters: 0,
+  aboveSurfaceMeters: 0.25,
+} as const;
+
 type ParsedFileOptions = Readonly<{
   upAxis?: 'x' | 'y' | 'z';
   horizontalAxes?: readonly ['x' | 'y' | 'z', 'x' | 'y' | 'z'];
@@ -86,7 +92,7 @@ describe('createChunkBoundingBoxes', () => {
       chunkHeightRanges: [1, 3, 5, 6],
     });
 
-    const chunkBoundingBoxes = createChunkBoundingBoxes(file);
+    const chunkBoundingBoxes = createChunkBoundingBoxes(file, renderBounds);
 
     expect(chunkBoundingBoxes.storedChunkCount).toBe(2);
     expect(chunkBoundingBoxes.minMaxCoordinates).toEqual(Float32Array.from([
@@ -97,6 +103,31 @@ describe('createChunkBoundingBoxes', () => {
 });
 
 describe('FrustumChunkVisibility', () => {
+  it('uses the same culler for low grass and a taller profile', () => {
+    const file = createParsedFile({
+      gridWidth: 1,
+      gridHeight: 1,
+      chunkSize: 1,
+      originX: 0,
+      originY: 0,
+      chunkLookup: [0],
+      chunkHeightRanges: [-3, -3],
+    });
+    const low = new FrustumChunkVisibility(createChunkBoundingBoxes(file, {
+      horizontalPaddingMeters: 0.25,
+      belowSurfaceMeters: 0,
+      aboveSurfaceMeters: 0.5,
+    }));
+    const tall = new FrustumChunkVisibility(createChunkBoundingBoxes(file, {
+      horizontalPaddingMeters: 2,
+      belowSurfaceMeters: 0,
+      aboveSurfaceMeters: 4,
+    }));
+
+    expect(low.updateVisibleChunks(identityMatrix, 'negative-one-to-one')).toBe(0);
+    expect(tall.updateVisibleChunks(identityMatrix, 'negative-one-to-one')).toBe(1);
+  });
+
   it('returns chunks that intersect the frustum, including its boundary', () => {
     const chunkBoundingBoxes = createChunkBoundingBoxes(createParsedFile({
       gridWidth: 5,
@@ -106,7 +137,7 @@ describe('FrustumChunkVisibility', () => {
       originY: 0,
       chunkLookup: [0, 1, 2, 3, 4],
       chunkHeightRanges: [0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5],
-    }));
+    }), renderBounds);
     const chunkVisibility = new FrustumChunkVisibility(chunkBoundingBoxes);
 
     const count = chunkVisibility.updateVisibleChunks(identityMatrix, 'negative-one-to-one');
@@ -124,7 +155,7 @@ describe('FrustumChunkVisibility', () => {
       originY: 0,
       chunkLookup: [0],
       chunkHeightRanges: [0, 0.5],
-    }));
+    }), renderBounds);
     const chunkVisibility = new FrustumChunkVisibility(chunkBoundingBoxes);
     const translatedClipFromModel = new Float64Array(identityMatrix);
     translatedClipFromModel[12] = -2.5;
@@ -145,7 +176,7 @@ describe('FrustumChunkVisibility', () => {
       originY: 0,
       chunkLookup: [0],
       chunkHeightRanges: [-0.75, -0.5],
-    }));
+    }), renderBounds);
     const chunkVisibility = new FrustumChunkVisibility(chunkBoundingBoxes);
 
     expect(chunkVisibility.updateVisibleChunks(identityMatrix, 'negative-one-to-one')).toBe(1);
@@ -161,7 +192,7 @@ describe('FrustumChunkVisibility', () => {
       originY: 0,
       chunkLookup: [0],
       chunkHeightRanges: [0, 0.5],
-    }));
+    }), renderBounds);
     const chunkVisibility = new FrustumChunkVisibility(chunkBoundingBoxes);
     const visibilityBuffer = chunkVisibility.visibleChunkIndices;
 
@@ -180,7 +211,7 @@ describe('FrustumChunkVisibility', () => {
       originY: 0,
       chunkLookup: [0],
       chunkHeightRanges: [0, 0.5],
-    }));
+    }), renderBounds);
     const chunkVisibility = new FrustumChunkVisibility(chunkBoundingBoxes);
 
     expect(() => chunkVisibility.updateVisibleChunks(

@@ -3,14 +3,16 @@ import { FrustumPlanes } from '../chunking/FrustumPlanes.js';
 import type { ClipSpaceDepthRange, Matrix4Elements } from '../chunking/types.js';
 import { evaluateVegetationDensityCurve } from '../config/evaluateVegetationDensityCurve.js';
 import type { VegetationRuntimeDataset, VegetationRuntimeLayer } from '../dataset/types.js';
+import {
+  MAXIMUM_WEBGL_INSTANCE_COUNT,
+  validateWebGLInstanceCount,
+} from '../gpu/webgl/limits.js';
 import { createStoredChunkGridCoordinates } from '../gpu/StoredChunkGridCoordinates.js';
 import { hashVegetationCell, mixVegetationHash } from '../identity/VegetationIds.js';
 import type { ModelPosition, VegetationActiveCellData } from './types.js';
 
 const VALUES_PER_TILE_RECORD = 4;
 const MAXIMUM_PACKED_COUNT = 0xffff;
-
-const RENDER_TILE_HORIZONTAL_PADDING_METERS = 0.5;
 
 /** Builds exact tile budgets and groups them into GPU capacity buckets. */
 export class VegetationRenderTileDensity {
@@ -68,10 +70,7 @@ export class VegetationRenderTileDensity {
       || maximumAnchorsPerTile > MAXIMUM_PACKED_COUNT) {
       throw new Error('Render-tile Cell and Anchor budgets must fit packed 16-bit counts.');
     }
-    if (!Number.isSafeInteger(this.maximumCandidatesPerTile)
-      || this.maximumCandidatesPerTile > 0xffff_ffff) {
-      throw new Error('Render-tile Element budget exceeds the packed 32-bit count.');
-    }
+    validateWebGLInstanceCount(this.maximumCandidatesPerTile, 'Render-tile Element budget');
 
     const activeCells = preparedCells ?? createVegetationActiveCellData(dataset, layerId);
     if (activeCells.layerId !== layerId
@@ -87,7 +86,7 @@ export class VegetationRenderTileDensity {
     const bucketCount = smallestPowerOfTwoBucketIndex(this.maximumCandidatesPerTile) + 1;
     this.bucketCapacities = Uint32Array.from(
       { length: bucketCount },
-      (_, bucketIndex) => 2 ** bucketIndex,
+      (_, bucketIndex) => Math.min(2 ** bucketIndex, MAXIMUM_WEBGL_INSTANCE_COUNT),
     );
     this.bucketTileCounts = new Uint32Array(bucketCount);
     this.bucketRecordOffsets = new Uint32Array(bucketCount);
@@ -392,7 +391,7 @@ function isRenderTileInFrustum(
   const chunkGridX = storedChunkGridCoordinates[chunkCoordinateOffset]!;
   const chunkGridY = storedChunkGridCoordinates[chunkCoordinateOffset + 1]!;
   const tileSizeUnits = tileSizeCells * layer.cellSizeUnits;
-  const horizontalPaddingUnits = RENDER_TILE_HORIZONTAL_PADDING_METERS
+  const horizontalPaddingUnits = layer.config.renderBounds.horizontalPaddingMeters
     * header.coordinateSystem.unitsPerMeter;
   const minimumHorizontalA = header.grid.originX
     + chunkGridX * header.grid.chunkSize
@@ -411,9 +410,10 @@ function isRenderTileInFrustum(
     header.grid.originY + (chunkGridY + 1) * header.grid.chunkSize + horizontalPaddingUnits,
   );
   const heightOffset = storedChunkIndex * 2;
-  const minimumUp = chunkHeightRanges[heightOffset]!;
+  const minimumUp = chunkHeightRanges[heightOffset]!
+    - layer.config.renderBounds.belowSurfaceMeters * header.coordinateSystem.unitsPerMeter;
   const maximumUp = chunkHeightRanges[heightOffset + 1]!
-    + layer.config.blade.heightMeters.maximum * header.coordinateSystem.unitsPerMeter;
+    + layer.config.renderBounds.aboveSurfaceMeters * header.coordinateSystem.unitsPerMeter;
   const [horizontalAxisA, horizontalAxisB] = header.coordinateSystem.horizontalAxes;
   const minimumX = horizontalAxisA === 'x' ? minimumHorizontalA
     : horizontalAxisB === 'x' ? minimumHorizontalB : minimumUp;

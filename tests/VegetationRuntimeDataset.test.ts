@@ -147,4 +147,33 @@ describe('createVegetationRuntimeDataset', () => {
     expect(() => createVegetationRuntimeDataset(file, createRuntimeConfig()))
       .toThrow('Runtime layer 0 exceeds the 32-bit global Cell-ID range.');
   });
+
+  it('combines profile bounds once for shared coarse culling', () => {
+    const sourceLayer = vegetationRuntimeConfig.layers[0]!;
+    const treeLayer = {
+      ...sourceLayer,
+      layerId: 1,
+      key: 'trees',
+      renderBounds: {
+        horizontalPaddingMeters: 3,
+        belowSurfaceMeters: 0.5,
+        aboveSurfaceMeters: 12,
+      },
+      lighting: { leafTranslucency: 0.5 },
+      renderProfile: { type: 'test-tree', modelScale: 1 },
+    };
+    const config = {
+      configVersion: 3,
+      layers: [sourceLayer, treeLayer],
+    } satisfies VegetationRuntimeConfig;
+
+    const dataset = createVegetationRuntimeDataset(createParsedFile([0, 1]), config);
+
+    expect(dataset.renderBounds).toEqual({
+      horizontalPaddingMeters: 3,
+      belowSurfaceMeters: 0.5,
+      aboveSurfaceMeters: 12,
+    });
+    expect('blade' in treeLayer).toBe(false);
+  });
 });

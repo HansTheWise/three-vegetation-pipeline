@@ -21,6 +21,7 @@ import type {
   ParsedVegHeader,
   QuantizedHeightData,
 } from '../../parser/types.js';
+import { requireGrassRenderProfile } from '../../profiles/grass/GrassRenderProfile.js';
 
 export type WebGLLayerMaskResource = Readonly<{
   layerId: number;
@@ -151,6 +152,7 @@ function createPatternResources(
   return dataset.enabledLayers
     .map((layer) => {
       const patternSet = layer.patterns;
+      const profile = requireGrassRenderProfile(layer.config);
       return {
         layerId: layer.layerId,
         patternSet,
@@ -167,12 +169,12 @@ function createPatternResources(
         ),
         bottomColors: createColorPaletteResource(
           renderer,
-          layer.config.colors.bottomColors,
+          profile.colors.bottomColors,
           `vegetation/layer-${layer.layerId}-bottom-colors`,
         ),
         topColors: createColorPaletteResource(
           renderer,
-          layer.config.colors.topColors,
+          profile.colors.topColors,
           `vegetation/layer-${layer.layerId}-top-colors`,
         ),
       };

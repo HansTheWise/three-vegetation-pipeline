@@ -1,6 +1,6 @@
 # Cleanup- und Refactorplan
 
-Stand: 9. September 2026
+Stand: 10. September 2026
 
 ## Ausführungsstand
 
@@ -12,8 +12,10 @@ Stand: 9. September 2026
 - Phase 2 ist abgeschlossen: Pipeline-Code, Tests und Beispiel sind
   campusneutral; I-CAKA besitzt Assetpfad, globalen Schalter, Compilerconfig und
   eine gemeinsame Surface-Identität.
-- Als Nächstes folgt Phase 3. Deren Renderprofil- und Bounds-Verträge sind
-  bewusst noch nicht vorgezogen worden.
+- Phase 3 ist abgeschlossen: gemeinsame Layerwerte und profilabhängige
+  Renderwerte sind getrennt; Grass liegt als anpassbares Preset vor; Chunk- und
+  Tile-Culling verwenden denselben profilabhängigen Bounds-Vertrag.
+- Als Nächstes folgt Phase 4 mit Runtime-Fassade, Lifecycle und Three-Kameraadapter.
 
 ## Ziel
 

@@ -4,6 +4,8 @@ import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import {
   createVegetationRuntimeDataset,
   createVegetationActiveCellData,
+  MAXIMUM_WEBGL_INSTANCE_COUNT,
+  validateWebGLInstanceCount,
   VegetationRenderTileDensity,
   type ParsedVegFile,
   type VegetationRuntimeConfig,
@@ -197,6 +199,30 @@ describe('VegetationRenderTileDensity', () => {
     expect(unpackRecord(density.tileRecords)).toMatchObject({ cells: 4 });
   });
 
+  it('uses profile bounds for shared Tile-frustum culling', () => {
+    const clipFromTallVegetation = new Float64Array([
+      2 / 31, 0, 0, 0,
+      0, 0, 1, 0,
+      0, 2 / 31, 0, 0,
+      -1 - 1 / 31, -1 - 1 / 31, -8, 1,
+    ]);
+    const low = new VegetationRenderTileDensity(createDataset(), 0);
+    const tall = new VegetationRenderTileDensity(createDataset((config) => ({
+      ...config,
+      layers: config.layers.map((layer) => ({
+        ...layer,
+        renderBounds: { ...layer.renderBounds, aboveSurfaceMeters: 8 },
+        renderProfile: { type: 'test-tree' },
+      })),
+    })), 0);
+
+    low.update(Uint32Array.of(0), 1, { x: 1, y: 0, z: 1 }, clipFromTallVegetation);
+    tall.update(Uint32Array.of(0), 1, { x: 1, y: 0, z: 1 }, clipFromTallVegetation);
+
+    expect(low.visibleTileCount).toBe(0);
+    expect(tall.visibleTileCount).toBe(1);
+  });
+
   it('reuses its work arrays and omits zero-density or out-of-range Tiles', () => {
     const density = new VegetationRenderTileDensity(createDataset(), 0);
     const records = density.tileRecords;
@@ -222,6 +248,14 @@ describe('VegetationRenderTileDensity', () => {
     const density = new VegetationRenderTileDensity(createDataset(), 0);
     expect(() => density.update(Uint32Array.of(1), 1, { x: 0, y: 0, z: 0 }))
       .toThrow('Visible stored chunk index 1 is out of range.');
+  });
+
+  it('rejects instance budgets outside WebGL signed GLsizei', () => {
+    expect(MAXIMUM_WEBGL_INSTANCE_COUNT).toBe(0x7fff_ffff);
+    expect(() => validateWebGLInstanceCount(MAXIMUM_WEBGL_INSTANCE_COUNT + 1, 'Test count'))
+      .toThrow('signed WebGL GLsizei range');
+    expect(() => validateWebGLInstanceCount(MAXIMUM_WEBGL_INSTANCE_COUNT, 'Test count'))
+      .not.toThrow();
   });
 
 

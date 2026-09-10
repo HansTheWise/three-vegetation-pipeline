@@ -9,13 +9,13 @@ try {
   const config = structuredClone(groundColorConfig);
   const layer = config.layers[0];
   layer.distribution.anchorsPerCell = 1;
-  layer.blade.heightMeters = { minimum: 1, maximum: 1 };
-  layer.blade.widthMeters = { minimum: 0.7, maximum: 0.7 };
-  layer.blade.cameraFacing = { startsAtMeters: 0, reachesFullAtMeters: 1 };
-  layer.colors.bottomColors = ['#264e20'];
-  layer.colors.topColors = ['#b1df78'];
-  layer.colors.distanceColorTransition.bottom = { startsAtMeters: 30, endsAtMeters: 120, curveStrength: 0 };
-  layer.colors.distanceColorTransition.top = { startsAtMeters: 60, endsAtMeters: 180, curveStrength: 2 };
+  layer.renderProfile.blade.heightMeters = { minimum: 1, maximum: 1 };
+  layer.renderProfile.blade.widthMeters = { minimum: 0.7, maximum: 0.7 };
+  layer.renderProfile.blade.cameraFacing = { startsAtMeters: 0, reachesFullAtMeters: 1 };
+  layer.renderProfile.colors.bottomColors = ['#264e20'];
+  layer.renderProfile.colors.topColors = ['#b1df78'];
+  layer.renderProfile.colors.distanceColorTransition.bottom = { startsAtMeters: 30, endsAtMeters: 120, curveStrength: 0 };
+  layer.renderProfile.colors.distanceColorTransition.top = { startsAtMeters: 60, endsAtMeters: 180, curveStrength: 2 };
   const file = {
     header: {
       seed: 42, storedChunkCount: 1,
@@ -83,11 +83,11 @@ try {
     renderer.render(scene, camera);
     const pixels = new Uint8Array(128 * 128 * 4);
     renderer.readRenderTargetPixels(target, 0, 0, 128, 128, pixels);
-    const curve = layer.colors.distanceColorTransition[endpoint];
+    const curve = layer.renderProfile.colors.distanceColorTransition[endpoint];
     const ratio = THREE.MathUtils.clamp((distance - curve.startsAtMeters) / (curve.endsAtMeters - curve.startsAtMeters), 0, 1);
     const progress = strength < 0.001 ? ratio : -Math.expm1(-strength * ratio) / -Math.expm1(-strength);
     const ground = new THREE.Color(field.baseColor).multiplyScalar(1 + field.brightnessVariation * (variationByte / 255 * 2 - 1));
-    const expected = new THREE.Color(layer.colors[`${endpoint}Colors`][0]).lerp(ground, progress).toArray();
+    const expected = new THREE.Color(layer.renderProfile.colors[`${endpoint}Colors`][0]).lerp(ground, progress).toArray();
     let count = 0;
     let maximumError = 0;
     for (let i = 0; i < pixels.length; i += 4) {
