@@ -15,7 +15,11 @@ Stand: 10. September 2026
 - Phase 3 ist abgeschlossen: gemeinsame Layerwerte und profilabhängige
   Renderwerte sind getrennt; Grass liegt als anpassbares Preset vor; Chunk- und
   Tile-Culling verwenden denselben profilabhängigen Bounds-Vertrag.
-- Als Nächstes folgt Phase 4 mit Runtime-Fassade, Lifecycle und Three-Kameraadapter.
+- Phase 4 ist abgeschlossen: Runtime-Fassade, transaktionaler Lifecycle,
+  synchrone und Worker-basierte Vorbereitung sowie Three-Kamera- und
+  Scene-Adapter bilden den einfachen Integrationseinstieg.
+- Als Nächstes folgt Phase 5 mit austauschbaren Layer-Renderern und der Trennung
+  gemeinsamer von profilspezifischen GPU-Ressourcen.
 
 ## Ziel
 

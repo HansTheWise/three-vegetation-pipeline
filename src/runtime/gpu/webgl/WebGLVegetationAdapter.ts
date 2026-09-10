@@ -17,14 +17,18 @@ export class WebGLVegetationAdapter {
   ) {
     this.renderer = renderer;
     this.dataset = dataset;
-    this.staticResources = new WebGLStaticVegetationResources(
-      renderer,
-      dataset,
-    );
-    this.visibleChunkBuffer = new WebGLVisibleChunkBuffer(
-      renderer,
-      dataset.file.header.storedChunkCount,
-    );
+    let staticResources: WebGLStaticVegetationResources | undefined;
+    try {
+      staticResources = new WebGLStaticVegetationResources(renderer, dataset);
+      this.visibleChunkBuffer = new WebGLVisibleChunkBuffer(
+        renderer,
+        dataset.file.header.storedChunkCount,
+      );
+    } catch (error) {
+      staticResources?.dispose();
+      throw error;
+    }
+    this.staticResources = staticResources;
   }
 
   updateVisibleChunks(

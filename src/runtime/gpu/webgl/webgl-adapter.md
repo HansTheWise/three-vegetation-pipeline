@@ -29,4 +29,6 @@ hochgeladen.
 `WebGLVisibleChunkBuffer` reserviert beim Erzeugen Platz für alle gespeicherten
 Chunks. `update` überschreibt nur das vorhandene `Uint32Array`; es wird kein
 neuer Speicher pro Frame angelegt. `dispose` gibt alle Three.js-Texturen wieder
-frei.
+frei. Die Initialisierung ist transaktional: Schlägt ein späterer Textur-Upload
+fehl, werden auch bereits hochgeladene Ressourcen derselben Erzeugung wieder
+freigegeben.

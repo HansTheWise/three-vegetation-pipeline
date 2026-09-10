@@ -31,7 +31,12 @@ export class WebGLActiveCellBuffer {
     );
     this.texture.name = name;
     this.texture.needsUpdate = true;
-    renderer.initTexture(this.texture);
+    try {
+      renderer.initTexture(this.texture);
+    } catch (error) {
+      this.texture.dispose();
+      throw error;
+    }
   }
 
   dispose(): void {

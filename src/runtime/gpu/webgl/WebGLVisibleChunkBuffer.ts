@@ -31,7 +31,12 @@ export class WebGLVisibleChunkBuffer {
     );
     this.texture.name = 'vegetation/visible-chunk-indices';
     this.texture.needsUpdate = true;
-    renderer.initTexture(this.texture);
+    try {
+      renderer.initTexture(this.texture);
+    } catch (error) {
+      this.texture.dispose();
+      throw error;
+    }
   }
 
   update(visibleChunkIndices: Uint32Array, visibleChunkCount: number): void {

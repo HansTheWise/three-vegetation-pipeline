@@ -2,8 +2,35 @@
 
 Die Runtime-Pipeline lädt ein VEGFILE, verbindet es mit der Runtime-Config,
 bestimmt sichtbare Chunks und stellt die benötigten Daten einem austauschbaren
-GPU-Backend bereit. Parser, Dataset, IDs und Chunk-Culling bleiben
-rendererunabhängig.
+GPU-Backend bereit. `createThreeVegetation` ist der Standardweg für Three.js;
+Parser, Dataset, IDs und Chunk-Culling bleiben rendererunabhängig.
+
+## Standardintegration
+
+```ts
+const vegetation = await createThreeVegetation({
+  renderer,
+  scene,
+  camera,
+  coordinateRoot: modelRoot,
+  source: vegetationBytes,
+  config,
+})
+
+vegetation.updateFrame()
+vegetation.setLayerEnabled('grass', false)
+vegetation.dispose()
+```
+
+Der Scene-Adapter hängt `runtime.object3d` unter `coordinateRoot` oder ohne
+expliziten Root direkt unter die Szene. Damit verwenden Vegetationsgeometrie,
+Kameraumrechnung und Culling denselben Modellraum. Er besitzt keine Lichter und
+kein Day/Night-Modell. Diese bleiben Eigentum der Hostszene; die austauschbare
+Lichtgrenze folgt separat.
+
+`setLayerEnabled` schaltet Layer um, die beim Erzeugen der Runtime aktiviert
+und deshalb mit GPU-Ressourcen initialisiert wurden. Ein in der Config
+deaktivierter Layer wird nicht verdeckt im Hintergrund vorbereitet.
 
 ## Datenfluss
 
@@ -11,7 +38,13 @@ rendererunabhängig.
 flowchart LR
   Veg[".veg-Bytes"]
   Config["VegetationRuntimeConfig"]
-  Camera["Kamera + Modellmatrix"]
+  Camera["Three-Kamera + coordinateRoot"]
+
+  subgraph Facade["Öffentliche Runtime-Grenze"]
+    SceneAdapter["ThreeVegetationSceneAdapter"]
+    CameraAdapter["ThreeCameraAdapter"]
+    Runtime["WebGLVegetationRuntime"]
+  end
 
   subgraph InitCPU["Einmalig auf der CPU"]
     Parser["parseVegFile"]
@@ -52,7 +85,9 @@ flowchart LR
   Dataset --> Static
   Dataset --> VisibleBuffer
 
-  Camera --> Matrix --> Frustum
+  Camera --> CameraAdapter --> Matrix --> Runtime --> Frustum
+  SceneAdapter --> CameraAdapter
+  SceneAdapter --> Runtime
   Boxes --> Frustum --> Visible --> VisibleBuffer
 
   Static --> Debug
@@ -70,6 +105,42 @@ flowchart LR
 ```
 
 ## Initialisierung
+
+### Runtime-Fassade und Vorbereitung
+
+`createWebGLVegetationRuntime` besitzt Dataset, gemeinsame Bounds,
+Frustum-Culling, WebGL-Ressourcen und die aktuell eingebauten Grass-Views. Die
+Factory ist asynchron, damit synchrone und Worker-basierte Vorbereitung dieselbe
+Schnittstelle verwenden. Der Standard `SynchronousVegetationPreparation`
+arbeitet auf dem aufrufenden Thread. `WorkerVegetationPreparation` verschiebt
+Parser, Dataset, Patch-Feld und aktive Cell-Zulassung in einen kurzlebigen
+Module-Worker und transferiert die erzeugten Buffer zurück. Der Consumer liefert
+nur die bundlerspezifische Worker-Factory:
+
+```ts
+const preparation = new WorkerVegetationPreparation(() => new Worker(
+  new URL('./vegetation.worker.ts', import.meta.url),
+  { type: 'module' },
+))
+```
+
+Die zugehörige Worker-Datei enthält keine eigene Vegetationslogik:
+
+```ts
+import {
+  installVegetationPreparationWorker,
+  type VegetationPreparationWorkerScope,
+} from 'three-vegetation-pipeline'
+
+installVegetationPreparationWorker(
+  self as unknown as VegetationPreparationWorkerScope,
+)
+```
+
+Schlägt eine GPU-Erzeugungsstufe fehl, werden alle vorher erzeugten Texturen,
+Buffer, Materialien und Geometrien in umgekehrter Reihenfolge freigegeben.
+`dispose()` ist idempotent und räumt die gesamte erfolgreich erstellte Runtime
+über einen Aufruf auf.
 
 ### 1. Laden und Parsen
 
@@ -135,7 +206,13 @@ gespeicherten Chunkindizes.
 
 ### 1. Frustum-Culling
 
-Die Anwendung liefert `projection × view × model` und den Clip-Space-Tiefenraum.
+`ThreeCameraAdapter` liest Three-Kamera und Vegetationsroot und aktualisiert
+einen wiederverwendeten `VegetationFrameState`. Er enthält Kameraposition im
+Modellraum, `projection × view × model` und den Clip-Space-Tiefenraum. Eine
+Anwendung mit eigenem Kamera- oder XR-System kann denselben neutralen
+Framevertrag über `cameraAdapter` direkt bedienen, ohne Dataset oder
+Layerprofile zu verändern.
+
 `FrustumChunkVisibility` prüft jede Chunk-Box gegen die sechs Frustumebenen und
 überschreibt nur den verwendeten Präfix seines bestehenden Ergebnisarrays:
 
@@ -173,6 +250,12 @@ Nullbudgets starten keinen Draw. Der Vertex-Shader rekonstruiert Pattern und
 Hashhierarchie, liest die Heightmap und positioniert die feste Halmgeometrie.
 Halmform, Versatz und Farben werden vollständig aus Config und stabilen
 Hashwerten abgeleitet.
+
+`WebGLVegetationRuntime.updateFrame` führt Chunk-Culling und anschließend die
+layerspezifischen Tile-/Density-Updates aus. Der Consumer ruft dadurch keine
+internen Buffer- oder Rendererklassen mehr selbst auf. Eine wiederverwendete,
+schreibgeschützte Diagnosestruktur liefert Chunk-, Tile- und Kandidatenzahlen,
+ohne GPU-Ressourcen öffentlich zu machen.
 
 ## Koordinaten und Indizes
 

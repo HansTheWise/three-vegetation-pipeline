@@ -59,6 +59,7 @@ export class WebGLStaticVegetationResources {
   readonly layerMasks: readonly WebGLLayerMaskResource[];
   readonly patterns: readonly WebGLPatternResource[];
   readonly groundPatchFields: readonly WebGLPatchFieldResource[];
+  readonly #ownedTextures: readonly DataTexture[];
 
   constructor(
     renderer: WebGLRenderer,
@@ -73,74 +74,81 @@ export class WebGLStaticVegetationResources {
       );
     }
 
-    this.storedChunkGridCoordinatesTexture = createUploadedDataTexture(
-      renderer,
-      createStoredChunkGridCoordinates(file),
-      storedChunkCount,
-      1,
-      RGIntegerFormat,
-      UnsignedIntType,
-      'vegetation/stored-chunk-grid-coordinates',
-    );
-    this.chunkHeightRangesTexture = createUploadedDataTexture(
-      renderer,
-      file.chunkHeightRanges,
-      storedChunkCount,
-      1,
-      RGFormat,
-      FloatType,
-      'vegetation/chunk-height-ranges',
-    );
-    this.heightDataTexture = createUploadedDataTexture(
-      renderer,
-      file.heightData,
-      heightMap.valuesPerChunk,
-      storedChunkCount,
-      RedIntegerFormat,
-      readHeightTextureType(file.heightData),
-      'vegetation/height-data',
-    );
-    this.layerMasks = file.layers.map((layer) => ({
-      layerId: layer.id,
-      maskResolution: layer.maskResolution,
-      maskWordsPerChunk: layer.maskWordsPerChunk,
-      texture: createUploadedDataTexture(
+    const ownedTextures: DataTexture[] = [];
+    try {
+      this.storedChunkGridCoordinatesTexture = createUploadedDataTexture(
         renderer,
-        layer.maskData,
-        layer.maskWordsPerChunk,
+        createStoredChunkGridCoordinates(file),
+        storedChunkCount,
+        1,
+        RGIntegerFormat,
+        UnsignedIntType,
+        'vegetation/stored-chunk-grid-coordinates',
+        ownedTextures,
+      );
+      this.chunkHeightRangesTexture = createUploadedDataTexture(
+        renderer,
+        file.chunkHeightRanges,
+        storedChunkCount,
+        1,
+        RGFormat,
+        FloatType,
+        'vegetation/chunk-height-ranges',
+        ownedTextures,
+      );
+      this.heightDataTexture = createUploadedDataTexture(
+        renderer,
+        file.heightData,
+        heightMap.valuesPerChunk,
         storedChunkCount,
         RedIntegerFormat,
-        UnsignedIntType,
-        `vegetation/layer-${layer.id}-mask`,
-      ),
-    }));
-    this.patterns = createPatternResources(renderer, dataset);
-    this.groundPatchFields = dataset.enabledLayers.flatMap((layer) => {
-      const field = layer.groundPatchField;
-      if (!field) return [];
-      const texture = new DataTexture(
-        field.data, field.width, field.height, RGFormat, UnsignedByteType,
+        readHeightTextureType(file.heightData),
+        'vegetation/height-data',
+        ownedTextures,
       );
-      texture.name = `vegetation/layer-${layer.layerId}-patch-field`;
-      texture.magFilter = LinearFilter;
-      texture.minFilter = LinearMipmapLinearFilter;
-      texture.generateMipmaps = true;
-      texture.needsUpdate = true;
-      renderer.initTexture(texture);
-      return [{ layerId: layer.layerId, texture }];
-    });
+      this.layerMasks = file.layers.map((layer) => ({
+        layerId: layer.id,
+        maskResolution: layer.maskResolution,
+        maskWordsPerChunk: layer.maskWordsPerChunk,
+        texture: createUploadedDataTexture(
+          renderer,
+          layer.maskData,
+          layer.maskWordsPerChunk,
+          storedChunkCount,
+          RedIntegerFormat,
+          UnsignedIntType,
+          `vegetation/layer-${layer.id}-mask`,
+          ownedTextures,
+        ),
+      }));
+      this.patterns = createPatternResources(renderer, dataset, ownedTextures);
+      this.groundPatchFields = dataset.enabledLayers.flatMap((layer) => {
+        const field = layer.groundPatchField;
+        if (!field) return [];
+        const texture = new DataTexture(
+          field.data, field.width, field.height, RGFormat, UnsignedByteType,
+        );
+        ownedTextures.push(texture);
+        texture.name = `vegetation/layer-${layer.layerId}-patch-field`;
+        texture.magFilter = LinearFilter;
+        texture.minFilter = LinearMipmapLinearFilter;
+        texture.generateMipmaps = true;
+        texture.needsUpdate = true;
+        renderer.initTexture(texture);
+        return [{ layerId: layer.layerId, texture }];
+      });
+    } catch (error) {
+      for (let index = ownedTextures.length - 1; index >= 0; index -= 1) {
+        ownedTextures[index]!.dispose();
+      }
+      throw error;
+    }
+    this.#ownedTextures = ownedTextures;
   }
 
   dispose(): void {
-    this.storedChunkGridCoordinatesTexture.dispose();
-    this.chunkHeightRangesTexture.dispose();
-    this.heightDataTexture.dispose();
-    for (const layer of this.layerMasks) layer.texture.dispose();
-    for (const field of this.groundPatchFields) field.texture.dispose();
-    for (const pattern of this.patterns) {
-      pattern.texture.dispose();
-      pattern.bottomColors.texture.dispose();
-      pattern.topColors.texture.dispose();
+    for (let index = this.#ownedTextures.length - 1; index >= 0; index -= 1) {
+      this.#ownedTextures[index]!.dispose();
     }
   }
 }
@@ -148,6 +156,7 @@ export class WebGLStaticVegetationResources {
 function createPatternResources(
   renderer: WebGLRenderer,
   dataset: VegetationRuntimeDataset,
+  ownedTextures: DataTexture[],
 ): WebGLPatternResource[] {
   return dataset.enabledLayers
     .map((layer) => {
@@ -166,16 +175,19 @@ function createPatternResources(
           RGFormat,
           FloatType,
           `vegetation/layer-${layer.layerId}-patterns`,
+          ownedTextures,
         ),
         bottomColors: createColorPaletteResource(
           renderer,
           profile.colors.bottomColors,
           `vegetation/layer-${layer.layerId}-bottom-colors`,
+          ownedTextures,
         ),
         topColors: createColorPaletteResource(
           renderer,
           profile.colors.topColors,
           `vegetation/layer-${layer.layerId}-top-colors`,
+          ownedTextures,
         ),
       };
     });
@@ -185,6 +197,7 @@ function createColorPaletteResource(
   renderer: WebGLRenderer,
   colors: readonly string[],
   name: string,
+  ownedTextures: DataTexture[],
 ): WebGLColorPaletteResource {
   const data = new Float32Array(colors.length * 4);
   colors.forEach((value, index) => {
@@ -205,6 +218,7 @@ function createColorPaletteResource(
       RGBAFormat,
       FloatType,
       name,
+      ownedTextures,
     ),
   };
 }
@@ -217,9 +231,11 @@ function createUploadedDataTexture(
   format: typeof RedIntegerFormat | typeof RGFormat | typeof RGIntegerFormat | typeof RGBAFormat,
   type: typeof UnsignedByteType | typeof UnsignedShortType | typeof UnsignedIntType | typeof FloatType,
   name: string,
+  ownedTextures: DataTexture[],
 ): DataTexture {
   validateTextureDimensions(renderer, width, height, name);
   const texture = new DataTexture(data, width, height, format, type);
+  ownedTextures.push(texture);
   texture.name = name;
   texture.needsUpdate = true;
   renderer.initTexture(texture);

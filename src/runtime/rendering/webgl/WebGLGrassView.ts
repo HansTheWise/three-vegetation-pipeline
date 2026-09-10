@@ -81,36 +81,57 @@ export class WebGLGrassView {
       * this.tileDensity.maximumCandidatesPerTile;
     validateWebGLInstanceCount(maximumInstanceCount, `Grass layer ${layerId}`);
 
-    this.tileBuffer = new WebGLVisibleTileBuffer(
-      adapter.renderer,
-      this.tileDensity.tileCapacity,
-      `vegetation/layer-${layerId}-density-tiles`,
-    );
-    this.activeCellBuffer = new WebGLActiveCellBuffer(
-      adapter.renderer,
-      this.tileDensity.activeCellIndices,
-      `vegetation/layer-${layerId}-active-cells`,
-    );
-    this.densityDraws = Array.from(
-      this.tileDensity.bucketCapacities,
-      (candidateCapacity, bucketIndex): WebGLGrassDensityDraw => {
+    let tileBuffer: WebGLVisibleTileBuffer | undefined;
+    let activeCellBuffer: WebGLActiveCellBuffer | undefined;
+    const densityDraws: WebGLGrassDensityDraw[] = [];
+    try {
+      tileBuffer = new WebGLVisibleTileBuffer(
+        adapter.renderer,
+        this.tileDensity.tileCapacity,
+        `vegetation/layer-${layerId}-density-tiles`,
+      );
+      activeCellBuffer = new WebGLActiveCellBuffer(
+        adapter.renderer,
+        this.tileDensity.activeCellIndices,
+        `vegetation/layer-${layerId}-active-cells`,
+      );
+      const createdTileBuffer = tileBuffer;
+      const createdActiveCellBuffer = activeCellBuffer;
+      this.tileDensity.bucketCapacities.forEach((candidateCapacity, bucketIndex) => {
         const geometry = createGrassBladeGeometry(profile.blade.segments);
-        const material = createGrassMaterial({
-          adapter,
-          layerId,
-          candidateCapacity,
-          tileBuffer: this.tileBuffer,
-          activeCellBuffer: this.activeCellBuffer,
-          cameraPositionModel: this.#cameraPositionModel,
-        });
+        let material: ShaderMaterial;
+        try {
+          material = createGrassMaterial({
+            adapter,
+            layerId,
+            candidateCapacity,
+            tileBuffer: createdTileBuffer,
+            activeCellBuffer: createdActiveCellBuffer,
+            cameraPositionModel: this.#cameraPositionModel,
+          });
+        } catch (error) {
+          geometry.dispose();
+          throw error;
+        }
         const mesh = new Mesh(geometry, material);
         mesh.name = `vegetation/grass-layer-${layerId}-density-${candidateCapacity}`;
         mesh.frustumCulled = false;
         mesh.castShadow = grassLayer.shadows.cast;
         mesh.receiveShadow = grassLayer.shadows.receive;
-        return { bucketIndex, candidateCapacity, geometry, material, mesh };
-      },
-    );
+        densityDraws.push({ bucketIndex, candidateCapacity, geometry, material, mesh });
+      });
+    } catch (error) {
+      for (let index = densityDraws.length - 1; index >= 0; index -= 1) {
+        densityDraws[index]!.geometry.dispose();
+        densityDraws[index]!.material.dispose();
+      }
+      activeCellBuffer?.dispose();
+      tileBuffer?.dispose();
+      throw error;
+    }
+    this.tileBuffer = tileBuffer;
+    this.activeCellBuffer = activeCellBuffer;
+    this.densityDraws = densityDraws;
     this.geometry = this.densityDraws[0]!.geometry;
     this.material = this.densityDraws[0]!.material;
     this.mesh = this.densityDraws[0]!.mesh;

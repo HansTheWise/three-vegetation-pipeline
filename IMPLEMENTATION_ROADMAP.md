@@ -24,7 +24,7 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 | Sichtbarkeit und Density | Fertig für Grass | Chunk- und Tile-Frustum-Culling sowie kontinuierliche Cell-, Anchor- und Elementbudgets |
 | WebGL-Grassrenderer | Fertig für den aktuellen Funktionsstand | GPU-Platzierung, Heightmap-Sampling, Geometrie, Farben, Ground-Übergang, Kameraausrichtung, Szenenlicht und eingehende Schatten |
 | Debug und Messung | Vorhanden | Chunk-/Cell-/Frustumdarstellung, Kandidaten- und GPU-Diagnostik, Browsercheck und Patch-Benchmark |
-| Öffentliche Runtime-Fassade | Offen | Anwendung verdrahtet Parser, Culling, GPU-Adapter, Renderer und Cleanup noch selbst |
+| Öffentliche Runtime-Fassade | Fertig für den aktuellen Grass-Renderer | `createWebGLVegetationRuntime`, `createThreeVegetation`, gemeinsamer Lifecycle, Frame-Diagnostik sowie Three-Kamera- und Scene-Adapter |
 | Austauschbare Renderprofile | Vertrag fertig | Neutrale Layerwerte, diskriminierte Profile, gemeinsamer Bounds-Vertrag und anpassbares Grass-Preset; Renderer-Registry folgt |
 | Licht- und Ground-Adapter | Teilweise vorhanden | Three.js-Szenenlicht funktioniert, besitzt aber noch keine eigene Adaptergrenze; Ground-Patching liegt im Consumer |
 
@@ -56,7 +56,7 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 - gemeinsame, profilabhängige Render-Bounds im globalen Chunk- und
   Tile-Culling verwenden.
 
-### 4. Öffentliche Runtime-Fassade ergänzen
+### 4. Öffentliche Runtime-Fassade ergänzen — abgeschlossen
 
 - Erzeugung, Frameupdate, Layerumschaltung und Cleanup bündeln;
 - einen gemeinsamen Modell-/Koordinatenroot verwenden;
@@ -66,6 +66,12 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
   gemeinsames Culling und Layer-Rendering übersetzen;
 - Fehler während der Initialisierung transaktional aufräumen;
 - synchrone und Worker-basierte Vorbereitung über dieselbe Grenze anbieten.
+
+Die Runtime besitzt nun Objektbaum, Chunk-/Tile-Frameupdate, Layerumschaltung,
+Diagnostik und idempotentes Cleanup. Fehlgeschlagene GPU-Erzeugungsstufen räumen
+vorher angelegte Ressourcen wieder auf. I-CAKA verwendet bereits den
+pipelineeigenen Worker-Vertrag; die vollständige Component-Migration folgt nach
+den Renderer-, Licht- und Ground-Grenzen.
 
 ### 5. Layer-Renderer und GPU-Ressourcen modularisieren
 

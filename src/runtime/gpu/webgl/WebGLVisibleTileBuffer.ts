@@ -42,7 +42,12 @@ export class WebGLVisibleTileBuffer {
     );
     this.texture.name = name;
     this.texture.needsUpdate = true;
-    renderer.initTexture(this.texture);
+    try {
+      renderer.initTexture(this.texture);
+    } catch (error) {
+      this.texture.dispose();
+      throw error;
+    }
   }
 
   update(tileRecords: Uint32Array, tileCount: number): void {
