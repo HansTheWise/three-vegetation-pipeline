@@ -47,7 +47,11 @@ describe('VegetationRuntimeConfig', () => {
     expect(() => validateVegetationRuntimeConfig(vegetationRuntimeConfig)).not.toThrow();
     const layer = vegetationRuntimeConfig.layers[0]!;
     expect(layer.shadows).toEqual({ cast: false, receive: true });
-    expect(layer.lighting).toEqual({ directLightWeight: 0.35 });
+    expect(layer.lighting).toEqual({
+      directLightWeight: 0.35,
+      indirectLightWeight: 1,
+      normal: { source: 'ground' },
+    });
     expect(layer.renderProfile.type).toBe('grass');
     expect(layer.renderProfile.blade).toMatchObject({ segments: 2, heightSampling: 'bilinear' });
     expect(layer.renderProfile.blade.cameraFacing).toEqual({
@@ -224,6 +228,27 @@ describe('VegetationRuntimeConfig', () => {
       .toThrow('lighting.directLightWeight must be between 0 and 1.');
   });
 
+  it('rejects invalid indirect light, normal, and distance-transition values', () => {
+    const invalidIndirect = structuredClone(vegetationRuntimeConfig);
+    Object.assign(invalidIndirect.layers[0]!.lighting, { indirectLightWeight: -0.1 });
+    expect(() => validateVegetationRuntimeConfig(invalidIndirect))
+      .toThrow('lighting.indirectLightWeight must be between 0 and 1.');
+
+    const invalidNormal = structuredClone(vegetationRuntimeConfig);
+    Object.assign(invalidNormal.layers[0]!.lighting, {
+      normal: { source: 'mixed', groundWeight: 2 },
+    });
+    expect(() => validateVegetationRuntimeConfig(invalidNormal))
+      .toThrow('lighting.normal.groundWeight must be between 0 and 1.');
+
+    const invalidTransition = structuredClone(groundColorConfig);
+    Object.assign(invalidTransition.layers[0]!.lighting.distanceTransition!.bottom, {
+      endsAtMeters: 20,
+    });
+    expect(() => validateVegetationRuntimeConfig(invalidTransition))
+      .toThrow('lighting.distanceTransition.bottom end distance must be greater');
+  });
+
   it('rejects invalid colors, ranges, pattern counts and distribution counts', () => {
     const layer = vegetationRuntimeConfig.layers[0]!;
     const invalidColor = {
@@ -302,6 +327,11 @@ describe('VegetationRuntimeConfig', () => {
 
     expect(() => validateVegetationRuntimeConfig(config)).not.toThrow();
     expect(layer.shadows).toEqual({ cast: true, receive: true });
+    expect(layer.lighting).toEqual({
+      directLightWeight: 0.8,
+      indirectLightWeight: 1,
+      normal: { source: 'ground' },
+    });
     expect(layer.renderProfile.blade.segments).toBe(2);
     expect(layer.renderBounds.aboveSurfaceMeters).toBe(2);
     expect(layer.renderBounds.horizontalPaddingMeters).toBeGreaterThan(1);

@@ -11,14 +11,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createThreeVegetation,
+  createThreeSceneLightingAdapter,
   createVegetationActiveCellData,
   createVegetationRuntimeDataset,
   createWebGLVegetationRuntime,
+  createWebGLGrassLayerRenderer,
   writeVegFile,
   type ParsedVegFile,
   type PreparedVegetationRuntime,
   type VegetationPreparationAdapter,
   type WebGLVegetationLayerRendererFactory,
+  type WebGLVegetationLightingAdapter,
   type VegetationDataset,
 } from '../src/index.js';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
@@ -223,6 +226,22 @@ describe('WebGLVegetationRuntime', () => {
       .not.toContain('vegetation/layer-0-patterns');
     runtime.dispose();
     expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it('connects a replacement lighting adapter through the Grass renderer factory', async () => {
+    const threeLighting = createThreeSceneLightingAdapter();
+    const createMaterial = vi.fn((options) => threeLighting.createMaterial(options));
+    const lighting: WebGLVegetationLightingAdapter = { createMaterial };
+    const runtime = await createWebGLVegetationRuntime({
+      renderer: createRenderer(),
+      source: new Uint8Array(),
+      config: vegetationRuntimeConfig,
+      preparation: createPreparation(createPreparedRuntime()),
+      layerRenderers: [createWebGLGrassLayerRenderer({ lighting })],
+    });
+
+    expect(createMaterial).toHaveBeenCalledTimes(5);
+    runtime.dispose();
   });
 
   it.each([

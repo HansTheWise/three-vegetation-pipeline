@@ -94,10 +94,51 @@ function validateLayer(layer: VegetationRuntimeLayerConfig): void {
       1,
       `${label}.lighting.directLightWeight`,
     );
+    assertBetween(
+      grassLayer.lighting.indirectLightWeight,
+      0,
+      1,
+      `${label}.lighting.indirectLightWeight`,
+    );
+    validateGrassLighting(grassLayer, label);
   }
 
   if (typeof layer.shadows.cast !== 'boolean' || typeof layer.shadows.receive !== 'boolean') {
     throw new Error(`${label}.shadows.cast and receive must be boolean.`);
+  }
+}
+
+function validateGrassLighting(layer: GrassRuntimeLayerConfig, label: string): void {
+  const normal = layer.lighting.normal;
+  if (!isRecord(normal)
+    || (normal.source !== 'ground'
+      && normal.source !== 'geometry'
+      && normal.source !== 'mixed')) {
+    throw new Error(`${label}.lighting.normal.source is unsupported.`);
+  }
+  if (normal.source === 'mixed') {
+    assertBetween(normal.groundWeight, 0, 1, `${label}.lighting.normal.groundWeight`);
+  }
+
+  const transition = layer.lighting.distanceTransition;
+  if (!transition) return;
+  assertBetween(
+    transition.directLightWeight,
+    0,
+    1,
+    `${label}.lighting.distanceTransition.directLightWeight`,
+  );
+  assertBetween(
+    transition.indirectLightWeight,
+    0,
+    1,
+    `${label}.lighting.distanceTransition.indirectLightWeight`,
+  );
+  for (const endpoint of ['bottom', 'top'] as const) {
+    const curve = transition[endpoint];
+    const path = `${label}.lighting.distanceTransition.${endpoint}`;
+    validateDistancePair(curve.startsAtMeters, curve.endsAtMeters, path);
+    assertNonNegative(curve.curveStrength, `${path}.curveStrength`);
   }
 }
 

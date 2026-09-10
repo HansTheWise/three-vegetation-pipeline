@@ -71,13 +71,7 @@ export const grassVertexShader = /* glsl */ `
   out float bladeHeightRatio;
   out float cameraDistanceMeters;
 
-  #ifdef GROUND_COLOR_TRANSITION
-    flat out vec2 groundColorProgress;
-  #endif
-
-  #define HAS_NORMAL
-  #include <common>
-  #include <shadowmap_pars_vertex>
+  #include <vegetation_lighting_pars_vertex>
 
   ${vegetationIdentityShader}
 
@@ -216,9 +210,6 @@ export const grassVertexShader = /* glsl */ `
     vViewPosition = vec3(0.0);
     bladeHeightRatio = position.y;
     cameraDistanceMeters = 0.0;
-    #ifdef GROUND_COLOR_TRANSITION
-      groundColorProgress = vec2(0.0);
-    #endif
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
   }
 
@@ -407,7 +398,6 @@ export const grassVertexShader = /* glsl */ `
         : exponentialProgress(cameraDistanceMeters, topGroundTransition.xy, topGroundTransition.z);
       bladeBottomColor = mix(bladeBottomColor, groundColor, bottomProgress);
       bladeTopColor = mix(bladeTopColor, groundColor, topProgress);
-      groundColorProgress = vec2(bottomProgress, topProgress);
     #endif
     groundNormalView = normalize(normalMatrix * groundNormalModel);
     // Use the reconstructed ground surface for Three.js shadow.normalBias too.
@@ -416,7 +406,7 @@ export const grassVertexShader = /* glsl */ `
     vec4 viewPosition = modelViewMatrix * vec4(modelPosition, 1.0);
     vViewPosition = -viewPosition.xyz;
     vec4 worldPosition = modelMatrix * vec4(modelPosition, 1.0);
-    #include <shadowmap_vertex>
+    #include <vegetation_shadowmap_vertex>
     gl_Position = projectionMatrix * viewPosition;
   }
 `;

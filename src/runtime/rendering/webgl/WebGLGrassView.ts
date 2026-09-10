@@ -2,17 +2,15 @@ import {
   Color,
   DoubleSide,
   Float32BufferAttribute,
-  GLSL3,
   InstancedBufferGeometry,
   Mesh,
   ShaderMaterial,
-  UniformsLib,
-  UniformsUtils,
   Vector2,
   Vector3,
 } from 'three';
 
 import type { Axis } from '../../../offline/config/types.js';
+import { createThreeSceneLightingAdapter } from '../../adapters/three/ThreeSceneLightingAdapter.js';
 import type { ClipSpaceDepthRange, Matrix4Elements } from '../../chunking/types.js';
 import { VegetationRenderTileDensity } from '../../density/VegetationRenderTileDensity.js';
 import type { ModelPosition, VegetationActiveCellData } from '../../density/types.js';
@@ -29,6 +27,7 @@ import type {
   WebGLVegetationLayerRenderer,
   WebGLVegetationLayerRendererDiagnostics,
 } from './WebGLVegetationLayerRenderer.js';
+import type { WebGLVegetationLightingAdapter } from './WebGLVegetationLightingAdapter.js';
 import { grassFragmentShader } from './shaders/grassFragmentShader.js';
 import { grassVertexShader } from './shaders/grassVertexShader.js';
 
@@ -61,6 +60,7 @@ export class WebGLGrassView implements WebGLVegetationLayerRenderer {
     adapter: WebGLVegetationAdapter,
     layerId: number,
     preparedCells?: VegetationActiveCellData,
+    lighting: WebGLVegetationLightingAdapter = createThreeSceneLightingAdapter(),
   ) {
     const layer = adapter.dataset.enabledLayers.find(
       (candidate) => candidate.layerId === layerId,
@@ -116,6 +116,7 @@ export class WebGLGrassView implements WebGLVegetationLayerRenderer {
             activeCellBuffer: createdActiveCellBuffer,
             cameraPositionModel: this.#cameraPositionModel,
             resources: createdResources,
+            lighting,
           });
         } catch (error) {
           geometry.dispose();
@@ -232,6 +233,7 @@ type GrassMaterialOptions = Readonly<{
   activeCellBuffer: WebGLActiveCellBuffer;
   cameraPositionModel: Vector3;
   resources: WebGLGrassLayerResources;
+  lighting: WebGLVegetationLightingAdapter;
 }>;
 
 function createGrassMaterial(options: GrassMaterialOptions): ShaderMaterial {
@@ -251,16 +253,20 @@ function createGrassMaterial(options: GrassMaterialOptions): ShaderMaterial {
     throw new Error(`Grass layer ${layerId} needs a ground patch field for its color transition.`);
   }
   const thickness = profile.bladeThicknessDistanceScaling;
-  return new ShaderMaterial({
+  const lightTransition = grassLayer.lighting.distanceTransition;
+  const lightingNormal = grassLayer.lighting.normal;
+  return options.lighting.createMaterial({
     name: `vegetation/grass-layer-${layerId}-density-${options.candidateCapacity}`,
-    glslVersion: GLSL3,
-    lights: true,
     vertexShader: grassVertexShader,
     fragmentShader: grassFragmentShader,
     side: DoubleSide,
-    defines: groundTransition ? { GROUND_COLOR_TRANSITION: 1 } : {},
+    defines: {
+      ...(groundTransition ? { GROUND_COLOR_TRANSITION: 1 } : {}),
+      ...(lightTransition ? { LIGHT_DISTANCE_TRANSITION: 1 } : {}),
+      ...(lightingNormal.source === 'geometry' ? { LIGHTING_NORMAL_GEOMETRY: 1 } : {}),
+      ...(lightingNormal.source === 'mixed' ? { LIGHTING_NORMAL_MIXED: 1 } : {}),
+    },
     uniforms: {
-      ...UniformsUtils.clone(UniformsLib.lights),
       visibleTileRecords: { value: options.tileBuffer.texture },
       visibleTileTextureWidth: { value: options.tileBuffer.textureWidth },
       activeCellIndices: { value: options.activeCellBuffer.texture },
@@ -325,7 +331,29 @@ function createGrassMaterial(options: GrassMaterialOptions): ShaderMaterial {
       },
       bladeThicknessScale: { value: new Vector2(thickness.defaultScale, thickness.maximumScale) },
       bladeThicknessCurveStrength: { value: thickness.curveStrength },
-      directLightWeight: { value: grassLayer.lighting.directLightWeight },
+      lightWeights: { value: new Vector2(
+        grassLayer.lighting.directLightWeight,
+        grassLayer.lighting.indirectLightWeight,
+      ) },
+      ...(lightingNormal.source === 'mixed'
+        ? { groundNormalWeight: { value: lightingNormal.groundWeight } }
+        : {}),
+      ...(lightTransition ? {
+        distanceLightWeights: { value: new Vector2(
+          lightTransition.directLightWeight,
+          lightTransition.indirectLightWeight,
+        ) },
+        bottomLightTransition: { value: new Vector3(
+          lightTransition.bottom.startsAtMeters,
+          lightTransition.bottom.endsAtMeters,
+          lightTransition.bottom.curveStrength,
+        ) },
+        topLightTransition: { value: new Vector3(
+          lightTransition.top.startsAtMeters,
+          lightTransition.top.endsAtMeters,
+          lightTransition.top.curveStrength,
+        ) },
+      } : {}),
       verticalColorTransition: {
         value: new Vector2(
           profile.colors.verticalColorTransition.startsAtBladeRatio,

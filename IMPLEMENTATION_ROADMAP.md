@@ -26,7 +26,8 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 | Debug und Messung | Vorhanden | Chunk-/Cell-/Frustumdarstellung, Kandidaten- und GPU-Diagnostik, Browsercheck und Patch-Benchmark |
 | Öffentliche Runtime-Fassade | Fertig für den aktuellen Grass-Renderer | `createWebGLVegetationRuntime`, `createThreeVegetation`, gemeinsamer Lifecycle, Frame-Diagnostik sowie Three-Kamera- und Scene-Adapter |
 | Austauschbare Renderprofile | Fertig für WebGL | Neutrale Layerwerte, diskriminierte Profile, gemeinsamer Bounds-Vertrag, anpassbares Grass-Preset und Renderer-Registry |
-| Licht- und Ground-Adapter | Teilweise vorhanden | Three.js-Szenenlicht funktioniert, besitzt aber noch keine eigene Adaptergrenze; Ground-Patching liegt im Consumer |
+| Lichtadapter | Fertig für WebGL/Three.js | Austauschbarer Materialvertrag, nativer Three.js-Licht-/Shadow-/Exposure-Pfad und layerspezifische Grass-Lichtreaktion |
+| Ground-Adapter | Offen | Ground-Patching liegt noch im Consumer |
 
 ## Nächste Schritte
 
@@ -86,19 +87,28 @@ Grass besitzt seine Pattern-, Farb-, Patch-, Density-, Geometry- und
 Materialressourcen nun selbst. Vertragstests decken ein fremdes Profil, den
 Austausch des eingebauten Grass-Renderers und vollständiges Cleanup ab.
 
-### 6. Three.js-Licht und Ground anbinden
+### 6. Three.js-Licht anbinden — abgeschlossen
 
 - vorhandene Three.js-Licht-, Shadow-, Tone-Mapping- und Color-Space-Chunks als
   Standard-Lichtadapter kapseln;
 - Lichtuniforms und Renderer-Exposure über den nativen Three.js-Materialpfad
   beziehen, ohne Lichter oder Belichtungswerte pro Frame zu kopieren;
 - Vegetationsreaktion konfigurierbar halten, ohne Szenenlichter manuell zu
-  duplizieren;
+  duplizieren.
+
+Der Grass-Renderer verwendet den nativen Three.js-Lichtpfad über
+`ThreeSceneLightingAdapter`. Direkter und indirekter Anteil, Normalenquelle und
+ein optionaler Licht-Distanzübergang sind ausdrückliche Layerwerte. Farb- und
+Lichtübergang sind entkoppelt; I-CAKA bildet die bisherige Darstellung mit
+identischen, separaten Kurven ab und überschreibt Shadow-Flags nicht erneut.
+
+### 7. Ground anbinden und I-CAKA verschlanken
+
 - Ground-Material-Patching generisch anbieten und Materialauswahl sowie
   Albedo-Strategie dem Consumer überlassen;
 - I-CAKA auf einen kleinen R3F-Lifecycle-Wrapper reduzieren.
 
-### 7. Paket und Release absichern
+### 8. Paket und Release absichern
 
 - stabile Root- und Subpath-Exports definieren;
 - Paket in einem temporären Three.js-Verbraucher installieren und bauen;

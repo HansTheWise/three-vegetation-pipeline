@@ -16,7 +16,11 @@ Verteilung, Pattern, Sichtbarkeit, Density, Lichtreaktion, Schatten und
   key: 'meadow-grass',
   distribution: { /* gemeinsame Anchor-/Elementkapazität */ },
   density: { /* layerspezifische Distanzkurven */ },
-  lighting: { directLightWeight: 0.8 },
+  lighting: {
+    directLightWeight: 0.8,
+    indirectLightWeight: 1,
+    normal: { source: 'ground' },
+  },
   shadows: { cast: false, receive: true },
   renderBounds: {
     horizontalPaddingMeters: 0.3,
@@ -165,14 +169,32 @@ Kamera ausgerichteten Fläche über. Die Dichtebudgets bleiben davon unberührt.
 Weitere gemeinsame Layerbereiche sind `visibility`, `pattern`, `lighting` und
 `shadows`. `bladeThicknessDistanceScaling` und `colors` gehören ausschließlich
 zum Grass-Renderprofil. Der Ort von `lighting` ist für alle Layer gleich, sein
-Inhalt wird jedoch vom jeweiligen Render-/Lichtmodul festgelegt; nur das
-Grass-Preset definiert aktuell `directLightWeight`.
+Inhalt wird jedoch vom jeweiligen Render-/Lichtmodul festgelegt. Das
+Grass-Preset definiert direkten und indirekten Lichtanteil sowie die
+Normalenquelle.
 
-`lighting.directLightWeight` legt den Anteil des gerichteten Sonnenlichts für
-nahes Gras fest (`0` bis `1`). Die Beleuchtung nutzt die aus der Heightmap
-rekonstruierte Bodennormale und ignoriert die zufällige Flächenausrichtung jedes
-einzelnen Halms. Bei einer Bodenfarben-Transition nähert sich der Anteil zusammen
-mit der Farbe dem vollen Lambert-Licht des Bodens.
+`lighting.directLightWeight` und `indirectLightWeight` legen den Anteil des
+gerichteten beziehungsweise Ambient-/Hemisphere-Lichts fest (`0` bis `1`).
+`normal.source` wählt `ground`, `geometry` oder `mixed`; bei `mixed` bestimmt
+`groundWeight` den Anteil der aus der Heightmap rekonstruierten Bodennormale.
+`ground` ist der Grass-Standard und verursacht keine zusätzlichen
+Fragment-Ableitungen.
+
+Ein optionaler Lichtübergang ist unabhängig vom Farbverlauf:
+
+```ts
+distanceTransition: {
+  directLightWeight: 1,
+  indirectLightWeight: 1,
+  bottom: { startsAtMeters: 50, endsAtMeters: 100, curveStrength: 0.8 },
+  top: { startsAtMeters: 50, endsAtMeters: 100, curveStrength: 0.8 },
+},
+```
+
+`bottom` und `top` steuern die Lichtreaktion an Halmwurzel und -spitze. Eine
+Bodenfarben-Transition verändert das Licht nicht mehr verdeckt. Soll der
+bisherige gemeinsame Übergang erhalten bleiben, werden dieselben Kurven
+ausdrücklich in Farbe und Licht konfiguriert.
 
 ## Distanzübergang zur Bodenfarbe
 

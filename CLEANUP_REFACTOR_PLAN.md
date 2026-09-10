@@ -21,7 +21,10 @@ Stand: 10. September 2026
 - Phase 5 ist abgeschlossen: Layer-Renderer werden über Profiltypen ausgewählt;
   gemeinsame VEGFILE-GPU-Daten und profilspezifische Grass-Ressourcen besitzen
   getrennte Lifecycle-Grenzen.
-- Als Nächstes folgt Phase 6 mit dem isolierten Three.js-Lichtadapter.
+- Phase 6 ist abgeschlossen: Der austauschbare Three.js-Lichtadapter besitzt
+  Licht-, Shadow-, Tone-Mapping- und Color-Space-Anbindung; Grass konfiguriert
+  Lichtanteile, Normalenquelle und Distanzübergang unabhängig von der Farbe.
+- Als Nächstes folgt Phase 7 mit Ground-Adapter und schlanker I-CAKA-Einbindung.
 
 ## Ziel
 
@@ -174,7 +177,7 @@ const runtime = await createThreeVegetation({
   coordinateRoot: modelRoot,
   preparation: createWorkerPreparationAdapter(),
   layerRenderers: [
-    createGrassLayerRenderer({
+    createWebGLGrassLayerRenderer({
       lighting: createThreeSceneLightingAdapter(),
     }),
   ],

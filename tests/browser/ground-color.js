@@ -11,6 +11,8 @@ try {
   layer.distribution.anchorsPerCell = 1;
   layer.renderProfile.blade.heightMeters = { minimum: 1, maximum: 1 };
   layer.renderProfile.blade.widthMeters = { minimum: 0.7, maximum: 0.7 };
+  layer.renderBounds.aboveSurfaceMeters = 1;
+  layer.renderBounds.horizontalPaddingMeters = 2;
   layer.renderProfile.blade.cameraFacing = { startsAtMeters: 0, reachesFullAtMeters: 1 };
   layer.renderProfile.colors.bottomColors = ['#264e20'];
   layer.renderProfile.colors.topColors = ['#b1df78'];
@@ -30,10 +32,14 @@ try {
   };
   const renderer = new THREE.WebGLRenderer();
   renderer.shadowMap.enabled = true;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.5;
+  renderer.setClearColor(0, 0);
   const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff, 1));
-  scene.add(new THREE.HemisphereLight(0xc7e4ff, 0x737866, 1));
-  const keyLight = new THREE.DirectionalLight(0xfff8ea, 2);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
+  const hemisphereLight = new THREE.HemisphereLight(0xc7e4ff, 0x737866, 0.1);
+  scene.add(ambientLight, hemisphereLight);
+  const keyLight = new THREE.DirectionalLight(0xfff8ea, 0.1);
   keyLight.position.set(2, 4, 3);
   keyLight.castShadow = true;
   keyLight.shadow.mapSize.set(128, 128);
@@ -47,12 +53,61 @@ try {
   adapter.updateVisibleChunks(new Uint32Array([0]), 1);
   view.updateDensity({ x: 1, y: 1, z: 10 });
   scene.add(view.mesh);
-  const target = new THREE.WebGLRenderTarget(128, 128);
-  renderer.setRenderTarget(target);
+  renderer.setSize(128, 128, false);
   renderer.render(scene, camera);
   if (renderer.info.programs.some((program) => program.diagnostics?.runnable === false)) {
     throw new Error('Production shader did not compile');
   }
+  const averageRenderedLight = () => {
+    const pixels = new Uint8Array(128 * 128 * 4);
+    renderer.getContext().readPixels(
+      0, 0, 128, 128,
+      renderer.getContext().RGBA,
+      renderer.getContext().UNSIGNED_BYTE,
+      pixels,
+    );
+    let channels = 0;
+    let sum = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index + 3] === 0) continue;
+      sum += pixels[index] + pixels[index + 1] + pixels[index + 2];
+      channels += 3;
+    }
+    if (channels === 0) throw new Error('Lighting check rendered no Grass pixels');
+    return sum / channels;
+  };
+  const lowExposureLight = averageRenderedLight();
+  renderer.toneMappingExposure = 2;
+  renderer.render(scene, camera);
+  const highExposureLight = averageRenderedLight();
+  if (highExposureLight <= lowExposureLight) {
+    throw new Error(`Renderer exposure did not reach the vegetation material: ${JSON.stringify({ lowExposureLight, highExposureLight })}`);
+  }
+  if (!view.material.uniforms.ambientLightColor.value.length
+    || !view.material.uniforms.hemisphereLights.value.length
+    || !view.material.uniforms.directionalLights.value.length
+    || !view.material.uniforms.directionalLightShadows.value.length) {
+    throw new Error('Three.js scene light or shadow uniforms are incomplete');
+  }
+  keyLight.color.set(0xff0000);
+  keyLight.intensity = 0.25;
+  renderer.render(scene, camera);
+  const redDirectional = view.material.uniforms.directionalLights.value[0].color.clone();
+  keyLight.color.set(0x0000ff);
+  renderer.render(scene, camera);
+  const blueDirectional = view.material.uniforms.directionalLights.value[0].color;
+  if (redDirectional.r <= redDirectional.b || blueDirectional.b <= blueDirectional.r) {
+    throw new Error('Scene light changes require an unexpected manual vegetation sync');
+  }
+  view.densityDraws.forEach((draw) => { draw.mesh.receiveShadow = false; });
+  renderer.render(scene, camera);
+  view.densityDraws.forEach((draw) => { draw.mesh.receiveShadow = true; });
+  renderer.render(scene, camera);
+  if (renderer.info.programs.some((program) => program.diagnostics?.runnable === false)) {
+    throw new Error('Shadow receive variants did not compile');
+  }
+  const target = new THREE.WebGLRenderTarget(128, 128);
+  renderer.setRenderTarget(target);
   const field = dataset.enabledLayers[0].groundPatchField;
   const texture = view.resources.groundPatchField.texture;
   const checks = [];
@@ -79,7 +134,6 @@ try {
         void main() { outputColor = vec4(${endpoint === 'bottom' ? 'bladeBottomColor' : 'bladeTopColor'}, 1.0); }`;
       material.needsUpdate = true;
     }
-    renderer.setClearColor(0, 0);
     renderer.render(scene, camera);
     const pixels = new Uint8Array(128 * 128 * 4);
     renderer.readRenderTargetPixels(target, 0, 0, 128, 128, pixels);
@@ -112,7 +166,20 @@ try {
     }
   }
   if (renderer.getContext().getError() !== 0) throw new Error('WebGL error');
-  result.textContent = JSON.stringify({ status: 'PASS', productionShader: true, checks: checks.length, maximumError: Math.max(...checks.map((check) => check.maximumError)) }, null, 2);
+  result.textContent = JSON.stringify({
+    status: 'PASS',
+    productionShader: true,
+    lighting: {
+      ambient: true,
+      hemisphere: true,
+      directional: true,
+      sceneUpdatesWithoutSync: true,
+      shadowsOnOff: true,
+      exposure: { low: lowExposureLight, high: highExposureLight },
+    },
+    checks: checks.length,
+    maximumError: Math.max(...checks.map((check) => check.maximumError)),
+  }, null, 2);
   view.dispose(); adapter.dispose(); target.dispose(); renderer.dispose();
 } catch (error) {
   result.textContent = `FAIL: ${error.stack}`;

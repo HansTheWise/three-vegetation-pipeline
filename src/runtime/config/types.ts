@@ -9,11 +9,13 @@ export type NumericRange = Readonly<{
 
 export type VegetationHeightSampling = 'bilinear' | 'diagonal-average';
 
-export type VegetationColorDistanceCurve = Readonly<{
+export type VegetationDistanceCurve = Readonly<{
   startsAtMeters: number;
   endsAtMeters: number;
   curveStrength: number;
 }>;
+
+export type VegetationColorDistanceCurve = VegetationDistanceCurve;
 
 export type VegetationDensityCurvePoint = Readonly<{
   distanceMeters: number;
@@ -39,9 +41,29 @@ export type VegetationRenderProfileConfig = Readonly<{
 
 export type VegetationLayerLightingConfig = Readonly<Record<string, unknown>>;
 
-export type GrassLayerLightingConfig = VegetationLayerLightingConfig & Readonly<{
-  /** Direct sun contribution before an optional ground-color transition. */
+export type GrassLightingNormalConfig = Readonly<{
+  source: 'ground';
+}> | Readonly<{
+  source: 'geometry';
+}> | Readonly<{
+  source: 'mixed';
+  groundWeight: number;
+}>;
+
+export type GrassLightDistanceTransitionConfig = Readonly<{
   directLightWeight: number;
+  indirectLightWeight: number;
+  bottom: VegetationDistanceCurve;
+  top: VegetationDistanceCurve;
+}>;
+
+export type GrassLayerLightingConfig = VegetationLayerLightingConfig & Readonly<{
+  /** Direct scene-light contribution near the camera. */
+  directLightWeight: number;
+  /** Ambient and hemisphere-light contribution near the camera. */
+  indirectLightWeight: number;
+  normal: GrassLightingNormalConfig;
+  distanceTransition?: GrassLightDistanceTransitionConfig;
 }>;
 
 export type GrassRenderProfileConfig = VegetationRenderProfileConfig & Readonly<{

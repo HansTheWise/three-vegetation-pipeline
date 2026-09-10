@@ -12,12 +12,14 @@ import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import { groundColorConfig } from './fixtures/groundColorConfig.js';
 import {
   createVegetationRuntimeDataset,
+  createThreeSceneLightingAdapter,
   grassFragmentShader,
   grassVertexShader,
   WebGLGrassView,
   WebGLVegetationAdapter,
   type ParsedVegFile,
   type VegetationRuntimeConfig,
+  type WebGLVegetationLightingAdapter,
 } from '../src/index.js';
 
 function createRenderer(): WebGLRenderer {
@@ -76,6 +78,7 @@ describe('WebGLGrassView', () => {
     expect(resource.texture.generateMipmaps).toBe(true);
     for (const { material } of view.densityDraws) {
       expect(material.defines.GROUND_COLOR_TRANSITION).toBe(1);
+      expect(material.defines.LIGHT_DISTANCE_TRANSITION).toBe(1);
       expect(material.uniforms.groundPatchField!.value).toBe(resource.texture);
       expect(material.uniforms.groundBaseColor!.value).toEqual(new Color(field.baseColor));
       expect(material.uniforms.groundOrigin!.value.toArray()).toEqual([field.originX, field.originY]);
@@ -84,6 +87,10 @@ describe('WebGLGrassView', () => {
       ]);
       expect(material.uniforms.bottomGroundTransition!.value.toArray()).toEqual([30, 120, 0]);
       expect(material.uniforms.topGroundTransition!.value.toArray()).toEqual([60, 180, 2]);
+      expect(material.uniforms.lightWeights!.value.toArray()).toEqual([0.35, 1]);
+      expect(material.uniforms.distanceLightWeights!.value.toArray()).toEqual([1, 1]);
+      expect(material.uniforms.bottomLightTransition!.value.toArray()).toEqual([30, 120, 0]);
+      expect(material.uniforms.topLightTransition!.value.toArray()).toEqual([60, 180, 2]);
       expect(material.uniforms.distanceColorFarTint).toBeUndefined();
     }
     const disposed = vi.fn();
@@ -109,8 +116,11 @@ describe('WebGLGrassView', () => {
     expect(view.material.glslVersion).toBe(GLSL3);
     expect(view.material.lights).toBe(true);
     expect(view.material.toneMapped).toBe(true);
-    expect(view.material.vertexShader).toBe(grassVertexShader);
-    expect(view.material.fragmentShader).toBe(grassFragmentShader);
+    expect(view.material.vertexShader).toContain('#include <shadowmap_vertex>');
+    expect(view.material.fragmentShader).toContain('#include <lights_fragment_begin>');
+    expect(view.material.fragmentShader).toContain('#include <tonemapping_fragment>');
+    expect(view.material.fragmentShader).toContain('#include <colorspace_fragment>');
+    expect(view.material.fragmentShader).not.toContain('#include <vegetation_');
     expect(view.densityDraws.every((draw) => draw.mesh.receiveShadow)).toBe(true);
     expect(view.densityDraws.every((draw) => !draw.mesh.castShadow)).toBe(true);
   });
@@ -128,7 +138,11 @@ describe('WebGLGrassView', () => {
       bladeConfig.heightMeters.maximum * 2,
     ]);
     expect(view.material.uniforms.useTwoSampleHeight!.value).toBe(false);
-    expect(view.material.uniforms.directLightWeight!.value).toBe(0.35);
+    expect(view.material.uniforms.lightWeights!.value.toArray()).toEqual([0.35, 1]);
+    expect(view.material.uniforms.groundNormalWeight).toBeUndefined();
+    expect(view.material.defines.LIGHTING_NORMAL_GEOMETRY).toBeUndefined();
+    expect(view.material.defines.LIGHTING_NORMAL_MIXED).toBeUndefined();
+    expect(view.material.uniforms.distanceLightWeights).toBeUndefined();
     expect(view.material.uniforms.cameraFacingDistance!.value.toArray()).toEqual([80, 140]);
     expect(view.candidatesPerVisibleChunk).toBe(16);
     expect(view.tileDensity.activeCellIndices).toHaveLength(6);
@@ -153,6 +167,40 @@ describe('WebGLGrassView', () => {
       .toMatchObject({ colorCount: colors.topColors.length });
     expect(view.resources.pattern.topColors.texture.image)
       .toMatchObject({ width: colors.topColors.length, height: 1 });
+  });
+
+  it('uses a replacement lighting adapter for every density material', () => {
+    const adapter = createAdapter();
+    const threeLighting = createThreeSceneLightingAdapter();
+    const createMaterial = vi.fn((options) => threeLighting.createMaterial(options));
+    const lighting: WebGLVegetationLightingAdapter = { createMaterial };
+
+    const view = new WebGLGrassView(adapter, 0, undefined, lighting);
+
+    expect(createMaterial).toHaveBeenCalledTimes(view.densityDraws.length);
+    expect(createMaterial.mock.calls[0]![0]).toMatchObject({
+      vertexShader: grassVertexShader,
+      fragmentShader: grassFragmentShader,
+    });
+  });
+
+  it.each([
+    [{ source: 'ground' }, undefined, undefined],
+    [{ source: 'geometry' }, 'LIGHTING_NORMAL_GEOMETRY', undefined],
+    [{ source: 'mixed', groundWeight: 0.4 }, 'LIGHTING_NORMAL_MIXED', 0.4],
+  ] as const)('maps the %o lighting normal to its shader path', (normal, define, weight) => {
+    const layer = vegetationRuntimeConfig.layers[0]!;
+    const view = new WebGLGrassView(createAdapter({
+      ...vegetationRuntimeConfig,
+      layers: [{ ...layer, lighting: { ...layer.lighting, normal } }],
+    }), 0);
+
+    if (define) expect(view.material.defines[define]).toBe(1);
+    if (weight === undefined) {
+      expect(view.material.uniforms.groundNormalWeight).toBeUndefined();
+    } else {
+      expect(view.material.uniforms.groundNormalWeight!.value).toBe(weight);
+    }
   });
 
   it('updates one shared Tile buffer and bounds padded GPU candidates below 2x', () => {
@@ -210,19 +258,20 @@ describe('WebGLGrassView', () => {
     expect(grassVertexShader).toContain('cameraFacingUp');
     expect(grassVertexShader).toContain('transpose(normalMatrix)');
     expect(grassVertexShader).toContain('vec3 transformedNormal = groundNormalView');
-    expect(grassVertexShader).toContain('#include <shadowmap_vertex>');
+    expect(grassVertexShader).toContain('#include <vegetation_shadowmap_vertex>');
+    expect(grassVertexShader).not.toContain('#include <shadowmap_vertex>');
     expect(grassVertexShader).toContain('vViewPosition');
-    expect(grassFragmentShader).toContain('#include <lights_fragment_begin>');
-    expect(grassFragmentShader).toContain('RE_Direct_Grass');
-    expect(grassFragmentShader).toContain('* grassDirectLightWeight');
-    expect(grassFragmentShader).toContain('dot(geometryNormal, directLight.direction)');
-    expect(grassFragmentShader).toContain('groundColorProgress');
-    expect(grassFragmentShader).toContain('mix(directLightWeight, 1.0, groundLightingProgress)');
-    expect(grassFragmentShader).not.toContain('lights_lambert_pars_fragment');
-    expect(grassFragmentShader).not.toContain('viewNormal');
+    expect(grassFragmentShader).toContain('#include <vegetation_lighting_pars_fragment>');
+    expect(grassFragmentShader).toContain('#include <vegetation_lighting_fragment>');
+    expect(grassFragmentShader).not.toContain('#include <lights_fragment_begin>');
+    expect(grassFragmentShader).not.toContain('RE_Direct_Vegetation');
+    expect(grassFragmentShader).not.toContain('groundColorProgress');
+    expect(grassFragmentShader).toContain('distanceLightWeights');
+    expect(grassFragmentShader).toContain('groundNormalWeight');
+    expect(grassFragmentShader).toContain('geometryNormalView');
     expect(grassFragmentShader).toContain('vViewPosition');
-    expect(grassFragmentShader).toContain('#include <tonemapping_fragment>');
-    expect(grassFragmentShader).toContain('#include <colorspace_fragment>');
+    expect(grassFragmentShader).toContain('#include <vegetation_tonemapping_fragment>');
+    expect(grassFragmentShader).toContain('#include <vegetation_colorspace_fragment>');
   });
 
   it('disposes bucket, density, pattern, and palette resources once', () => {

@@ -50,17 +50,20 @@ stabilen Cell-/Anchor-/Element-Hashes.
 
 Alle Buckets verwenden `blade.segments` und `blade.heightSampling`. Es gibt
 keinen Geometrie-LOD-Wechsel und kein Wachstum versteckter Halme unter dem
-Boden. Die Materialien beziehen Three.js-Szenenlicht, eingehende Schatten,
-Tone-Mapping und Ausgabefarbraum direkt ein.
+Boden. `ThreeSceneLightingAdapter` verbindet die Materialien standardmäßig mit
+Three.js-Szenenlicht, eingehenden Schatten, Tone-Mapping, Renderer-Exposure und
+Ausgabefarbraum. `createWebGLGrassLayerRenderer({ lighting })` kann diesen
+technischen Materialpfad ersetzen, ohne Grass-Placement oder Density zu ändern.
 
 Der Shader leitet die lokale Bodennormale ohne weitere Texturzugriffe aus den
-vier bereits für die bilineare Höhe gelesenen Heightmap-Werten ab. Direktes und
-indirektes Licht reagieren damit auf die Bodensteigung, aber nie auf die
-zufällige Ausrichtung der zweidimensionalen Halmfläche.
+vier bereits für die bilineare Höhe gelesenen Heightmap-Werten ab. Sie ist die
+Standard-Normalenquelle. `geometry` verwendet stattdessen die sichtbare
+Halmfläche; `mixed` blendet beide anhand von `groundWeight`. Nur diese beiden
+Varianten aktivieren die zusätzliche Fragmentableitung.
 
-`lighting.directLightWeight` begrenzt den direkten Sonnenanteil des nahen
-Grases. Während einer Bodenfarben-Transition nähert er sich zusammen mit der
-Halmfarbe dem vollen Lambert-Anteil des Bodenmaterials. Sonnenfarbe,
+`lighting.directLightWeight` und `indirectLightWeight` begrenzen direkte und
+indirekte Anteile. `lighting.distanceTransition` kann beide Werte unabhängig
+vom Farbverlauf über Entfernung und Halmhöhe verändern. Sonnenfarbe,
 Intensität und eingehende Schatten bleiben erhalten.
 
 Zwischen `blade.cameraFacing.startsAtMeters` und `reachesFullAtMeters` richtet

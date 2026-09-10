@@ -26,7 +26,7 @@ Der Scene-Adapter hängt `runtime.object3d` unter `coordinateRoot` oder ohne
 expliziten Root direkt unter die Szene. Damit verwenden Vegetationsgeometrie,
 Kameraumrechnung und Culling denselben Modellraum. Er besitzt keine Lichter und
 kein Day/Night-Modell. Diese bleiben Eigentum der Hostszene; die austauschbare
-Lichtgrenze folgt separat.
+Lichtgrenze verwendet standardmäßig direkt den nativen Three.js-Lichtpfad.
 
 `setLayerEnabled` schaltet Layer um, die beim Erzeugen der Runtime aktiviert
 und deshalb mit GPU-Ressourcen initialisiert wurden. Ein in der Config
@@ -39,6 +39,7 @@ flowchart LR
   Veg[".veg-Bytes"]
   Config["VegetationRuntimeConfig"]
   Camera["Three-Kamera + coordinateRoot"]
+  SceneLight["Three-Szenenlicht + Renderer"]
 
   subgraph Facade["Öffentliche Runtime-Grenze"]
     SceneAdapter["ThreeVegetationSceneAdapter"]
@@ -64,6 +65,7 @@ flowchart LR
   subgraph LayerGPU["Einmalig pro Layer-Renderer"]
     Registry["Renderer-Registry<br/>Auswahl über Profiltyp"]
     ProfileResources["Profilressourcen<br/>Grass: Pattern, Paletten, Patchfeld"]
+    LightingAdapter["ThreeSceneLightingAdapter<br/>oder Ersatzadapter"]
   end
 
   subgraph FrameCPU["Pro Frame auf der CPU"]
@@ -90,6 +92,7 @@ flowchart LR
   Dataset --> Static
   Dataset --> VisibleBuffer
   Dataset --> Registry --> ProfileResources
+  Registry --> LightingAdapter
 
   Camera --> CameraAdapter --> Matrix --> Runtime --> Frustum
   SceneAdapter --> CameraAdapter
@@ -104,6 +107,7 @@ flowchart LR
 
   Static --> Production
   ProfileResources --> Production
+  SceneLight --> LightingAdapter --> Production
   VisibleBuffer --> Production
   CellHash --> Production
   CellHash --> AnchorHash
@@ -222,6 +226,15 @@ profilspezifischen Ressourcen. Bei Grass sind das Patterntextur, Farbpaletten,
 optionales RG-Patch-Feld, Density-Tile- und Active-Cell-Buffer sowie Geometrien
 und Materialien. Gemeinsame VEGFILE-Texturen und die sichtbaren Chunkindizes
 werden dadurch nicht pro Layer-Renderer dupliziert.
+
+Der eingebaute Grass-Renderer verwendet standardmäßig den
+`ThreeSceneLightingAdapter`. Er setzt `lights: true`, bindet Three.js-Licht- und
+Shadow-Uniforms ein und hält die versionsabhängigen Lighting-, Shadow-,
+Tone-Mapping- und Color-Space-Chunks aus dem Grass-Shader heraus. Three.js
+aktualisiert Lichtfarben, Intensitäten, Shadowmaps und Renderer-Exposure über
+seinen normalen Renderpfad; die Vegetationsruntime durchsucht oder kopiert
+keine Szenenlichter pro Frame. Ein Ersatzadapter wird über
+`createWebGLGrassLayerRenderer({ lighting })` registriert.
 
 ## Verarbeitung pro Frame
 

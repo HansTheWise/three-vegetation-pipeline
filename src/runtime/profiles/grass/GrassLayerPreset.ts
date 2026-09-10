@@ -2,6 +2,8 @@ import type { PatchConfig } from '../../patches/types.js';
 import type {
   GrassRenderProfileConfig,
   GrassRuntimeLayerConfig,
+  GrassLightDistanceTransitionConfig,
+  GrassLightingNormalConfig,
   HexColor,
   NumericRange,
   VegetationColorDistanceCurve,
@@ -67,6 +69,9 @@ export type GrassLayerPresetOptions = Readonly<{
   }>;
   lighting?: Readonly<{
     directLightWeight?: number;
+    indirectLightWeight?: number;
+    normal?: GrassLightingNormalConfig;
+    distanceTransition?: GrassLightDistanceTransitionConfig;
   }>;
   shadows?: Readonly<{
     cast?: boolean;
@@ -188,6 +193,11 @@ export function createGrassLayerConfig(
     },
     lighting: {
       directLightWeight: options.lighting?.directLightWeight ?? 0.8,
+      indirectLightWeight: options.lighting?.indirectLightWeight ?? 1,
+      normal: options.lighting?.normal ?? { source: 'ground' },
+      ...(options.lighting?.distanceTransition
+        ? { distanceTransition: options.lighting.distanceTransition }
+        : {}),
     },
     shadows: {
       cast: options.shadows?.cast ?? false,

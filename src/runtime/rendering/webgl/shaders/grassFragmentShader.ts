@@ -5,7 +5,17 @@ export const grassFragmentShader = /* glsl */ `
   uniform vec3 distanceColorFarTint;
   uniform vec2 distanceColorRange;
   uniform float distanceColorCurveStrength;
-  uniform float directLightWeight;
+  uniform vec2 lightWeights;
+
+  #ifdef LIGHTING_NORMAL_MIXED
+    uniform float groundNormalWeight;
+  #endif
+
+  #ifdef LIGHT_DISTANCE_TRANSITION
+    uniform vec2 distanceLightWeights;
+    uniform vec3 bottomLightTransition;
+    uniform vec3 topLightTransition;
+  #endif
 
   flat in vec3 bladeBottomColor;
   flat in vec3 bladeTopColor;
@@ -14,57 +24,9 @@ export const grassFragmentShader = /* glsl */ `
   in float bladeHeightRatio;
   in float cameraDistanceMeters;
 
-  #ifdef GROUND_COLOR_TRANSITION
-    flat in vec2 groundColorProgress;
-  #endif
   out vec4 outputColor;
 
-  #define LAMBERT
-  #define gl_FragColor outputColor
-  #include <common>
-  #include <packing>
-  #include <bsdfs>
-  #include <lights_pars_begin>
-  #include <shadowmap_pars_fragment>
-
-  struct GrassMaterial {
-    vec3 diffuseColor;
-  };
-
-  float grassDirectLightWeight;
-
-  // Direct light keeps its scene color, attenuation and shadows, but never uses
-  // the incidental angle of the two-dimensional blade face.
-  void RE_Direct_Grass(
-    const in IncidentLight directLight,
-    const in vec3 geometryPosition,
-    const in vec3 geometryNormal,
-    const in vec3 geometryViewDir,
-    const in vec3 geometryClearcoatNormal,
-    const in GrassMaterial material,
-    inout ReflectedLight reflectedLight
-  ) {
-    float directIncidence = saturate(dot(geometryNormal, directLight.direction));
-    reflectedLight.directDiffuse += directLight.color
-      * directIncidence
-      * grassDirectLightWeight
-      * BRDF_Lambert(material.diffuseColor);
-  }
-
-  void RE_IndirectDiffuse_Grass(
-    const in vec3 irradiance,
-    const in vec3 geometryPosition,
-    const in vec3 geometryNormal,
-    const in vec3 geometryViewDir,
-    const in vec3 geometryClearcoatNormal,
-    const in GrassMaterial material,
-    inout ReflectedLight reflectedLight
-  ) {
-    reflectedLight.indirectDiffuse += irradiance * BRDF_Lambert(material.diffuseColor);
-  }
-
-  #define RE_Direct RE_Direct_Grass
-  #define RE_IndirectDiffuse RE_IndirectDiffuse_Grass
+  #include <vegetation_lighting_pars_fragment>
 
   float exponentialProgress(float distanceMeters, vec2 distanceRange, float strength) {
     float ratio = clamp(
@@ -72,6 +34,7 @@ export const grassFragmentShader = /* glsl */ `
       0.0,
       1.0
     );
+    if (strength < 0.001) return ratio;
     float exponentialEnd = exp(-strength);
     float density = (
       exp(-strength * ratio) - exponentialEnd
@@ -93,14 +56,34 @@ export const grassFragmentShader = /* glsl */ `
       bladeTopColor,
       colorTransition
     );
-    grassDirectLightWeight = directLightWeight;
-    #ifdef GROUND_COLOR_TRANSITION
-      float groundLightingProgress = mix(
-        groundColorProgress.x,
-        groundColorProgress.y,
+    vegetationDirectLightWeight = lightWeights.x;
+    vegetationIndirectLightWeight = lightWeights.y;
+    #ifdef LIGHT_DISTANCE_TRANSITION
+      float bottomLightProgress = exponentialProgress(
+        cameraDistanceMeters,
+        bottomLightTransition.xy,
+        bottomLightTransition.z
+      );
+      float topLightProgress = exponentialProgress(
+        cameraDistanceMeters,
+        topLightTransition.xy,
+        topLightTransition.z
+      );
+      float lightProgress = mix(
+        bottomLightProgress,
+        topLightProgress,
         colorTransition
       );
-      grassDirectLightWeight = mix(directLightWeight, 1.0, groundLightingProgress);
+      vegetationDirectLightWeight = mix(
+        lightWeights.x,
+        distanceLightWeights.x,
+        lightProgress
+      );
+      vegetationIndirectLightWeight = mix(
+        lightWeights.y,
+        distanceLightWeights.y,
+        lightProgress
+      );
     #endif
     #ifndef GROUND_COLOR_TRANSITION
     float distanceColorProgress = exponentialProgress(
@@ -115,24 +98,30 @@ export const grassFragmentShader = /* glsl */ `
     );
     #endif
 
-    // Match the reconstructed ground slope, never the incidental blade face.
-    vec3 normal = normalize(groundNormalView);
-    GrassMaterial material;
-    material.diffuseColor = grassColor;
-    ReflectedLight reflectedLight = ReflectedLight(
-      vec3(0.0),
-      vec3(0.0),
-      vec3(0.0),
-      vec3(0.0)
-    );
-    #include <lights_fragment_begin>
-    #include <lights_fragment_end>
+    #if defined(LIGHTING_NORMAL_GEOMETRY) || defined(LIGHTING_NORMAL_MIXED)
+      vec3 geometryNormalView = normalize(cross(
+        dFdx(vViewPosition),
+        dFdy(vViewPosition)
+      ));
+      #ifdef DOUBLE_SIDED
+        geometryNormalView *= gl_FrontFacing ? 1.0 : -1.0;
+      #endif
+    #endif
+    #ifdef LIGHTING_NORMAL_GEOMETRY
+      vec3 vegetationLightingNormal = geometryNormalView;
+    #elif defined(LIGHTING_NORMAL_MIXED)
+      vec3 vegetationLightingNormal = normalize(mix(
+        geometryNormalView,
+        groundNormalView,
+        groundNormalWeight
+      ));
+    #else
+      vec3 vegetationLightingNormal = normalize(groundNormalView);
+    #endif
+    vec3 vegetationDiffuseColor = grassColor;
 
-    outputColor = vec4(
-      reflectedLight.directDiffuse + reflectedLight.indirectDiffuse,
-      1.0
-    );
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
+    #include <vegetation_lighting_fragment>
+    #include <vegetation_tonemapping_fragment>
+    #include <vegetation_colorspace_fragment>
   }
 `;
