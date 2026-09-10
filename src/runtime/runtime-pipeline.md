@@ -35,85 +35,106 @@ deaktivierter Layer wird nicht verdeckt im Hintergrund vorbereitet.
 ## Datenfluss
 
 ```mermaid
-flowchart LR
-  Veg[".veg-Bytes"]
-  Config["VegetationRuntimeConfig"]
-  Camera["Three-Kamera + coordinateRoot"]
-  SceneLight["Three-Szenenlicht + Renderer"]
+flowchart TB
+  subgraph Host["Three.js-Anwendung"]
+    Source[".veg-Bytes"]
+    Config["VegetationRuntimeConfig<br/>configVersion + layers[]"]
+    Three["Renderer · Szene · Kamera<br/>gemeinsamer coordinateRoot"]
+    SceneLight["Szenenlicht · Shadows<br/>Tone Mapping · Exposure"]
+  end
 
-  subgraph Facade["Öffentliche Runtime-Grenze"]
-    SceneAdapter["ThreeVegetationSceneAdapter"]
+  subgraph Integration["Öffentliche Adaptergrenze"]
+    SceneAdapter["ThreeVegetationSceneAdapter<br/>Ein-/Aushängen · Lifecycle"]
     CameraAdapter["ThreeCameraAdapter"]
-    Runtime["WebGLVegetationRuntime"]
+    Preparation["VegetationPreparationAdapter<br/>synchron oder Worker"]
   end
 
-  subgraph InitCPU["Einmalig auf der CPU"]
-    Parser["parseVegFile"]
-    Parsed["ParsedVegFile<br/>validierte Typed-Array-Views"]
-    DatasetBuilder["createVegetationRuntimeDataset"]
-    Patterns["progressive Anchor-Patterns"]
-    Patches["Grass-Profildaten<br/>optionales RG8-Patch-Feld"]
-    Dataset["VegetationRuntimeDataset"]
-    Boxes["Chunk-Begrenzungsboxen"]
+  subgraph Prepared["Vorbereitung auf der CPU"]
+    subgraph GlobalData["Global: einmal pro Vegetationsasset"]
+      FileData["ParsedVegFile<br/>Grid · Höhen · Masken · Metadaten"]
+      SharedBounds["gemeinsame konservative<br/>Chunk-Bounds"]
+    end
+    subgraph LayerData["Layerspezifisch: einmal pro Layer"]
+      LayerCore["neutraler Layervertrag<br/>ID/Key · Bounds · Distribution · Pattern<br/>Visibility · Density · Shadows · Lighting"]
+      ProfileData["Renderprofil + Profildaten<br/>Grass: Blade · Farben · Patchfeld"]
+      ActiveCells["maskenaktive, seed-sortierte Cells"]
+    end
   end
 
-  subgraph InitGPU["Einmalig im WebGL-Adapter"]
-    Static["gemeinsame GPU-Ressourcen<br/>Grid, Höhen, Masken"]
-    VisibleBuffer["Visible-Chunk-Buffer"]
+  subgraph GlobalRuntime["Global: WebGLVegetationRuntime"]
+    Runtime["Runtime-Fassade<br/>object3d · updateFrame · diagnostics · dispose"]
+    LayerManager["generische Layerverwaltung<br/>RuntimeLayer[] · enable/disable · Frame-Dispatch"]
+    Registry["Layer-Renderer-Registry<br/>Factory-Auswahl über renderProfile.type"]
+    ChunkCulling["gemeinsames Chunk-Culling<br/>FrustumChunkVisibility"]
+    SharedGpu["gemeinsamer WebGL-Adapter<br/>Grid · Höhen · Masken · Visible Chunks"]
   end
 
-  subgraph LayerGPU["Einmalig pro Layer-Renderer"]
-    Registry["Renderer-Registry<br/>Auswahl über Profiltyp"]
-    ProfileResources["Profilressourcen<br/>Grass: Pattern, Paletten, Patchfeld"]
-    LightingAdapter["ThreeSceneLightingAdapter<br/>oder Ersatzadapter"]
+  subgraph LayerRenderers["Austauschbar: ein Renderer pro aktiviertem Layer"]
+    RendererInstance["WebGLVegetationLayerRenderer<br/>object3d · updateFrame · diagnostics · dispose"]
+    Grass["Grass-Preset / WebGLGrassView<br/>Tile-Culling · Density · Pattern<br/>Geometrie · Material · Grass-Patches"]
+    GrassAdapters["Grass-Adapter<br/>ThreeSceneLightingAdapter<br/>optionaler ThreeGrassGroundPatchSurface"]
+    Other["weitere Profilmodule<br/>z. B. Baum oder Busch"]
   end
 
-  subgraph FrameCPU["Pro Frame auf der CPU"]
-    Matrix["projection × view × model"]
-    Frustum["FrustumChunkVisibility"]
-    Visible["visibleChunkIndices<br/>+ visibleChunkCount"]
+  subgraph Frame["Pro Frame"]
+    FrameState["VegetationFrameState<br/>Kamera im Modellraum"]
+    VisibleChunks["sichtbare Chunks<br/>ein gemeinsamer Buffer"]
   end
 
-  subgraph RenderGPU["Pro Frame auf der GPU"]
-    Debug["optionaler Debug-Renderer"]
-    CellHash["Cell-Hash<br/>Pattern, Rotation, Spiegelung"]
-    AnchorHash["Anchor-Hash"]
-    ElementHash["optionaler Element-Hash"]
-    Production["statischer WebGL-Grasrenderer"]
-  end
+  Source --> Preparation
+  Config --> Preparation
+  Preparation --> FileData
+  Preparation --> LayerCore
+  Preparation --> ProfileData
+  Preparation --> ActiveCells
+  FileData --> SharedBounds
 
-  Veg --> Parser --> Parsed
-  Parsed --> DatasetBuilder
-  Config --> DatasetBuilder
-  DatasetBuilder --> Patterns --> Dataset
-  DatasetBuilder --> Patches --> Dataset
-  DatasetBuilder --> Dataset
-  Dataset --> Boxes
-  Dataset --> Static
-  Dataset --> VisibleBuffer
-  Dataset --> Registry --> ProfileResources
-  Registry --> LightingAdapter
+  Three --> SceneAdapter --> Runtime
+  Three --> CameraAdapter --> FrameState --> Runtime
+  Runtime --> LayerManager
+  Runtime --> ChunkCulling
+  Runtime --> SharedGpu
+  LayerCore --> LayerManager
+  ProfileData -->|renderProfile.type| Registry
+  SharedBounds --> ChunkCulling --> VisibleChunks --> SharedGpu
 
-  Camera --> CameraAdapter --> Matrix --> Runtime --> Frustum
-  SceneAdapter --> CameraAdapter
-  SceneAdapter --> Runtime
-  Boxes --> Frustum --> Visible --> VisibleBuffer
-
-  Static --> Debug
-  VisibleBuffer --> Debug
-  Static --> CellHash
-  VisibleBuffer --> CellHash
-  CellHash --> Debug
-
-  Static --> Production
-  ProfileResources --> Production
-  SceneLight --> LightingAdapter --> Production
-  VisibleBuffer --> Production
-  CellHash --> Production
-  CellHash --> AnchorHash
-  AnchorHash --> ElementHash
-  ElementHash --> Production
+  Registry -->|Factory erzeugt| RendererInstance
+  LayerCore -->|Layerkontext| RendererInstance
+  LayerManager -->|verwaltet und aktualisiert| RendererInstance
+  ActiveCells --> RendererInstance
+  SharedGpu --> RendererInstance
+  FrameState --> RendererInstance
+  Grass -->|implementiert Vertrag| RendererInstance
+  Other -->|implementiert Vertrag| RendererInstance
+  GrassAdapters --> Grass
+  SceneLight --> GrassAdapters
 ```
+
+Der im Diagramm bezeichnete Layer-Manager ist keine zusätzliche öffentliche
+Klasse. `WebGLVegetationRuntime` übernimmt diese Verantwortung mit seiner
+Renderer-Registry und der Liste initialisierter `RuntimeLayer`-Einträge. Sie
+wählt für jeden aktivierten Layer anhand von `renderProfile.type` genau eine
+Factory, verwaltet Ein-/Ausschaltung und Lifecycle und delegiert das Frameupdate.
+
+„Global“ bezeichnet hier Daten und Systeme, die pro Vegetationsasset nur einmal
+existieren und von allen Layer-Renderern geteilt werden. Es ist kein zweiter
+Block mit vermeintlich globalen Grass-Einstellungen. Verteilung, Pattern,
+Density/LOD, Sichtweite, Bounds, Shadows und Lighting bleiben im neutralen
+Layervertrag; Blade-, Farb- und Patchwerte gehören ausschließlich zum
+Grass-Profil. Ein Layer-Renderer erhält nur den gemeinsamen WebGL-Adapter, seinen
+eigenen Dataset-Layer und seine vorbereiteten aktiven Cells.
+
+Die serialisierbare Config enthält deshalb derzeit außer `configVersion` nur
+`layers[]`: Es gibt noch keine globalen, konfigurierbaren Renderparameter.
+Renderer, Szene, Kamera, Preparation-Adapter und Renderer-Factories sind
+nicht serialisierbare Runtime-Optionen. Gemeinsames Chunking, Chunk-Culling und
+GPU-Ressourcen sind globale Implementierungsverantwortungen und werden nicht in
+jedem Layer wiederholt.
+
+Im Frameupdate führt die Runtime das grobe Chunk-Culling einmal aus und schreibt
+einen gemeinsamen Visible-Chunk-Buffer. Danach aktualisiert die Layerverwaltung
+jeden aktiven Renderer. Dieser entscheidet selbst über sein feineres Culling,
+seine Dichte und seine profilspezifischen Renderressourcen.
 
 ## Initialisierung
 
