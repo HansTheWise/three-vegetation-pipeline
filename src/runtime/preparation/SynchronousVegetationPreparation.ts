@@ -1,7 +1,7 @@
 import type { VegetationRuntimeConfig } from '../config/types.js';
 import { createVegetationRuntimeDataset } from '../dataset/createVegetationRuntimeDataset.js';
-import { createVegetationActiveCellData } from '../density/VegetationRenderTileDensity.js';
 import { parseVegFile } from '../parser/VegParser.js';
+import type { VegetationLayerPreparation } from '../profiles/VegetationLayerPreparation.js';
 import type {
   PreparedVegetationRuntime,
   VegetationPreparationAdapter,
@@ -10,6 +10,12 @@ import type {
 
 /** Performs parsing and static Cell admission on the calling thread. */
 export class SynchronousVegetationPreparation implements VegetationPreparationAdapter {
+  readonly #layerPreparations: readonly VegetationLayerPreparation[];
+
+  constructor(layerPreparations: readonly VegetationLayerPreparation[] = []) {
+    this.#layerPreparations = layerPreparations;
+  }
+
   prepare(
     source: VegetationRuntimeSource,
     config: VegetationRuntimeConfig,
@@ -17,14 +23,14 @@ export class SynchronousVegetationPreparation implements VegetationPreparationAd
   ): PreparedVegetationRuntime {
     throwIfVegetationPreparationAborted(signal);
     const start = performance.now();
-    const dataset = createVegetationRuntimeDataset(parseVegFile(source), config);
-    const activeCells = dataset.enabledLayers.map((layer) => (
-      createVegetationActiveCellData(dataset, layer.layerId)
-    ));
+    const dataset = createVegetationRuntimeDataset(
+      parseVegFile(source),
+      config,
+      this.#layerPreparations,
+    );
     throwIfVegetationPreparationAborted(signal);
     return {
       dataset,
-      activeCells,
       preparationMilliseconds: performance.now() - start,
     };
   }

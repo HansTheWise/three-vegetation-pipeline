@@ -4,6 +4,7 @@ import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import {
   createVegetationRuntimeDataset,
   requireGrassRuntimeLayer,
+  type GrassRuntimeLayerConfig,
   type ParsedVegFile,
   type VegetationRuntimeConfig,
 } from '../src/index.js';
@@ -56,7 +57,9 @@ function createParsedFile(layerIds: readonly number[] = [0]): ParsedVegFile {
   };
 }
 
-function createRuntimeConfig(layerIds: readonly number[] = [0]): VegetationRuntimeConfig {
+function createRuntimeConfig(
+  layerIds: readonly number[] = [0],
+): VegetationRuntimeConfig<GrassRuntimeLayerConfig> {
   const sourceLayer = vegetationRuntimeConfig.layers[0]!;
   return {
     ...vegetationRuntimeConfig,
@@ -87,15 +90,16 @@ describe('createVegetationRuntimeDataset', () => {
     });
     expect(dataset.layers[0]!.fileLayer).toBe(file.layers[0]);
     expect(dataset.layers[0]!.config).toBe(config.layers[0]);
-    expect(dataset.layers[0]!.patterns.anchorsPerPattern).toBe(4);
-    expect(requireGrassRuntimeLayer(dataset.layers[0]!).profileData.groundPatchField)
+    const grassLayer = requireGrassRuntimeLayer(dataset.layers[0]!);
+    expect(grassLayer.profileData.patterns.anchorsPerPattern).toBe(4);
+    expect(grassLayer.profileData.groundPatchField)
       .toBeUndefined();
   });
 
   it('creates the configured patch field once with the runtime layer', () => {
     const file = createParsedFile();
     const source = createRuntimeConfig();
-    const config: VegetationRuntimeConfig = {
+    const config: VegetationRuntimeConfig<GrassRuntimeLayerConfig> = {
       ...source,
       layers: source.layers.map((layer) => ({
         ...layer,

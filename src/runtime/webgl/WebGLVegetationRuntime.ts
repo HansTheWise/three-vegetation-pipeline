@@ -4,7 +4,6 @@ import { createRuntimeChunkBoundingBoxes } from '../chunking/ChunkBoundingBoxes.
 import { FrustumChunkVisibility } from '../chunking/FrustumChunkVisibility.js';
 import type { VegetationRuntimeConfig } from '../config/types.js';
 import type { VegetationRuntimeLayer } from '../dataset/types.js';
-import type { VegetationActiveCellData } from '../density/types.js';
 import type { VegetationFrameState } from '../frame/types.js';
 import { WebGLVegetationAdapter } from '../gpu/webgl/WebGLVegetationAdapter.js';
 import { SynchronousVegetationPreparation } from '../preparation/SynchronousVegetationPreparation.js';
@@ -14,6 +13,7 @@ import type {
   VegetationRuntimeSource,
 } from '../preparation/types.js';
 import { WebGLGrassLayerRendererFactory } from '../rendering/webgl/WebGLGrassLayerRendererFactory.js';
+import type { WebGLVegetationLayerModule } from '../rendering/webgl/WebGLVegetationLayerModule.js';
 import type {
   WebGLVegetationLayerRenderer,
   WebGLVegetationLayerRendererFactory,
@@ -42,6 +42,8 @@ export type CreateWebGLVegetationRuntimeOptions = Readonly<{
   source: VegetationRuntimeSource;
   config: VegetationRuntimeConfig;
   preparation?: VegetationPreparationAdapter;
+  layerModules?: readonly WebGLVegetationLayerModule[];
+  /** @deprecated Register complete layerModules instead. */
   layerRenderers?: readonly WebGLVegetationLayerRendererFactory[];
   signal?: AbortSignal;
 }>;
@@ -86,7 +88,6 @@ export class WebGLVegetationRuntime {
     prepared: PreparedVegetationRuntime,
     rendererFactories: ReadonlyMap<string, WebGLVegetationLayerRendererFactory>,
   ) {
-    validatePreparedActiveCells(prepared);
     validateLayerRenderers(prepared, rendererFactories);
     this.object3d.name = 'vegetation/runtime';
     const createdLayers: RuntimeLayer[] = [];
@@ -98,9 +99,6 @@ export class WebGLVegetationRuntime {
         const layerRenderer = rendererFactories.get(datasetLayer.config.renderProfile.type)!.create({
           adapter,
           layer: datasetLayer,
-          activeCells: prepared.activeCells.find(
-            (cells) => cells.layerId === datasetLayer.layerId,
-          )!,
         });
         const diagnostics: MutableLayerDiagnostics = {
           layerId: datasetLayer.layerId,
@@ -141,7 +139,11 @@ export class WebGLVegetationRuntime {
     options: CreateWebGLVegetationRuntimeOptions,
   ): Promise<WebGLVegetationRuntime> {
     const signal = options.signal ?? new AbortController().signal;
-    const prepared = await (options.preparation ?? synchronousPreparation).prepare(
+    const preparation = options.preparation
+      ?? (options.layerModules?.length
+        ? new SynchronousVegetationPreparation(options.layerModules)
+        : synchronousPreparation);
+    const prepared = await preparation.prepare(
       options.source,
       options.config,
       signal,
@@ -154,7 +156,10 @@ export class WebGLVegetationRuntime {
     return new WebGLVegetationRuntime(
       options.renderer,
       prepared,
-      createLayerRendererRegistry(options.layerRenderers ?? []),
+      createLayerRendererRegistry(
+        options.layerModules ?? [],
+        options.layerRenderers ?? [],
+      ),
     );
   }
 
@@ -234,21 +239,6 @@ export function createWebGLVegetationRuntime(
   return WebGLVegetationRuntime.create(options);
 }
 
-function validatePreparedActiveCells(prepared: PreparedVegetationRuntime): void {
-  const layerIds = new Set<number>();
-  for (const activeCells of prepared.activeCells) {
-    if (layerIds.has(activeCells.layerId)) {
-      throw new Error(`Prepared active Cells contain duplicate layer ${activeCells.layerId}.`);
-    }
-    layerIds.add(activeCells.layerId);
-  }
-  for (const layer of prepared.dataset.enabledLayers) {
-    if (!layerIds.has(layer.layerId)) {
-      throw new Error(`Prepared active Cells are missing enabled layer ${layer.layerId}.`);
-    }
-  }
-}
-
 function updateLayerDiagnostics(layer: RuntimeLayer): void {
   const rendererDiagnostics = layer.renderer.diagnostics;
   layer.diagnostics.visibleTileCount = rendererDiagnostics.visibleTileCount;
@@ -267,6 +257,7 @@ function clearLayerDiagnostics(diagnostics: MutableLayerDiagnostics): void {
 }
 
 function createLayerRendererRegistry(
+  modules: readonly WebGLVegetationLayerModule[],
   customFactories: readonly WebGLVegetationLayerRendererFactory[],
 ): ReadonlyMap<string, WebGLVegetationLayerRendererFactory> {
   const grassFactory = new WebGLGrassLayerRendererFactory();
@@ -274,7 +265,7 @@ function createLayerRendererRegistry(
     [grassFactory.profileType, grassFactory],
   ]);
   const customProfileTypes = new Set<string>();
-  for (const factory of customFactories) {
+  for (const factory of [...modules, ...customFactories]) {
     if (factory.profileType.length === 0) {
       throw new Error('WebGL vegetation layer renderer profileType must not be empty.');
     }
@@ -295,10 +286,12 @@ function validateLayerRenderers(
 ): void {
   for (const layer of prepared.dataset.enabledLayers) {
     const profileType = layer.config.renderProfile.type;
-    if (!rendererFactories.has(profileType)) {
+    const factory = rendererFactories.get(profileType);
+    if (!factory) {
       throw new Error(
         `No WebGL vegetation layer renderer is registered for profile "${profileType}".`,
       );
     }
+    factory.validateLayer?.(layer);
   }
 }

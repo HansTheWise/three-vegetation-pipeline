@@ -182,6 +182,7 @@ When the user corrects your approach, append a one-line rule here before ending 
 - For debug performance comparisons, expose physical drawing-buffer resolution and asynchronous GPU render time/throughput; do not treat requestAnimationFrame FPS as uncapped performance or silently cap pipeline DPR to 1.
 - Keep chunking, frustum evaluation and future occlusion infrastructure global and shared, while distribution, patterns, LOD/density, lighting, shadows and profile settings remain layer-specific; shared culling must consume each profile's bounds.
 - Keep opinionated features such as vegetation patches inside their owning layer renderer and preset; the generic layer manager must not know Grass-specific feature contracts.
+- Keep the generic layer contract limited to identity, enablement, shared-culling bounds and module selection; each registered module optionally owns its config shape, validation, preparation, transfer buffers and renderer.
 
 ---
 ## 12. How this file was built

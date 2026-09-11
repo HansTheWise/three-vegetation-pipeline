@@ -79,12 +79,17 @@ export class WebGLGrassView implements WebGLVegetationLayerRenderer {
     }
     const grassLayer = requireGrassRuntimeLayer(layer);
     const profile = grassLayer.config.renderProfile;
+    const grassData = grassLayer.profileData;
     this.#adapter = adapter;
     this.layerId = layerId;
-    this.tileDensity = new VegetationRenderTileDensity(adapter.dataset, layerId, preparedCells);
+    this.tileDensity = new VegetationRenderTileDensity(
+      adapter.dataset,
+      layerId,
+      preparedCells ?? grassData.activeCells,
+    );
     this.candidatesPerVisibleChunk = layerMask.maskResolution ** 2
-      * layer.patterns.anchorsPerPattern
-      * layer.config.distribution.elementsPerAnchor;
+      * grassData.patterns.anchorsPerPattern
+      * grassLayer.config.distribution.elementsPerAnchor;
     const maximumInstanceCount = this.tileDensity.tileCapacity
       * this.tileDensity.maximumCandidatesPerTile;
     validateWebGLInstanceCount(maximumInstanceCount, `Grass layer ${layerId}`);
@@ -339,7 +344,7 @@ function createGrassMaterial(options: GrassMaterialOptions): ShaderMaterial {
         ),
       },
       maximumBladeOffset: {
-        value: layer.config.distribution.elementRadiusMeters * unitsPerMeter,
+        value: grassLayer.distribution.elementRadiusMeters * unitsPerMeter,
       },
       useTwoSampleHeight: {
         value: profile.blade.heightSampling === 'diagonal-average',

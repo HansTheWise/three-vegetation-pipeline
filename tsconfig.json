@@ -11,5 +11,6 @@
     "skipLibCheck": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["config", "examples", "src", "tests"]
+  "include": ["config", "examples", "src", "tests"],
+  "exclude": ["tests/package-consumer"]
 }

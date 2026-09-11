@@ -1,20 +1,32 @@
 # Runtime-Pipeline
 
-Die Runtime-Pipeline lädt ein VEGFILE, verbindet es mit der Runtime-Config,
-bestimmt sichtbare Chunks und stellt die benötigten Daten einem austauschbaren
-GPU-Backend bereit. `createThreeVegetation` ist der Standardweg für Three.js;
-Parser, Dataset, IDs und Chunk-Culling bleiben rendererunabhängig.
+Die Runtime-Pipeline lädt ein VEGFILE, verbindet dessen Layer mit registrierten
+Rendermodulen und führt gemeinsames Chunk-Culling aus. `ThreeVegetationSystem`
+ist der Standardweg für Three.js. `createThreeVegetation` bleibt als direkter,
+kompatibler Einstieg erhalten.
 
 ## Standardintegration
 
 ```ts
-const vegetation = await createThreeVegetation({
+const system = createThreeVegetationSystem({
   renderer,
   scene,
   camera,
   coordinateRoot: modelRoot,
+})
+
+system.registerLayerModule(customTreeModule)
+
+const vegetation = await system.create({
   source: vegetationBytes,
-  config,
+  layers: [
+    grassPreset({
+      layerId: 0,
+      key: 'meadow-grass',
+      density: { renderTileSizeCells: 16 },
+    }),
+    treeLayer,
+  ],
 })
 
 vegetation.updateFrame()
@@ -22,7 +34,8 @@ vegetation.setLayerEnabled('meadow-grass', false)
 vegetation.dispose()
 ```
 
-Der Scene-Adapter hängt `runtime.object3d` unter `coordinateRoot` oder ohne
+Das System erzeugt die Standardadapter für Szene und Kamera. Der Scene-Adapter
+hängt `runtime.object3d` unter `coordinateRoot` oder ohne
 expliziten Root direkt unter die Szene. Damit verwenden Vegetationsgeometrie,
 Kameraumrechnung und Culling denselben Modellraum. Er besitzt keine Lichter und
 kein Day/Night-Modell. Diese bleiben Eigentum der Hostszene; die austauschbare
@@ -38,15 +51,17 @@ deaktivierter Layer wird nicht verdeckt im Hintergrund vorbereitet.
 flowchart TB
   subgraph Host["Three.js-Anwendung"]
     Source[".veg-Bytes"]
-    Config["VegetationRuntimeConfig<br/>configVersion + layers[]"]
+    Layers["Layerdefinitionen<br/>Preset oder eigene Moduldaten"]
     Three["Renderer · Szene · Kamera<br/>gemeinsamer coordinateRoot"]
     SceneLight["Szenenlicht · Shadows<br/>Tone Mapping · Exposure"]
   end
 
   subgraph Integration["Öffentliche Adaptergrenze"]
+    System["ThreeVegetationSystem<br/>registerLayerModule · create"]
     SceneAdapter["ThreeVegetationSceneAdapter<br/>Ein-/Aushängen · Lifecycle"]
     CameraAdapter["ThreeCameraAdapter"]
     Preparation["VegetationPreparationAdapter<br/>synchron oder Worker"]
+    ModuleRegistry["Layer-Modulregistry<br/>Auswahl über renderProfile.type"]
   end
 
   subgraph Prepared["Vorbereitung auf der CPU"]
@@ -55,23 +70,23 @@ flowchart TB
       SharedBounds["gemeinsame konservative<br/>Chunk-Bounds"]
     end
     subgraph LayerData["Layerspezifisch: einmal pro Layer"]
-      LayerCore["neutraler Layervertrag<br/>ID/Key · Bounds · Distribution · Pattern<br/>Visibility · Density · Shadows · Lighting"]
-      ProfileData["Renderprofil + Profildaten<br/>Grass: Blade · Farben · Patchfeld"]
-      ActiveCells["maskenaktive, seed-sortierte Cells"]
+      LayerCore["generischer Layerkern<br/>ID/Key · enabled · Bounds · Profiltyp"]
+      ProfileConfig["moduleigene Config<br/>Grass: Density · Pattern · Licht · Shadows · Blade · Patches"]
+      ProfileData["moduleigene vorbereitete Daten<br/>Grass: Pattern · aktive Cells · Patchfeld"]
     end
   end
 
   subgraph GlobalRuntime["Global: WebGLVegetationRuntime"]
     Runtime["Runtime-Fassade<br/>object3d · updateFrame · diagnostics · dispose"]
     LayerManager["generische Layerverwaltung<br/>RuntimeLayer[] · enable/disable · Frame-Dispatch"]
-    Registry["Layer-Renderer-Registry<br/>Factory-Auswahl über renderProfile.type"]
+    LayerRoutes["Modulzuordnung<br/>renderProfile.type → Renderer"]
     ChunkCulling["gemeinsames Chunk-Culling<br/>FrustumChunkVisibility"]
     SharedGpu["gemeinsamer WebGL-Adapter<br/>Grid · Höhen · Masken · Visible Chunks"]
   end
 
   subgraph LayerRenderers["Austauschbar: ein Renderer pro aktiviertem Layer"]
     RendererInstance["WebGLVegetationLayerRenderer<br/>object3d · updateFrame · diagnostics · dispose"]
-    Grass["Grass-Preset / WebGLGrassView<br/>Tile-Culling · Density · Pattern<br/>Geometrie · Material · Grass-Patches"]
+    Grass["Grass-Modul / WebGLGrassView<br/>Validierung · Vorbereitung · Tile-Culling<br/>Density · Pattern · Licht · Shadows · Patches"]
     GrassAdapters["Grass-Adapter<br/>ThreeSceneLightingAdapter<br/>optionaler ThreeGrassGroundPatchSurface"]
     Other["weitere Profilmodule<br/>z. B. Baum oder Busch"]
   end
@@ -81,27 +96,31 @@ flowchart TB
     VisibleChunks["sichtbare Chunks<br/>ein gemeinsamer Buffer"]
   end
 
-  Source --> Preparation
-  Config --> Preparation
+  Three --> System
+  Layers --> System
+  System --> ModuleRegistry
+  Source --> System --> Preparation
+  ModuleRegistry --> Preparation
   Preparation --> FileData
   Preparation --> LayerCore
+  Preparation --> ProfileConfig
   Preparation --> ProfileData
-  Preparation --> ActiveCells
   FileData --> SharedBounds
 
-  Three --> SceneAdapter --> Runtime
+  System --> SceneAdapter --> Runtime
   Three --> CameraAdapter --> FrameState --> Runtime
   Runtime --> LayerManager
   Runtime --> ChunkCulling
   Runtime --> SharedGpu
   LayerCore --> LayerManager
-  ProfileData -->|renderProfile.type| Registry
+  ModuleRegistry --> LayerRoutes
+  ProfileConfig -->|renderProfile.type| LayerRoutes
   SharedBounds --> ChunkCulling --> VisibleChunks --> SharedGpu
 
-  Registry -->|Factory erzeugt| RendererInstance
+  LayerRoutes -->|Modul erzeugt| RendererInstance
   LayerCore -->|Layerkontext| RendererInstance
+  ProfileData --> RendererInstance
   LayerManager -->|verwaltet und aktualisiert| RendererInstance
-  ActiveCells --> RendererInstance
   SharedGpu --> RendererInstance
   FrameState --> RendererInstance
   Grass -->|implementiert Vertrag| RendererInstance
@@ -110,23 +129,23 @@ flowchart TB
   SceneLight --> GrassAdapters
 ```
 
-Der im Diagramm bezeichnete Layer-Manager ist keine zusätzliche öffentliche
+Der Layer-Manager ist keine zusätzliche öffentliche
 Klasse. `WebGLVegetationRuntime` übernimmt diese Verantwortung mit seiner
 Renderer-Registry und der Liste initialisierter `RuntimeLayer`-Einträge. Sie
-wählt für jeden aktivierten Layer anhand von `renderProfile.type` genau eine
-Factory, verwaltet Ein-/Ausschaltung und Lifecycle und delegiert das Frameupdate.
+wählt für jeden aktivierten Layer anhand von `renderProfile.type` genau ein
+Modul, verwaltet Ein-/Ausschaltung und Lifecycle und delegiert das Frameupdate.
 
 „Global“ bezeichnet hier Daten und Systeme, die pro Vegetationsasset nur einmal
 existieren und von allen Layer-Renderern geteilt werden. Es ist kein zweiter
-Block mit vermeintlich globalen Grass-Einstellungen. Verteilung, Pattern,
-Density/LOD, Sichtweite, Bounds, Shadows und Lighting bleiben im neutralen
-Layervertrag; Blade-, Farb- und Patchwerte gehören ausschließlich zum
-Grass-Profil. Ein Layer-Renderer erhält nur den gemeinsamen WebGL-Adapter, seinen
-eigenen Dataset-Layer und seine vorbereiteten aktiven Cells.
+Block mit vermeintlich globalen Grass-Einstellungen. Der generische Layerkern
+kennt nur Identität, Aktivierung, konservative Culling-Bounds und den Profiltyp.
+Verteilung, Pattern, Density/LOD, Sichtweite, Shadows, Lighting, Geometrie und
+opinionated Features gehören dem jeweiligen Modul. Beim Grass-Modul umfasst das
+auch die vorbereiteten Pattern, aktiven Cells und das Patchfeld.
 
 Die serialisierbare Config enthält deshalb derzeit außer `configVersion` nur
 `layers[]`: Es gibt noch keine globalen, konfigurierbaren Renderparameter.
-Renderer, Szene, Kamera, Preparation-Adapter und Renderer-Factories sind
+Renderer, Szene, Kamera, Preparation-Adapter und Layer-Module sind
 nicht serialisierbare Runtime-Optionen. Gemeinsames Chunking, Chunk-Culling und
 GPU-Ressourcen sind globale Implementierungsverantwortungen und werden nicht in
 jedem Layer wiederholt.
@@ -140,9 +159,9 @@ seine Dichte und seine profilspezifischen Renderressourcen.
 
 ### Runtime-Fassade und Vorbereitung
 
-`createWebGLVegetationRuntime` besitzt Dataset, gemeinsame Bounds,
-Frustum-Culling, gemeinsame WebGL-Ressourcen und die registrierten
-Layer-Renderer. Die
+`ThreeVegetationSystem` bündelt die Three.js-Standardadapter und die
+Modulregistry. `createWebGLVegetationRuntime` besitzt Dataset, gemeinsame Bounds,
+Frustum-Culling, gemeinsame WebGL-Ressourcen und die erzeugten Layer-Renderer. Die
 Factory ist asynchron, damit synchrone und Worker-basierte Vorbereitung dieselbe
 Schnittstelle verwenden. Der Standard `SynchronousVegetationPreparation`
 arbeitet auf dem aufrufenden Thread. `WorkerVegetationPreparation` verschiebt
@@ -185,29 +204,30 @@ ursprünglichen Dateibytes.
 
 ### 2. Runtime-Dataset
 
-`createVegetationRuntimeDataset` verbindet Parserdaten und Runtime-Config über
-stabile Layer-IDs. Dabei werden:
+`createVegetationRuntimeDataset` verbindet Parserdaten und Layerdefinitionen
+über stabile Layer-IDs. Dabei werden:
 
 - Configwerte einmalig validiert;
 - fehlende oder doppelte Layerzuordnungen abgelehnt;
 - Cell-Größen in Modell- und Metereinheiten berechnet;
-- progressive Anchor-Patterns aus VEGFILE-Seed und Layerconfig erzeugt;
-- eingebaute Profildaten einmalig erzeugt, bei Grass das optionale Patch-Feld;
+- optionale Modulvalidierung ausgeführt;
+- moduleigene Profildaten einmalig erzeugt, bei Grass Pattern, aktive Cells und
+  das optionale Patch-Feld;
 - aktivierte Layer als eigene Ansicht bereitgestellt;
 - die größten aktiven `VegetationRenderBounds` für das gemeinsame grobe
   Chunk-Culling kombiniert.
 
-Gemeinsame Layerwerte enthalten Pattern, Verteilung, Density/LOD,
-Sichtbarkeit, Lighting und Shadows. Geometrie- und Shaderwerte liegen hinter
-dem diskriminierten `renderProfile`. Das eingebaute Grass-Profil wird dadurch
-nicht zum Pflichtschema für spätere Baum- oder Buschmodule.
+Das eingebaute Grass-Profil wird dadurch nicht zum Pflichtschema für spätere
+Baum- oder Buschmodule. Ein fremdes Modul kann eine eigene serialisierbare
+Config und eigene vorbereitete Daten verwenden; nur der generische Layerkern
+und der Renderer-Lifecycle sind fest.
 
 Das Dataset kopiert die großen VEGFILE-Datenbereiche nicht.
 
-`createVegetationActiveCellData(dataset, layerId)` bereitet die statische
-VEG-Zulassung separat vor und mischt die Cell-Reihenfolge seedbasiert. Dataset und Cell-Arrays können in einem Worker
-entstehen und anschließend transferiert werden. `WebGLGrassView` akzeptiert die
-vorbereiteten Arrays; die kamerabhängigen Distanzbudgets bleiben unverändert.
+Das Grass-Modul bereitet seine statische VEG-Zulassung vor und mischt die
+Cell-Reihenfolge seedbasiert. Dataset und moduleigene Arrays können in einem
+Worker entstehen und anschließend über den Transfervertrag des Moduls
+übertragen werden.
 
 ### 3. Chunk-Begrenzungsboxen
 
@@ -235,14 +255,15 @@ gespeicherten Chunkindizes.
 
 ### 5. Layer-Renderer
 
-Die Runtime wählt für jeden aktivierten Layer über
-`renderProfile.type` genau eine `WebGLVegetationLayerRendererFactory`. Das
+Die Runtime wählt für jeden aktivierten Layer über `renderProfile.type` genau
+ein `WebGLVegetationLayerModule`. Ein Modul darf optionale Configvalidierung,
+CPU-Vorbereitung und Transferbuffer sowie die Renderer-Erzeugung besitzen. Das
 eingebaute Profil `grass` erzeugt eine `WebGLGrassView`. Zusätzliche Profile
-werden beim Erzeugen der Runtime über `layerRenderers` registriert; eine
-benutzerdefinierte Factory desselben Profiltyps ersetzt die eingebaute.
+werden über `system.registerLayerModule(...)` registriert. Der ältere
+`layerRenderers`-Einstieg bleibt vorerst kompatibel, deckt aber nur Rendering ab.
 
 Jeder Renderer erhält dasselbe Dataset, den gemeinsamen WebGL-Adapter und die
-vorbereiteten aktiven Cells seines Layers. Er besitzt ausschließlich seine
+moduleigenen vorbereiteten Daten seines Layers. Er besitzt ausschließlich seine
 profilspezifischen Ressourcen. Bei Grass sind das Patterntextur, Farbpaletten,
 optionales RG-Patch-Feld, Density-Tile- und Active-Cell-Buffer sowie Geometrien
 und Materialien. Gemeinsame VEGFILE-Texturen und die sichtbaren Chunkindizes

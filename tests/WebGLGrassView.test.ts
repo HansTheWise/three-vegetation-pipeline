@@ -18,6 +18,7 @@ import {
   requireGrassRuntimeLayer,
   WebGLGrassView,
   WebGLVegetationAdapter,
+  type GrassRuntimeLayerConfig,
   type ParsedVegFile,
   type VegetationRuntimeConfig,
   type WebGLVegetationLightingAdapter,
@@ -59,7 +60,7 @@ function createParsedFile(): ParsedVegFile {
 }
 
 function createAdapter(
-  config: VegetationRuntimeConfig = vegetationRuntimeConfig,
+  config: VegetationRuntimeConfig<GrassRuntimeLayerConfig> = vegetationRuntimeConfig,
 ): WebGLVegetationAdapter {
   return new WebGLVegetationAdapter(
     createRenderer(),

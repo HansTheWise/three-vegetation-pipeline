@@ -46,10 +46,11 @@ export class WebGLGrassLayerResources {
     const grassLayer = requireGrassRuntimeLayer(layer);
     const profile = grassLayer.config.renderProfile;
     const field = grassLayer.profileData.groundPatchField;
+    const patterns = grassLayer.profileData.patterns;
     validateTextureDimensions(
       renderer,
-      layer.patterns.anchorsPerPattern,
-      layer.patterns.patternCount,
+      patterns.anchorsPerPattern,
+      patterns.patternCount,
       `vegetation/layer-${layer.layerId}-patterns`,
     );
     validateTextureDimensions(
@@ -77,14 +78,14 @@ export class WebGLGrassLayerResources {
     const ownedTextures: DataTexture[] = [];
     try {
       this.pattern = {
-        patternSet: layer.patterns,
+        patternSet: patterns,
         rotatePerCell: grassLayer.config.pattern.rotatePerCell,
         reflectPerCell: grassLayer.config.pattern.reflectPerCell,
         texture: createUploadedDataTexture(
           renderer,
-          layer.patterns.anchorPositions,
-          layer.patterns.anchorsPerPattern,
-          layer.patterns.patternCount,
+          patterns.anchorPositions,
+          patterns.anchorsPerPattern,
+          patterns.patternCount,
           RGFormat,
           FloatType,
           `vegetation/layer-${layer.layerId}-patterns`,

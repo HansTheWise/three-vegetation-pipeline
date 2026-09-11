@@ -7,12 +7,15 @@ import {
   MAXIMUM_WEBGL_INSTANCE_COUNT,
   validateWebGLInstanceCount,
   VegetationRenderTileDensity,
+  type GrassRuntimeLayerConfig,
   type ParsedVegFile,
   type VegetationRuntimeConfig,
   type VegetationRuntimeDataset,
 } from '../src/index.js';
 
-function createDataset(configure?: (config: VegetationRuntimeConfig) => VegetationRuntimeConfig) {
+type GrassRuntimeConfig = VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
+
+function createDataset(configure?: (config: GrassRuntimeConfig) => GrassRuntimeConfig) {
   const file: ParsedVegFile = {
     bytes: new Uint8Array(),
     header: {
@@ -38,7 +41,7 @@ function createDataset(configure?: (config: VegetationRuntimeConfig) => Vegetati
     }],
   };
   const sourceLayer = vegetationRuntimeConfig.layers[0]!;
-  const config: VegetationRuntimeConfig = {
+  const config: GrassRuntimeConfig = {
     ...vegetationRuntimeConfig,
     layers: [{
       ...sourceLayer,
@@ -212,7 +215,6 @@ describe('VegetationRenderTileDensity', () => {
       layers: config.layers.map((layer) => ({
         ...layer,
         renderBounds: { ...layer.renderBounds, aboveSurfaceMeters: 8 },
-        renderProfile: { type: 'test-tree' },
       })),
     })), 0);
 

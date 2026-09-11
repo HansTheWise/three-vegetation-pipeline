@@ -11,15 +11,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createThreeVegetation,
+  createThreeVegetationSystem,
   createThreeSceneLightingAdapter,
-  createVegetationActiveCellData,
   createVegetationRuntimeDataset,
   createWebGLVegetationRuntime,
   createWebGLGrassLayerRenderer,
+  requireGrassRuntimeLayer,
   writeVegFile,
   type ParsedVegFile,
   type PreparedVegetationRuntime,
   type VegetationPreparationAdapter,
+  type VegetationRuntimeLayerConfig,
+  type WebGLVegetationLayerModule,
   type WebGLVegetationLayerRendererFactory,
   type WebGLVegetationLightingAdapter,
   type VegetationDataset,
@@ -111,14 +114,19 @@ describe('WebGLVegetationRuntime', () => {
 
   it('rejects incomplete prepared layer data before allocating GPU resources', async () => {
     const renderer = createRenderer();
-    const prepared = { ...createPreparedRuntime(), activeCells: [] };
+    const source = createPreparedRuntime();
+    const layer = { ...source.dataset.enabledLayers[0]!, profileData: undefined };
+    const prepared = {
+      ...source,
+      dataset: { ...source.dataset, layers: [layer], enabledLayers: [layer] },
+    } as PreparedVegetationRuntime;
 
     await expect(createWebGLVegetationRuntime({
       renderer,
       source: new Uint8Array(),
       config: vegetationRuntimeConfig,
       preparation: createPreparation(prepared),
-    })).rejects.toThrow('missing enabled layer 0');
+    })).rejects.toThrow('incomplete prepared data');
     expect(renderer.initTexture).not.toHaveBeenCalled();
   });
 
@@ -133,7 +141,7 @@ describe('WebGLVegetationRuntime', () => {
       create: vi.fn((context) => {
         expect(context.adapter.dataset).toBe(prepared.dataset);
         expect(context.layer).toBe(prepared.dataset.enabledLayers[0]);
-        expect(context.activeCells).toBe(prepared.activeCells[0]);
+        expect(context.layer.profileData).toEqual({ canopySeed: 42 });
         return {
           object3d,
           diagnostics: {
@@ -270,6 +278,7 @@ describe('WebGLVegetationRuntime', () => {
     const renderer = createRenderer();
     const prepared = createPreparedRuntime();
     const layer = prepared.dataset.enabledLayers[0]!;
+    const grassData = requireGrassRuntimeLayer(layer).profileData;
     const profile = vegetationRuntimeConfig.layers[0]!.renderProfile;
     const invalidLayer = {
       ...layer,
@@ -287,7 +296,7 @@ describe('WebGLVegetationRuntime', () => {
           },
         },
       },
-      profileData: { groundPatchField: undefined },
+      profileData: { ...grassData, groundPatchField: undefined },
     };
     const invalidPrepared = {
       ...prepared,
@@ -325,6 +334,59 @@ describe('WebGLVegetationRuntime', () => {
 });
 
 describe('ThreeVegetationSceneAdapter', () => {
+  it('registers a complete custom layer module through the standard Three.js system', async () => {
+    const renderer = createRenderer();
+    const scene = new Scene();
+    const camera = new PerspectiveCamera();
+    const object3d = new Group();
+    const prepare = vi.fn(() => ({ canopySeed: 42 }));
+    const create = vi.fn((context) => {
+      expect(context.layer.profileData).toEqual({ canopySeed: 42 });
+      return {
+        object3d,
+        diagnostics: {
+          visibleTileCount: 0,
+          visibleCandidateCount: 0,
+          executedCandidateCount: 0,
+          frustumTestedTileCount: 0,
+          frustumCulledTileCount: 0,
+        },
+        updateFrame: vi.fn(),
+        dispose: vi.fn(),
+      };
+    });
+    const module: WebGLVegetationLayerModule = {
+      profileType: 'test-canopy',
+      prepare,
+      create,
+    };
+    const layer: VegetationRuntimeLayerConfig = {
+      layerId: 0,
+      key: 'canopy',
+      enabled: true,
+      renderBounds: {
+        horizontalPaddingMeters: 2,
+        belowSurfaceMeters: 0,
+        aboveSurfaceMeters: 8,
+      },
+      renderProfile: { type: 'test-canopy' },
+    };
+    const system = createThreeVegetationSystem({ renderer, scene, camera });
+
+    system.registerLayerModule(module);
+    expect(() => system.registerLayerModule(module)).toThrow('already registered');
+    const vegetation = await system.create({
+      source: createVegetationFileBytes(),
+      layers: [layer],
+    });
+
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(create).toHaveBeenCalledOnce();
+    expect(vegetation.object3d.parent).toBe(scene);
+    expect(vegetation.object3d.children).toEqual([object3d]);
+    vegetation.dispose();
+  });
+
   it('binds the runtime to the coordinate root and owns frame updates and cleanup', async () => {
     const scene = new Scene();
     const coordinateRoot = new Scene();
@@ -402,7 +464,6 @@ function createPreparedRuntime(): PreparedVegetationRuntime {
   const dataset = createVegetationRuntimeDataset(createParsedFile(), vegetationRuntimeConfig);
   return {
     dataset,
-    activeCells: [createVegetationActiveCellData(dataset, 0)],
     preparationMilliseconds: 12.5,
   };
 }
@@ -416,6 +477,7 @@ function createPreparedRuntimeWithProfile(profileType: string): PreparedVegetati
       ...sourceLayer.config,
       renderProfile: { type: profileType },
     },
+    profileData: { canopySeed: 42 },
   };
   return {
     ...prepared,

@@ -5,28 +5,30 @@ Algorithmen, Shader und Three.js-Ressourcen bleiben in der Pipeline.
 Asset-URLs, Ladezustand und globale Anwendungsschalter gehören dem Consumer und
 sind kein Teil dieses Vertrags.
 
-Runtime-Schema **3** trennt gemeinsame Layerentscheidungen von
-profilabhängigen Renderwerten. Jeder Layer besitzt stabile Identität,
-Verteilung, Pattern, Sichtbarkeit, Density, Lichtreaktion, Schatten und
-`renderBounds`. Nur `renderProfile` wird vom konkreten Rendermodul interpretiert:
+Runtime-Schema **3** trennt den kleinen generischen Layerkern von der
+moduleigenen Konfiguration. Die Pipeline verlangt nur `layerId`, `key`,
+`enabled`, konservative `renderBounds` und `renderProfile.type`. Alle weiteren
+Werte werden ausschließlich vom gewählten Layer-Modul interpretiert:
 
 ```ts
 {
   layerId: 0,
   key: 'meadow-grass',
-  distribution: { /* gemeinsame Anchor-/Elementkapazität */ },
-  density: { /* layerspezifische Distanzkurven */ },
+  enabled: true,
+  renderBounds: {
+    horizontalPaddingMeters: 0.3,
+    belowSurfaceMeters: 0,
+    aboveSurfaceMeters: 0.55,
+  },
+  // Ab hier Grass-modulspezifisch:
+  distribution: { /* Anchor-/Elementkapazität */ },
+  density: { /* Distanzkurven */ },
   lighting: {
     directLightWeight: 0.8,
     indirectLightWeight: 1,
     normal: { source: 'ground' },
   },
   shadows: { cast: false, receive: true },
-  renderBounds: {
-    horizontalPaddingMeters: 0.3,
-    belowSurfaceMeters: 0,
-    aboveSurfaceMeters: 0.55,
-  },
   renderProfile: {
     type: 'grass',
     blade: { /* ausschließlich Grass */ },
@@ -36,11 +38,24 @@ Verteilung, Pattern, Sichtbarkeit, Density, Lichtreaktion, Schatten und
 ```
 
 Ein Baum- oder Buschprofil benötigt keine Grass-Felder. Sein Rendermodul kann
-eigene serialisierbare Werte hinter einem anderen `renderProfile.type` und in
-seinem layerspezifischen `lighting`-Block definieren. `createGrassLayerConfig(...)`
-liefert für den normalen Grass-Fall ein vollständiges, anwendungsneutrales
-Preset und berechnet konservative Bounds aus Halmhöhe, Breite, Neigung und
-Verteilungsradius.
+eine vollständig eigene serialisierbare Form definieren. Auch Validierung und
+CPU-Vorbereitung sind optionale Modulaufgaben. `grassPreset(...)` liefert für
+den normalen Grass-Fall eine vollständige anwendungsneutrale Konfiguration,
+übernimmt gezielte verschachtelte Overrides und berechnet konservative Bounds
+aus Halmhöhe, Breite, Neigung und Verteilungsradius:
+
+```ts
+const grass = grassPreset({
+  layerId: 0,
+  key: 'meadow-grass',
+  density: { renderTileSizeCells: 16 },
+  lighting: { directLightWeight: 0.6 },
+})
+```
+
+Nicht angegebene Werte bleiben auf den Preset-Standards. Für bestehende
+Integrationen bleibt `createGrassLayerConfig(...)` als kompatibler Alias
+erhalten.
 
 ## Maximale Verteilung
 
@@ -168,12 +183,11 @@ Geometrie-LOD-Stufen existieren nicht. `cameraFacing` blendet die zufällige
 Halmausrichtung im angegebenen Distanzbereich weich zu einer vollständig zur
 Kamera ausgerichteten Fläche über. Die Dichtebudgets bleiben davon unberührt.
 
-Weitere gemeinsame Layerbereiche sind `visibility`, `pattern`, `lighting` und
-`shadows`. `bladeThicknessDistanceScaling` und `colors` gehören ausschließlich
-zum Grass-Renderprofil. Der Ort von `lighting` ist für alle Layer gleich, sein
-Inhalt wird jedoch vom jeweiligen Render-/Lichtmodul festgelegt. Das
-Grass-Preset definiert direkten und indirekten Lichtanteil sowie die
-Normalenquelle.
+`visibility`, `distribution`, `density`, `pattern`, `lighting`, `shadows`,
+`bladeThicknessDistanceScaling` und `colors` gehören alle zum Grass-Modul. Ein
+anderes Modul darf diese Begriffe anders strukturieren oder vollständig
+weglassen. Das Grass-Preset definiert direkten und indirekten Lichtanteil sowie
+die Normalenquelle.
 
 `lighting.directLightWeight` und `indirectLightWeight` legen den Anteil des
 gerichteten beziehungsweise Ambient-/Hemisphere-Lichts fest (`0` bis `1`).

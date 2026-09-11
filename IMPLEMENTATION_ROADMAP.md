@@ -1,6 +1,6 @@
 # Implementierungsroadmap
 
-Stand: 10. September 2026
+Stand: 11. September 2026
 
 ## Zielbild
 
@@ -24,8 +24,8 @@ sind im [Cleanup- und Refactorplan](CLEANUP_REFACTOR_PLAN.md) beschrieben.
 | Sichtbarkeit und Density | Fertig für Grass | Chunk- und Tile-Frustum-Culling sowie kontinuierliche Cell-, Anchor- und Elementbudgets |
 | WebGL-Grassrenderer | Fertig für den aktuellen Funktionsstand | GPU-Platzierung, Heightmap-Sampling, Geometrie, Farben, Ground-Übergang, Kameraausrichtung, Szenenlicht und eingehende Schatten |
 | Debug und Messung | Vorhanden | Chunk-/Cell-/Frustumdarstellung, Kandidaten- und GPU-Diagnostik, Browsercheck und Patch-Benchmark |
-| Öffentliche Runtime-Fassade | Fertig für den aktuellen Grass-Renderer | `createWebGLVegetationRuntime`, `createThreeVegetation`, gemeinsamer Lifecycle, Frame-Diagnostik sowie Three-Kamera- und Scene-Adapter |
-| Austauschbare Renderprofile | Fertig für WebGL | Neutrale Layerwerte, diskriminierte Profile, gemeinsamer Bounds-Vertrag, anpassbares Grass-Preset und Renderer-Registry |
+| Öffentliche Runtime-Fassade | Fertig für Three.js/WebGL | `ThreeVegetationSystem`, automatische Standardadapter, Modulregistrierung, gemeinsamer Lifecycle und Frame-Diagnostik; direkte ältere Factories bleiben kompatibel |
+| Austauschbare Renderprofile | Fertig für den Modulvertrag | Minimaler generischer Layerkern, moduleigene Config/Validierung/Vorbereitung/Renderer, gemeinsamer Bounds-Vertrag und anpassbares Grass-Preset |
 | Lichtadapter | Fertig für WebGL/Three.js | Austauschbarer Materialvertrag, nativer Three.js-Licht-/Shadow-/Exposure-Pfad und layerspezifische Grass-Lichtreaktion |
 | Grass-Patchfeature | Fertig für Three.js/WebGL | Grass-eigene Feldgenerierung, GPU-Ressource und optionaler Three.js-Surface-Adapter; der Consumer liefert nur die Materialauswahl |
 
@@ -111,12 +111,20 @@ identischen, separaten Kurven ab und überschreibt Shadow-Flags nicht erneut.
 - I-CAKA über `createThreeVegetation` anbinden und auf Campus-Materialauswahl,
   Assetzustand, R3F-Frameaufruf und optionale Debugoberfläche reduzieren.
 
-### 8. Paket und Release absichern
+### 8. Paket und Release absichern — abgeschlossen
 
-- stabile Root- und Subpath-Exports definieren;
-- Paket in einem temporären Three.js-Verbraucher installieren und bauen;
-- echten WebGL-Browsertest in das Release-Gate aufnehmen;
-- README mit Installation, Minimalbeispiel und Cleanup-Vertrag vervollständigen.
+- stabile Root- und Subpath-Exports sind definiert;
+- das Tarball wird in einem temporären Three.js-Verbraucher installiert,
+  typgeprüft und mit Vite gebaut;
+- CLI-Hilfe und direkt importierte, erasable `.ts`-Config werden im Paket-Gate
+  geprüft;
+- README enthält Installation, System-/Preset-Einstieg, Modulregistrierung,
+  Workergrenze und Cleanup;
+- I-CAKAs lokaler Vite-Alias ist in einem gemeinsamen, ausdrücklich aktivierten
+  Entwicklungshelper gebündelt; User und Admin bauen standardmäßig über die
+  normale Paketauflösung;
+- offen für Phase 9: echten WebGL-Browsertest in das finale Release-Gate
+  aufnehmen.
 
 ## Spätere Erweiterungen
 

@@ -1,7 +1,10 @@
 import { createVegetationRuntimeDataset } from '../dataset/createVegetationRuntimeDataset.js';
-import { createVegetationActiveCellData } from '../density/VegetationRenderTileDensity.js';
 import { parseVegFile } from '../parser/VegParser.js';
-import { collectBuiltInVegetationLayerTransferBuffers } from '../profiles/VegetationLayerPreparation.js';
+import {
+  collectVegetationLayerTransferBuffers,
+  createVegetationLayerPreparationRegistry,
+  type VegetationLayerPreparation,
+} from '../profiles/VegetationLayerPreparation.js';
 import type {
   VegetationPreparationWorkerRequest,
   VegetationPreparationWorkerResponse,
@@ -18,23 +21,26 @@ export type VegetationPreparationWorkerScope = {
 /** Installs the pipeline-owned preparation protocol in a bundler-owned Worker entry. */
 export function installVegetationPreparationWorker(
   workerScope: VegetationPreparationWorkerScope,
+  options: Readonly<{
+    layerPreparations?: readonly VegetationLayerPreparation[];
+  }> = {},
 ): void {
+  const preparationRegistry = createVegetationLayerPreparationRegistry(
+    options.layerPreparations,
+  );
   workerScope.onmessage = (event) => {
     try {
       const start = performance.now();
       const dataset = createVegetationRuntimeDataset(
         parseVegFile(event.data.source),
         event.data.config,
+        [...preparationRegistry.values()],
       );
-      const activeCells = dataset.enabledLayers.map((layer) => (
-        createVegetationActiveCellData(dataset, layer.layerId)
-      ));
       const response = {
         dataset,
-        activeCells,
         preparationMilliseconds: performance.now() - start,
       } satisfies VegetationPreparationWorkerResponse;
-      workerScope.postMessage(response, collectTransferBuffers(response));
+      workerScope.postMessage(response, collectTransferBuffers(response, preparationRegistry));
     } catch (error) {
       workerScope.postMessage({
         error: error instanceof Error ? error.message : String(error),
@@ -45,17 +51,13 @@ export function installVegetationPreparationWorker(
 
 function collectTransferBuffers(
   prepared: Exclude<VegetationPreparationWorkerResponse, Readonly<{ error: string }>>,
+  preparationRegistry: ReturnType<typeof createVegetationLayerPreparationRegistry>,
 ): ArrayBuffer[] {
   const buffers = new Set<ArrayBuffer>();
   addArrayBuffer(buffers, prepared.dataset.file.bytes.buffer);
-  for (const cells of prepared.activeCells) {
-    addArrayBuffer(buffers, cells.indices.buffer);
-    addArrayBuffer(buffers, cells.offsets.buffer);
-    addArrayBuffer(buffers, cells.counts.buffer);
-  }
   for (const layer of prepared.dataset.layers) {
-    addArrayBuffer(buffers, layer.patterns.anchorPositions.buffer);
-    collectBuiltInVegetationLayerTransferBuffers(
+    collectVegetationLayerTransferBuffers(
+      preparationRegistry,
       layer.config.renderProfile.type,
       layer.profileData,
       buffers,

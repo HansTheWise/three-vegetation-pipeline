@@ -130,8 +130,8 @@ const DEFAULT_GRASS_PROFILE = {
   },
 } as const satisfies GrassRenderProfileConfig;
 
-/** Creates a complete application-neutral grass layer with targeted overrides. */
-export function createGrassLayerConfig(
+/** Creates a complete Grass config from defaults plus targeted overrides. */
+export function grassPreset(
   options: GrassLayerPresetOptions,
 ): GrassRuntimeLayerConfig {
   const grass = options.grass;
@@ -206,6 +206,13 @@ export function createGrassLayerConfig(
     renderBounds: createGrassRenderBounds(renderProfile, distribution.elementRadiusMeters),
     renderProfile,
   };
+}
+
+/** @deprecated Use grassPreset for new integrations. */
+export function createGrassLayerConfig(
+  options: GrassLayerPresetOptions,
+): GrassRuntimeLayerConfig {
+  return grassPreset(options);
 }
 
 function createGrassRenderBounds(

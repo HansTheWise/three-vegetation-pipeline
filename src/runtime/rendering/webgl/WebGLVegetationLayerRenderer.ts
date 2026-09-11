@@ -1,7 +1,6 @@
 import type { Object3D } from 'three';
 
 import type { VegetationRuntimeLayer } from '../../dataset/types.js';
-import type { VegetationActiveCellData } from '../../density/types.js';
 import type { VegetationFrameState } from '../../frame/types.js';
 import type { WebGLVegetationAdapter } from '../../gpu/webgl/WebGLVegetationAdapter.js';
 
@@ -16,7 +15,6 @@ export type WebGLVegetationLayerRendererDiagnostics = Readonly<{
 export type WebGLVegetationLayerRendererContext = Readonly<{
   adapter: WebGLVegetationAdapter;
   layer: VegetationRuntimeLayer;
-  activeCells: VegetationActiveCellData;
 }>;
 
 /** Render-profile module attached to one prepared vegetation layer. */
@@ -30,5 +28,6 @@ export interface WebGLVegetationLayerRenderer {
 /** Creates renderers for exactly one renderProfile.type. */
 export interface WebGLVegetationLayerRendererFactory {
   readonly profileType: string;
+  validateLayer?(layer: VegetationRuntimeLayer): void;
   create(context: WebGLVegetationLayerRendererContext): WebGLVegetationLayerRenderer;
 }

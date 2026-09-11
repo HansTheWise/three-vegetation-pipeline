@@ -17,6 +17,7 @@ const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 /** Validates runtime values before modules or GPU resources consume them. */
 export function validateVegetationRuntimeConfig(
   config: VegetationRuntimeConfig,
+  validators: readonly VegetationLayerConfigValidator[] = [],
 ): void {
   if (config.configVersion !== 3) {
     throw new Error(`Unsupported runtime config version ${String(config.configVersion)}. Use version 3 with separated layer render profiles.`);
@@ -27,6 +28,9 @@ export function validateVegetationRuntimeConfig(
 
   const layerIds = new Set<number>();
   const layerKeys = new Set<string>();
+  const validatorsByProfileType = new Map(
+    validators.map((validator) => [validator.profileType, validator]),
+  );
   for (const layer of config.layers) {
     if (layerIds.has(layer.layerId)) {
       throw new Error(`Runtime layer ID ${layer.layerId} is duplicated.`);
@@ -37,8 +41,14 @@ export function validateVegetationRuntimeConfig(
     layerIds.add(layer.layerId);
     layerKeys.add(layer.key);
     validateLayer(layer);
+    validatorsByProfileType.get(layer.renderProfile.type)?.validateConfig?.(layer);
   }
 }
+
+export type VegetationLayerConfigValidator = Readonly<{
+  profileType: string;
+  validateConfig?(config: VegetationRuntimeLayerConfig): void;
+}>;
 
 function validateLayer(layer: VegetationRuntimeLayerConfig): void {
   const label = `Runtime layer "${layer.key}"`;
@@ -50,60 +60,66 @@ function validateLayer(layer: VegetationRuntimeLayerConfig): void {
     || layer.renderProfile.type.trim().length === 0) {
     throw new Error(`${label}.renderProfile.type must not be empty.`);
   }
-  if (!isRecord(layer.lighting)) {
+}
+
+/** Optional validation owned by the built-in Grass module. */
+export function validateGrassRuntimeLayerConfig(
+  config: VegetationRuntimeLayerConfig,
+): void {
+  const grassLayer = config as GrassRuntimeLayerConfig;
+  const label = `Runtime layer "${grassLayer.key}"`;
+  if (!isRecord(grassLayer.lighting)) {
     throw new Error(`${label}.lighting must be an object.`);
   }
 
-  const maximumDistance = layer.visibility.maximumDistanceMeters;
+  const maximumDistance = grassLayer.visibility.maximumDistanceMeters;
   assertPositive(maximumDistance, `${label}.visibility.maximumDistanceMeters`);
 
-  assertInteger(layer.density.renderTileSizeCells, `${label}.density.renderTileSizeCells`, 1);
-  validateDensityCurve(layer.density.activeCells, `${label}.density.activeCells`);
-  validateDensityCurve(layer.density.activeAnchors, `${label}.density.activeAnchors`);
-  validateDensityCurve(layer.density.activeElements, `${label}.density.activeElements`);
+  assertInteger(grassLayer.density.renderTileSizeCells, `${label}.density.renderTileSizeCells`, 1);
+  validateDensityCurve(grassLayer.density.activeCells, `${label}.density.activeCells`);
+  validateDensityCurve(grassLayer.density.activeAnchors, `${label}.density.activeAnchors`);
+  validateDensityCurve(grassLayer.density.activeElements, `${label}.density.activeElements`);
   const densityAtVisibilityLimit = [
-    layer.density.activeCells,
-    layer.density.activeAnchors,
-    layer.density.activeElements,
+    grassLayer.density.activeCells,
+    grassLayer.density.activeAnchors,
+    grassLayer.density.activeElements,
   ].map((curve) => evaluateVegetationDensityCurve(curve, maximumDistance));
   if (densityAtVisibilityLimit.every((ratio) => ratio > 0)) {
     throw new Error(`${label}.density must reach zero by visibility.maximumDistanceMeters.`);
   }
 
-  assertInteger(layer.pattern.patternCount, `${label}.pattern.patternCount`, 1);
-  if (layer.pattern.patternCount > MAX_CELL_PATTERN_COUNT) {
+  assertInteger(grassLayer.pattern.patternCount, `${label}.pattern.patternCount`, 1);
+  if (grassLayer.pattern.patternCount > MAX_CELL_PATTERN_COUNT) {
     throw new Error(
       `${label}.pattern.patternCount must not exceed ${MAX_CELL_PATTERN_COUNT}.`,
     );
   }
-  assertInteger(layer.distribution.anchorsPerCell, `${label}.distribution.anchorsPerCell`, 1);
-  assertInteger(layer.distribution.elementsPerAnchor, `${label}.distribution.elementsPerAnchor`, 1);
-  assertNonNegative(layer.distribution.elementRadiusMeters, `${label}.distribution.elementRadiusMeters`);
+  assertInteger(grassLayer.distribution.anchorsPerCell, `${label}.distribution.anchorsPerCell`, 1);
+  assertInteger(grassLayer.distribution.elementsPerAnchor, `${label}.distribution.elementsPerAnchor`, 1);
+  assertNonNegative(grassLayer.distribution.elementRadiusMeters, `${label}.distribution.elementRadiusMeters`);
 
-  if (layer.renderProfile.type === 'grass') {
-    const grassLayer = layer as GrassRuntimeLayerConfig;
-    validateGrassPatchConfig(grassLayer.patches);
-    validateGrassRenderProfile(
-      grassLayer.renderProfile as GrassRenderProfileConfig,
-      grassLayer,
-      label,
-    );
-    assertBetween(
-      grassLayer.lighting.directLightWeight,
-      0,
-      1,
-      `${label}.lighting.directLightWeight`,
-    );
-    assertBetween(
-      grassLayer.lighting.indirectLightWeight,
-      0,
-      1,
-      `${label}.lighting.indirectLightWeight`,
-    );
-    validateGrassLighting(grassLayer, label);
-  }
+  validateGrassPatchConfig(grassLayer.patches);
+  validateGrassRenderProfile(
+    grassLayer.renderProfile as GrassRenderProfileConfig,
+    grassLayer,
+    label,
+  );
+  assertBetween(
+    grassLayer.lighting.directLightWeight,
+    0,
+    1,
+    `${label}.lighting.directLightWeight`,
+  );
+  assertBetween(
+    grassLayer.lighting.indirectLightWeight,
+    0,
+    1,
+    `${label}.lighting.indirectLightWeight`,
+  );
+  validateGrassLighting(grassLayer, label);
 
-  if (typeof layer.shadows.cast !== 'boolean' || typeof layer.shadows.receive !== 'boolean') {
+  if (typeof grassLayer.shadows.cast !== 'boolean'
+    || typeof grassLayer.shadows.receive !== 'boolean') {
     throw new Error(`${label}.shadows.cast and receive must be boolean.`);
   }
 }

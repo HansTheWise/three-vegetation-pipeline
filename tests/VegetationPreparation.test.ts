@@ -4,10 +4,13 @@ import {
   SynchronousVegetationPreparation,
   WorkerVegetationPreparation,
   installVegetationPreparationWorker,
+  requireGrassRuntimeLayer,
   writeVegFile,
   type PreparedVegetationRuntime,
+  type VegetationLayerPreparation,
   type VegetationPreparationWorkerRequest,
   type VegetationPreparationWorkerScope,
+  type VegetationRuntimeConfig,
   type VegetationDataset,
 } from '../src/index.js';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
@@ -58,7 +61,6 @@ describe('WorkerVegetationPreparation', () => {
 
     const result = {
       dataset: { layers: [], enabledLayers: [] },
-      activeCells: [],
       preparationMilliseconds: 4,
     } as unknown as PreparedVegetationRuntime;
     worker.onmessage!({ data: result } as MessageEvent);
@@ -85,12 +87,59 @@ describe('WorkerVegetationPreparation', () => {
     ];
     expect(response).not.toHaveProperty('error');
     expect(response.dataset.enabledLayers).toHaveLength(1);
-    expect(response.activeCells[0]!.indices).toHaveLength(4);
+    const grassData = requireGrassRuntimeLayer(
+      response.dataset.enabledLayers[0]!,
+    ).profileData;
+    expect(grassData.activeCells.indices).toHaveLength(4);
     expect(transfer).toContain(response.dataset.file.bytes.buffer);
-    expect(transfer).toContain(response.activeCells[0]!.indices.buffer);
+    expect(transfer).toContain(grassData.activeCells.indices.buffer);
     const received = structuredClone(response, { transfer });
     expect(received.dataset.file.bytes.byteLength).toBeGreaterThan(0);
-    expect(received.activeCells[0]!.indices).toHaveLength(4);
+    expect(requireGrassRuntimeLayer(
+      received.dataset.enabledLayers[0]!,
+    ).profileData.activeCells.indices).toHaveLength(4);
+  });
+
+  it('lets a custom profile own worker preparation and transferable buffers', () => {
+    const postMessage = vi.fn();
+    const scope: VegetationPreparationWorkerScope = { onmessage: null, postMessage };
+    const preparation: VegetationLayerPreparation = {
+      profileType: 'test-tree',
+      prepare: () => ({ branches: Uint32Array.of(2, 4, 8) }),
+      collectTransferBuffers(data, buffers) {
+        const buffer = (data as { branches: Uint32Array }).branches.buffer;
+        if (buffer instanceof ArrayBuffer) buffers.add(buffer);
+      },
+    };
+    const config = {
+      configVersion: 3,
+      layers: [{
+        layerId: 0,
+        key: 'trees',
+        enabled: true,
+        renderBounds: {
+          horizontalPaddingMeters: 2,
+          belowSurfaceMeters: 0,
+          aboveSurfaceMeters: 10,
+        },
+        renderProfile: { type: 'test-tree' },
+      }],
+    } satisfies VegetationRuntimeConfig;
+    installVegetationPreparationWorker(scope, { layerPreparations: [preparation] });
+
+    scope.onmessage!({
+      data: { source: createVegetationFileBytes(), config },
+    } as unknown as MessageEvent<VegetationPreparationWorkerRequest>);
+
+    const [response, transfer] = postMessage.mock.calls[0]! as [
+      PreparedVegetationRuntime,
+      ArrayBuffer[],
+    ];
+    const branches = response.dataset.layers[0]!.profileData as {
+      branches: Uint32Array;
+    };
+    expect([...branches.branches]).toEqual([2, 4, 8]);
+    expect(transfer).toContain(branches.branches.buffer);
   });
 
   it('terminates and rejects an in-flight request when aborted', async () => {

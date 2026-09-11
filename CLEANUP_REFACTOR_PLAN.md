@@ -1,6 +1,6 @@
 # Cleanup- und Refactorplan
 
-Stand: 10. September 2026
+Stand: 11. September 2026
 
 ## Ausführungsstand
 
@@ -27,8 +27,10 @@ Stand: 10. September 2026
 - Phase 7 ist abgeschlossen: Patch-Erzeugung, GPU-Ressource und optionale
   Three.js-Surface-Anbindung gehören vollständig zum Grass-Profil; I-CAKA
   liefert nur die Campus-Materialauswahl und einen schlanken R3F-Lifecycle.
-- Als Nächstes folgt Phase 8 mit öffentlichen Paketgrenzen und portabler
-  Entwicklung.
+- Phase 8 ist abgeschlossen: `ThreeVegetationSystem`, vollständige Layer-Module,
+  `grassPreset`, kuratierte Paket-Subpaths und ein isolierter Tarball-/Vite-/CLI-
+  Test sind umgesetzt. I-CAKA verwendet standardmäßig das Paket und schaltet
+  den gemeinsamen lokalen Vite-Entwicklungsmodus nur ausdrücklich zu.
 
 ## Ziel
 
@@ -39,9 +41,11 @@ wenigen stabilen Einstiegspunkten umgebaut.
 
 Am Ende soll eine Anwendung:
 
-1. VEGFILE-Bytes und eine serialisierbare Konfiguration liefern,
-2. die Vegetation als ein `Object3D` in ihre Szene hängen,
-3. pro Frame nur Kamera und Transformationsbezug aktualisieren und
+1. einmal das `ThreeVegetationSystem` mit Renderer, Szene, Kamera und optionalem
+   Koordinatenroot erstellen,
+2. zusätzliche Layer-Module registrieren und VEGFILE-Bytes plus
+   Layerdefinitionen übergeben,
+3. pro Frame nur `updateFrame()` aufrufen und
 4. alle Ressourcen über einen einzigen `dispose()`-Aufruf freigeben.
 
 Rendererprofile, profilspezifische Surface-Features und Beleuchtungsreaktion bleiben
@@ -51,7 +55,7 @@ bewährte WebGL-Platzierung werden dabei nicht unnötig neu entwickelt.
 ## Nachgewiesener Ausgangszustand vor Phase 0 (historisch)
 
 Dieser Snapshot bleibt zur Nachvollziehbarkeit erhalten. Er beschreibt nicht den
-aktuellen Stand nach Abschluss der Phasen 0 bis 7.
+aktuellen Stand nach Abschluss der Phasen 0 bis 8.
 
 ### Pipeline-Repository
 
@@ -148,20 +152,23 @@ Shaderfehler. Die visuelle Abnahme bleibt unabhängig davon Aufgabe des Benutzer
    Patchvertrag ersetzt. Die README ist weiterhin zu kurz für eine echte
    Paketnutzung.
 
-## Umgesetzte Zielarchitektur bis Phase 7
+## Umgesetzte Zielarchitektur in Phase 8
 
 ```text
 Three.js-Anwendung oder dünner R3F-Wrapper
-  -> lädt Bytes und hält App-Zustand
-  -> ThreeVegetationSceneAdapter (Standardintegration)
+  -> erstellt ThreeVegetationSystem(renderer, scene, camera, coordinateRoot)
+  -> registriert optionale WebGLVegetationLayerModule
+  -> erstellt Vegetation aus Bytes und Layerdefinitionen
+  -> ThreeVegetationSceneAdapter
        -> Renderer, Szene, Kamera und coordinateRoot
        -> ThreeCameraAdapter -> neutraler VegetationFrameState
        -> createWebGLVegetationRuntime(...)
        -> Parser + Runtime-Dataset
        -> gemeinsames Culling und Frame-Planning
        -> gemeinsame WebGL-Assetressourcen
-       -> LayerRenderer-Registry
-            -> GrassRenderProfile
+       -> Layer-Modulregistry über renderProfile.type
+            -> eingebautes Grass-Modul
+                 -> optionale Validierung und CPU-Vorbereitung
                  -> Placement/Density
                  -> Grass-Geometrie und Material
                  -> optionaler GrassGroundPatchSurface
@@ -172,7 +179,7 @@ Three.js-Anwendung oder dünner R3F-Wrapper
   -> runtime.dispose()
 ```
 
-Die in Phase 7 verwendete öffentliche API sieht so aus:
+Der bevorzugte öffentliche Einstieg in Phase 8 sieht so aus:
 
 ```ts
 const preparation = new WorkerVegetationPreparation(() => new Worker(
@@ -180,33 +187,34 @@ const preparation = new WorkerVegetationPreparation(() => new Worker(
   { type: 'module' },
 ))
 
-const vegetation = await createThreeVegetation({
+const system = createThreeVegetationSystem({
   renderer,
   scene,
   camera,
-  source: vegetationBytes,
-  config: vegetationConfig,
   coordinateRoot: modelRoot,
   preparation,
-  layerRenderers: [
-    createWebGLGrassLayerRenderer({
-      lighting: createThreeSceneLightingAdapter(),
-      groundPatchSurface: createThreeGrassGroundPatchSurface({
-        coordinateRoot: modelRoot,
-        matchesMaterial: (_, material) => groundMaterials.has(material),
-      }),
-    }),
-  ],
+})
+
+system.registerLayerModule(createWebGLGrassLayerModule({
+  groundPatchSurface: createThreeGrassGroundPatchSurface({
+    coordinateRoot: modelRoot,
+    matchesMaterial: (_, material) => groundMaterials.has(material),
+  }),
+}))
+
+const vegetation = await system.create({
+  source: vegetationBytes,
+  layers: [grassPreset({ layerId: 0, key: 'grass' })],
 })
 
 vegetation.updateFrame()
 vegetation.dispose()
 ```
 
-Diese Namen und Verträge sind bis Phase 7 implementiert. Wer die automatische
+Diese Namen und Verträge sind implementiert. Wer die automatische
 Szenenbindung nicht verwenden möchte, kann weiterhin die niedrigere
 `createWebGLVegetationRuntime`-Fassade verwenden, `object3d` selbst einhängen
-und Kamera-, Preparation-, Layer-Renderer- und Lichtadapter gezielt ersetzen.
+und Kamera-, Preparation-, Layer-Modul- und Lichtadapter gezielt ersetzen.
 
 ## Architekturentscheidungen
 
@@ -583,19 +591,21 @@ Commits:
 
 ### Phase 8 – Öffentliche Paketgrenzen und portable Entwicklung
 
+Status: abgeschlossen.
+
 Ziel: Installation funktioniert außerhalb der aktuellen Schwesterordner.
 
 Arbeiten:
 
-1. Kuratierte Exporte festlegen, zum Beispiel Root-Quickstart plus getrennte
+1. Kuratierte Exporte festlegen: Root-Quickstart plus getrennte
    Subpaths für `runtime`, `webgl`, `profiles/grass`, `debug` und `node`.
 2. Rohe Shader, GPU-Puffer und Debugimplementierung aus dem allgemeinen
    Root-Vertrag entfernen. Low-Level-Zugriff nur absichtlich über dokumentierte
    Subpaths anbieten.
-3. Package-Version und Breaking-Change-Grenze festlegen; für den neuen
-   Pre-1.0-Vertrag bietet sich `0.2.0` an.
-4. CLI-Vertrag korrigieren: unterstützte Node-Version festlegen und klar
-   entscheiden, ob veröffentlichte `.ts`-Configs wirklich unterstützt werden.
+3. Package-Version und Breaking-Change-Grenze auf `0.2.0` festlegen.
+4. CLI-Vertrag: Node.js ab 22.18; `.ts`-Configs werden unterstützt, wenn sie nur
+   direkt entfernbaren TypeScript-Syntax verwenden und keine tsconfig-
+   Transformation benötigen.
 5. Ein sauberes Tarball bauen, in einem temporären Three.js-Verbraucher
    installieren und Root-/Node-Imports, CLI, Typecheck und Build prüfen.
 6. I-CAKAs direkten Schwester-`dist`-Alias nur als expliziten lokalen
@@ -659,8 +669,8 @@ sie nicht vorweg implementieren.
 
 ## Reihenfolge und Stop-Regeln
 
-- Die Phasen 0 bis 7 wurden in dieser Reihenfolge abgeschlossen und jeweils
-  committed. Phase 8 beginnt auf den grünen Gates von Phase 7.
+- Die Phasen 0 bis 8 wurden in dieser Reihenfolge abgeschlossen und jeweils
+  auf den grünen Gates der vorherigen Phase aufgebaut.
 - Jede Phase startet auf grünen Gates der vorherigen Phase und endet mit einem
   eigenen überprüfbaren Commit.
 - Ändert ein Schritt das sichtbare Bild, ist er kein reiner Cleanup mehr und

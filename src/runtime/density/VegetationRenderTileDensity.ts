@@ -2,6 +2,7 @@ import type { Axis } from '../../offline/config/types.js';
 import { FrustumPlanes } from '../chunking/FrustumPlanes.js';
 import type { ClipSpaceDepthRange, Matrix4Elements } from '../chunking/types.js';
 import { evaluateVegetationDensityCurve } from '../config/evaluateVegetationDensityCurve.js';
+import type { GrassRuntimeLayerConfig } from '../config/types.js';
 import type { VegetationRuntimeDataset, VegetationRuntimeLayer } from '../dataset/types.js';
 import {
   MAXIMUM_WEBGL_INSTANCE_COUNT,
@@ -9,6 +10,8 @@ import {
 } from '../gpu/webgl/limits.js';
 import { createStoredChunkGridCoordinates } from '../gpu/StoredChunkGridCoordinates.js';
 import { hashVegetationCell, mixVegetationHash } from '../identity/VegetationIds.js';
+import type { ParsedVegFile, ParsedVegLayer } from '../parser/types.js';
+import { requireGrassRuntimeLayerConfig } from '../profiles/grass/GrassRenderProfile.js';
 import type { ModelPosition, VegetationActiveCellData } from './types.js';
 
 const VALUES_PER_TILE_RECORD = 4;
@@ -31,7 +34,7 @@ export class VegetationRenderTileDensity {
   frustumCulledTileCount = 0;
 
   readonly #dataset: VegetationRuntimeDataset;
-  readonly #layer: VegetationRuntimeLayer;
+  readonly #layer: VegetationRuntimeLayer<GrassRuntimeLayerConfig>;
   readonly #storedChunkGridCoordinates: Uint32Array;
   readonly #activeCellOffsets: Uint32Array;
   readonly #activeCellCounts: Uint32Array;
@@ -47,11 +50,13 @@ export class VegetationRenderTileDensity {
   ) {
     const layer = dataset.enabledLayers.find((candidate) => candidate.layerId === layerId);
     if (!layer) throw new Error(`Enabled runtime vegetation layer ${layerId} does not exist.`);
+    const grassLayer = layer as VegetationRuntimeLayer<GrassRuntimeLayerConfig>;
+    requireGrassRuntimeLayerConfig(grassLayer.config);
 
     this.#dataset = dataset;
-    this.#layer = layer;
+    this.#layer = grassLayer;
     this.renderTileSizeCells = Math.min(
-      layer.config.density.renderTileSizeCells,
+      grassLayer.config.density.renderTileSizeCells,
       layer.fileLayer.maskResolution,
     );
     this.tilesPerChunkAxis = Math.ceil(
@@ -63,9 +68,9 @@ export class VegetationRenderTileDensity {
 
     const maximumCellsPerTile = this.renderTileSizeCells ** 2;
     const maximumAnchorsPerTile = maximumCellsPerTile
-      * layer.config.distribution.anchorsPerCell;
+      * grassLayer.config.distribution.anchorsPerCell;
     this.maximumCandidatesPerTile = maximumAnchorsPerTile
-      * layer.config.distribution.elementsPerAnchor;
+      * grassLayer.config.distribution.elementsPerAnchor;
     if (maximumCellsPerTile > MAXIMUM_PACKED_COUNT
       || maximumAnchorsPerTile > MAXIMUM_PACKED_COUNT) {
       throw new Error('Render-tile Cell and Anchor budgets must fit packed 16-bit counts.');
@@ -219,15 +224,30 @@ export function createVegetationActiveCellData(
 ): VegetationActiveCellData {
   const layer = dataset.enabledLayers.find((candidate) => candidate.layerId === layerId);
   if (!layer) throw new Error(`Enabled runtime vegetation layer ${layerId} does not exist.`);
-  const tileSizeCells = Math.min(layer.config.density.renderTileSizeCells, layer.fileLayer.maskResolution);
-  const tilesPerChunkAxis = Math.ceil(layer.fileLayer.maskResolution / tileSizeCells);
-  const storedChunkGridCoordinates = createStoredChunkGridCoordinates(dataset.file);
-  const storedChunkCount = dataset.file.header.storedChunkCount;
+  const config = requireGrassRuntimeLayerConfig(layer.config);
+  return createVegetationActiveCellDataForLayer(
+    dataset.file,
+    layer.fileLayer,
+    layerId,
+    config.density.renderTileSizeCells,
+  );
+}
+
+export function createVegetationActiveCellDataForLayer(
+  file: ParsedVegFile,
+  fileLayer: ParsedVegLayer,
+  layerId: number,
+  configuredTileSizeCells: number,
+): VegetationActiveCellData {
+  const tileSizeCells = Math.min(configuredTileSizeCells, fileLayer.maskResolution);
+  const tilesPerChunkAxis = Math.ceil(fileLayer.maskResolution / tileSizeCells);
+  const storedChunkGridCoordinates = createStoredChunkGridCoordinates(file);
+  const storedChunkCount = file.header.storedChunkCount;
   const tilesPerChunk = tilesPerChunkAxis ** 2;
   const tileCapacity = storedChunkCount * tilesPerChunk;
   const counts = new Uint32Array(tileCapacity);
-  const { maskResolution, maskWordsPerChunk } = layer.fileLayer;
-  const activeMaskData = layer.fileLayer.maskData;
+  const { maskResolution, maskWordsPerChunk } = fileLayer;
+  const activeMaskData = fileLayer.maskData;
 
   for (let storedChunkIndex = 0; storedChunkIndex < storedChunkCount; storedChunkIndex += 1) {
     const chunkMaskOffset = storedChunkIndex * maskWordsPerChunk;
@@ -271,8 +291,8 @@ export function createVegetationActiveCellData(
         if (counts[tileIndex] === 0) continue;
         const globalTileCellX = chunkGridX * maskResolution + tileX * tileSizeCells;
         const globalTileCellY = chunkGridY * maskResolution + tileY * tileSizeCells;
-        let randomState = hashVegetationCell(dataset.file.header.seed, {
-          layerId: layer.layerId,
+        let randomState = hashVegetationCell(file.header.seed, {
+          layerId,
           globalCellX: globalTileCellX,
           globalCellY: globalTileCellY,
         });

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import {
   createVegetationRuntimeDataset, createVegetationActiveCellData,
-  VegetationRenderTileDensity, type ParsedVegFile,
+  VegetationRenderTileDensity, type GrassRuntimeLayerConfig, type ParsedVegFile,
+  type VegetationRuntimeConfig,
 } from '../src/index.js';
 
 function createDataset(seed = 42, ratio = 0.25, reordered = false) {
@@ -21,14 +22,15 @@ function createDataset(seed = 42, ratio = 0.25, reordered = false) {
       maskData: new Uint32Array(256).fill(0xffff_ffff) }],
   };
   const layer = vegetationRuntimeConfig.layers[0]!;
-  return createVegetationRuntimeDataset(file, {
+  const config = {
     ...vegetationRuntimeConfig,
     layers: [{ ...layer, density: { ...layer.density, renderTileSizeCells: 32,
       activeCells: [{ distanceMeters: 0, ratio }, { distanceMeters: 400, ratio }, { distanceMeters: 500, ratio: 0 }],
       activeAnchors: [{ distanceMeters: 0, ratio: 1 }],
       activeElements: [{ distanceMeters: 0, ratio: 1 }],
     } }],
-  });
+  } satisfies VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
+  return createVegetationRuntimeDataset(file, config);
 }
 
 describe('seeded Cell coverage', () => {

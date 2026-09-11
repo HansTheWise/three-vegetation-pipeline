@@ -1,4 +1,9 @@
 import { createThreeSceneLightingAdapter } from '../../adapters/three/ThreeSceneLightingAdapter.js';
+import type { VegetationRuntimeLayer } from '../../dataset/types.js';
+import {
+  grassLayerPreparation,
+  requireGrassRuntimeLayer,
+} from '../../profiles/grass/GrassLayerPreparation.js';
 import type { WebGLGrassGroundPatchSurface } from '../../profiles/grass/rendering/webgl/WebGLGrassGroundPatchSurface.js';
 import { WebGLGrassView } from './WebGLGrassView.js';
 import type { WebGLVegetationLightingAdapter } from './WebGLVegetationLightingAdapter.js';
@@ -7,6 +12,7 @@ import type {
   WebGLVegetationLayerRendererContext,
   WebGLVegetationLayerRendererFactory,
 } from './WebGLVegetationLayerRenderer.js';
+import type { WebGLVegetationLayerModule } from './WebGLVegetationLayerModule.js';
 
 export type WebGLGrassLayerRendererFactoryOptions = Readonly<{
   lighting?: WebGLVegetationLightingAdapter;
@@ -24,11 +30,15 @@ export class WebGLGrassLayerRendererFactory implements WebGLVegetationLayerRende
     this.#groundPatchSurface = options.groundPatchSurface;
   }
 
+  validateLayer(layer: VegetationRuntimeLayer): void {
+    requireGrassRuntimeLayer(layer);
+  }
+
   create(context: WebGLVegetationLayerRendererContext): WebGLVegetationLayerRenderer {
     return new WebGLGrassView(
       context.adapter,
       context.layer.layerId,
-      context.activeCells,
+      undefined,
       this.#lighting,
       this.#groundPatchSurface,
     );
@@ -39,4 +49,19 @@ export function createWebGLGrassLayerRenderer(
   options: WebGLGrassLayerRendererFactoryOptions = {},
 ): WebGLGrassLayerRendererFactory {
   return new WebGLGrassLayerRendererFactory(options);
+}
+
+/** Complete opinionated Grass module for preparation and WebGL rendering. */
+export function createWebGLGrassLayerModule(
+  options: WebGLGrassLayerRendererFactoryOptions = {},
+): WebGLVegetationLayerModule {
+  const renderer = new WebGLGrassLayerRendererFactory(options);
+  return {
+    profileType: 'grass',
+    validateConfig: grassLayerPreparation.validateConfig,
+    prepare: grassLayerPreparation.prepare,
+    collectTransferBuffers: grassLayerPreparation.collectTransferBuffers,
+    validateLayer: (layer) => renderer.validateLayer(layer),
+    create: (context) => renderer.create(context),
+  };
 }

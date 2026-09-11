@@ -1,9 +1,12 @@
 {
   "name": "three-vegetation-pipeline",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A modular, data-driven vegetation pipeline for Three.js.",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "files": [
     "dist",
     "tooling/veg-compile.mjs"
@@ -13,9 +16,29 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./dist/public.d.ts",
+      "import": "./dist/public.js",
+      "default": "./dist/public.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js",
+      "default": "./dist/runtime/index.js"
+    },
+    "./webgl": {
+      "types": "./dist/runtime/rendering/webgl/index.d.ts",
+      "import": "./dist/runtime/rendering/webgl/index.js",
+      "default": "./dist/runtime/rendering/webgl/index.js"
+    },
+    "./profiles/grass": {
+      "types": "./dist/runtime/profiles/grass/index.d.ts",
+      "import": "./dist/runtime/profiles/grass/index.js",
+      "default": "./dist/runtime/profiles/grass/index.js"
+    },
+    "./debug": {
+      "types": "./dist/runtime/debug/index.d.ts",
+      "import": "./dist/runtime/debug/index.js",
+      "default": "./dist/runtime/debug/index.js"
     },
     "./node": {
       "types": "./dist/offline/compiler/NodeVegCompiler.d.ts",
@@ -32,8 +55,9 @@
     "example:webgl": "vite --host 127.0.0.1 --open /examples/webgl-runtime.html",
     "veg:compile": "tsc -p tsconfig.build.json && node --experimental-strip-types tooling/veg-compile.mjs",
     "test": "vitest run",
+    "test:package": "node tooling/package-smoke-test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "verify": "npm run typecheck && npm run test && npm run build"
+    "verify": "npm run typecheck && npm run test && npm run build && npm run test:package"
   },
   "peerDependencies": {
     "three": ">=0.184.0 <0.186.0"

@@ -3,7 +3,6 @@ import type {
   VegetationRuntimeConfig,
   VegetationRuntimeLayerConfig,
 } from '../config/types.js';
-import type { VegetationPatternSet } from '../patterns/types.js';
 import type { ParsedVegFile, ParsedVegLayer } from '../parser/types.js';
 
 export type VegetationRuntimeLayer<
@@ -15,7 +14,6 @@ export type VegetationRuntimeLayer<
   enabled: boolean;
   fileLayer: ParsedVegLayer;
   config: TConfig;
-  patterns: VegetationPatternSet;
   profileData: TProfileData;
   cellSizeUnits: number;
   cellSizeMeters: number;

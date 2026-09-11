@@ -1,17 +1,22 @@
 import { validateVegetationRuntimeConfig } from '../config/validateVegetationRuntimeConfig.js';
 import type { VegetationRenderBounds, VegetationRuntimeConfig } from '../config/types.js';
-import { createVegetationPatterns } from '../patterns/VegetationPatterns.js';
 import { VEGETATION_ID_UINT32_MAX } from '../identity/VegetationIds.js';
 import type { ParsedVegFile } from '../parser/types.js';
-import { prepareBuiltInVegetationLayerData } from '../profiles/VegetationLayerPreparation.js';
+import {
+  createVegetationLayerPreparationRegistry,
+  prepareVegetationLayerData,
+  type VegetationLayerPreparation,
+} from '../profiles/VegetationLayerPreparation.js';
 import type { VegetationRuntimeDataset, VegetationRuntimeLayer } from './types.js';
 
 /** Strictly joins parsed VEGFILE data and runtime configuration by stable layer ID. */
 export function createVegetationRuntimeDataset(
   file: ParsedVegFile,
   config: VegetationRuntimeConfig,
+  layerPreparations: readonly VegetationLayerPreparation[] = [],
 ): VegetationRuntimeDataset {
-  validateVegetationRuntimeConfig(config);
+  const preparationRegistry = createVegetationLayerPreparationRegistry(layerPreparations);
+  validateVegetationRuntimeConfig(config, [...preparationRegistry.values()]);
 
   const fileLayersById = new Map(file.layers.map((layer) => [layer.id, layer]));
   if (fileLayersById.size !== file.layers.length) {
@@ -42,11 +47,12 @@ export function createVegetationRuntimeDataset(
       enabled: layerConfig.enabled,
       fileLayer,
       config: layerConfig,
-      patterns: createVegetationPatterns(
-        file.header.seed,
-        { ...layerConfig.pattern, anchorsPerCell: layerConfig.distribution.anchorsPerCell },
+      profileData: prepareVegetationLayerData(
+        preparationRegistry,
+        file,
+        fileLayer.id,
+        layerConfig,
       ),
-      profileData: prepareBuiltInVegetationLayerData(file, fileLayer.id, layerConfig),
       cellSizeUnits,
       cellSizeMeters: cellSizeUnits / file.header.coordinateSystem.unitsPerMeter,
     };

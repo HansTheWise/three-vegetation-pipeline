@@ -112,13 +112,20 @@ export type GrassRenderProfileConfig = VegetationRenderProfileConfig & Readonly<
 
 export type VegetationRuntimeLayerConfig<
   TProfile extends VegetationRenderProfileConfig = VegetationRenderProfileConfig,
-  TLighting extends VegetationLayerLightingConfig = VegetationLayerLightingConfig,
 > = Readonly<{
   /** Stable layer ID read from the .veg layer metadata. */
   layerId: number;
   key: string;
   enabled: boolean;
   renderBounds: VegetationRenderBounds;
+
+  renderProfile: TProfile;
+}>;
+
+export type GrassRuntimeLayerConfig = VegetationRuntimeLayerConfig<
+  GrassRenderProfileConfig
+> & Readonly<{
+  patches: GrassPatchConfig;
 
   distribution: Readonly<{
     /** Anchors per active Cell at full density. */
@@ -146,21 +153,13 @@ export type VegetationRuntimeLayerConfig<
 
   pattern: Omit<VegetationPatternConfig, 'anchorsPerCell'>;
 
-  lighting: TLighting;
+  lighting: GrassLayerLightingConfig;
 
   shadows: Readonly<{
     cast: boolean;
     receive: boolean;
   }>;
 
-  renderProfile: TProfile;
-}>;
-
-export type GrassRuntimeLayerConfig = VegetationRuntimeLayerConfig<
-  GrassRenderProfileConfig,
-  GrassLayerLightingConfig
-> & Readonly<{
-  patches: GrassPatchConfig;
 }>;
 
 /** Pure frontend data. Algorithm and module references deliberately live elsewhere. */

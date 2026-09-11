@@ -1,12 +1,10 @@
 import type { VegetationRuntimeConfig } from '../config/types.js';
 import type { VegetationRuntimeDataset } from '../dataset/types.js';
-import type { VegetationActiveCellData } from '../density/types.js';
 
 export type VegetationRuntimeSource = ArrayBuffer | Uint8Array;
 
 export type PreparedVegetationRuntime = Readonly<{
   dataset: VegetationRuntimeDataset;
-  activeCells: readonly VegetationActiveCellData[];
   preparationMilliseconds: number;
 }>;
 
