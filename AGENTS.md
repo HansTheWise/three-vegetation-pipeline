@@ -183,6 +183,7 @@ When the user corrects your approach, append a one-line rule here before ending 
 - Keep chunking, frustum evaluation and future occlusion infrastructure global and shared, while distribution, patterns, LOD/density, lighting, shadows and profile settings remain layer-specific; shared culling must consume each profile's bounds.
 - Keep opinionated features such as vegetation patches inside their owning layer renderer and preset; the generic layer manager must not know Grass-specific feature contracts.
 - Keep the generic layer contract limited to identity, enablement, shared-culling bounds and module selection; each registered module optionally owns its config shape, validation, preparation, transfer buffers and renderer.
+- When vegetation startup controls the visibility of shadow-casting scene content, explicitly invalidate cached shadow maps after reveal; camera movement must never be the refresh trigger.
 
 ---
 ## 12. How this file was built
