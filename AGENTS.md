@@ -184,6 +184,7 @@ When the user corrects your approach, append a one-line rule here before ending 
 - Keep opinionated features such as vegetation patches inside their owning layer renderer and preset; the generic layer manager must not know Grass-specific feature contracts.
 - Keep the generic layer contract limited to identity, enablement, shared-culling bounds and module selection; each registered module optionally owns its config shape, validation, preparation, transfer buffers and renderer.
 - When vegetation startup controls the visibility of shadow-casting scene content, explicitly invalidate cached shadow maps after reveal; camera movement must never be the refresh trigger.
+- Do not assert mutable visual-tuning values in integration tests; validate their schema and behavior, and reserve exact-value assertions for explicit compatibility contracts.
 
 ---
 ## 12. How this file was built
