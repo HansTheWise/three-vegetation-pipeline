@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { VegetationDataset } from '../src/offline/extractor/types.js';
-import { parseVegFile } from '../src/runtime/parser/VegParser.js';
+import type { VegetationDataset } from '../src/offline/vegetation-dataset-extraction/VegetationExtractionTypes.js';
+import { writeVegFile } from '../src/offline/vegfile-v2-serialization/VegWriter.js';
+import { parseVegFile } from '../src/runtime/vegfile-v2-parsing/VegParser.js';
+import { calculateVegFileV2Layout } from '../src/vegfile-v2-format/VegFileV2Layout.js';
 import {
-  VEG_HEADER_OFFSET,
-  VEG_HEADER_SIZE,
-  VEG_LAYER_METADATA_SIZE,
-} from '../src/offline/writer/format.js';
-import type { HeightValueBits } from '../src/offline/writer/types.js';
-import { writeVegFile } from '../src/offline/writer/VegWriter.js';
+  VEG_FILE_HEADER_OFFSETS,
+  VEG_FILE_HEADER_SIZE,
+  VEG_FILE_LAYER_METADATA_SIZE,
+} from '../src/vegfile-v2-format/VegFileV2Schema.js';
+import type { HeightValueBits } from '../src/vegfile-v2-format/VegetationFileTypes.js';
 
 const TEST_BUILD_FINGERPRINT = Uint8Array.from({ length: 16 }, (_, index) => index);
 
@@ -17,17 +18,19 @@ describe('parseVegFile', () => {
     [16, Uint16Array, [0, 21_845, 43_690, 65_535]],
     [32, Uint32Array, [0, 1_431_655_765, 2_863_311_530, 4_294_967_295]],
   ] as const)(
-    'parses a writer-produced multi-layer file with %i-bit heights',
+    'parses a writer-produced multi-layer v2 file with %i-bit heights',
     (heightValueBits, HeightArray, expectedHeights) => {
       const file = createFile(heightValueBits);
       const parsed = parseVegFile(file);
 
       expect(parsed.header).toEqual({
-        version: 1,
-        fileSize: file.byteLength,
+        version: 2,
         seed: 0xdead_beef,
         buildFingerprint: TEST_BUILD_FINGERPRINT,
-        fileChecksum: dataView(file).getUint32(VEG_HEADER_OFFSET.fileChecksum, true),
+        fileChecksum: dataView(file).getUint32(
+          VEG_FILE_HEADER_OFFSETS.fileChecksum,
+          true,
+        ),
         sourceBounds: {
           minX: 0,
           minY: 0,
@@ -81,7 +84,6 @@ describe('parseVegFile', () => {
     const file = createFile(16);
     const padded = new Uint8Array(file.byteLength + 1);
     padded.set(file, 1);
-
     const parsed = parseVegFile(padded.subarray(1));
 
     expect(parsed.bytes.byteOffset).toBe(0);
@@ -89,46 +91,40 @@ describe('parseVegFile', () => {
     expect([...parsed.chunkLookup]).toEqual([0, -1]);
   });
 
-  it('rejects invalid signatures, versions and truncated files', () => {
+  it('rejects invalid signatures, v1 files and truncated files', () => {
     const invalidMagic = createFile(16).slice();
     invalidMagic[0] = 0;
-    const invalidVersion = createFile(16).slice();
-    dataView(invalidVersion).setUint16(VEG_HEADER_OFFSET.version, 2, true);
-    const truncated = createFile(16).subarray(0, createFile(16).byteLength - 1);
+    const versionOne = createFile(16).slice();
+    dataView(versionOne).setUint16(VEG_FILE_HEADER_OFFSETS.version, 1, true);
+    const completeFile = createFile(16);
+    const truncated = completeFile.subarray(0, completeFile.byteLength - 1);
 
     expect(() => parseVegFile(invalidMagic)).toThrow('Invalid VEGFILE signature');
-    expect(() => parseVegFile(invalidVersion)).toThrow('Unsupported .veg file version 2.');
-    expect(() => parseVegFile(truncated)).toThrow('does not match the provided');
+    expect(() => parseVegFile(versionOne)).toThrow('expected version 2');
+    expect(() => parseVegFile(truncated)).toThrow('byte length');
   });
 
-  it('rejects inconsistent section offsets and layer lengths', () => {
-    const invalidOffset = createFile(16).slice();
-    dataView(invalidOffset).setUint32(
-      VEG_HEADER_OFFSET.chunkLookup,
-      VEG_HEADER_SIZE,
-      true,
-    );
-    const invalidLayerLength = createFile(16).slice();
-    dataView(invalidLayerLength).setUint32(
-      VEG_HEADER_SIZE + 12,
-      8,
-      true,
-    );
+  it('rejects unexpected file lengths and nonzero layer padding', () => {
+    const file = createFile(16);
+    const extended = new Uint8Array(file.byteLength + 4);
+    extended.set(file);
+    const invalidPadding = file.slice();
+    dataView(invalidPadding).setUint16(VEG_FILE_HEADER_SIZE + 6, 1, true);
 
-    expect(() => parseVegFile(invalidOffset)).toThrow('chunkLookup offset');
-    expect(() => parseVegFile(invalidLayerLength)).toThrow('maskDataByteLength');
+    expect(() => parseVegFile(extended)).toThrow('byte length');
+    expect(() => parseVegFile(invalidPadding)).toThrow('metadata padding must be zero');
   });
 
   it('rejects invalid chunk lookup entries and height intervals', () => {
+    const layout = createLayout(16);
     const invalidLookup = createFile(16).slice();
-    const lookupOffset = dataView(invalidLookup)
-      .getUint32(VEG_HEADER_OFFSET.chunkLookup, true);
-    dataView(invalidLookup).setInt32(lookupOffset, 4, true);
-
+    dataView(invalidLookup).setInt32(layout.chunkLookupOffset, 4, true);
     const invalidHeightRange = createFile(16).slice();
-    const metadataOffset = dataView(invalidHeightRange)
-      .getUint32(VEG_HEADER_OFFSET.chunkMetadata, true);
-    dataView(invalidHeightRange).setFloat32(metadataOffset, 4, true);
+    dataView(invalidHeightRange).setFloat32(
+      layout.chunkHeightRangesOffset,
+      4,
+      true,
+    );
 
     expect(() => parseVegFile(invalidLookup))
       .toThrow('chunkLookup contains invalid stored index 4.');
@@ -138,9 +134,8 @@ describe('parseVegFile', () => {
 
   it('rejects set bits outside a layer mask resolution', () => {
     const invalid = createFile(16).slice();
-    const secondLayerMetadata = VEG_HEADER_SIZE + VEG_LAYER_METADATA_SIZE;
-    const maskOffset = dataView(invalid).getUint32(secondLayerMetadata + 8, true);
-    dataView(invalid).setUint32(maskOffset, 0x8000_0001, true);
+    const layout = createLayout(16);
+    dataView(invalid).setUint32(layout.layers[1]!.maskDataOffset, 0x8000_0001, true);
 
     expect(() => parseVegFile(invalid))
       .toThrow('layer 9 contains set padding bits in chunk 0.');
@@ -148,21 +143,34 @@ describe('parseVegFile', () => {
 
   it('rejects content that no longer matches the stored checksum', () => {
     const invalid = createFile(16).slice();
-    const heightOffset = dataView(invalid).getUint32(VEG_HEADER_OFFSET.heightData, true);
+    const heightOffset = createLayout(16).heightDataOffset;
     invalid[heightOffset] = invalid[heightOffset]! ^ 1;
 
     expect(() => parseVegFile(invalid)).toThrow('does not match calculated');
+  });
+
+  it('uses compact eight-byte layer metadata', () => {
+    expect(VEG_FILE_LAYER_METADATA_SIZE).toBe(8);
   });
 });
 
 function createFile(heightValueBits: HeightValueBits): Uint8Array {
   return writeVegFile(
     createDataset(),
-    {
-      heightValueBits,
-    },
+    { heightValueBits },
     { buildFingerprint: TEST_BUILD_FINGERPRINT },
   );
+}
+
+function createLayout(heightValueBits: HeightValueBits) {
+  return calculateVegFileV2Layout({
+    gridWidth: 2,
+    gridHeight: 1,
+    storedChunkCount: 1,
+    heightResolution: 2,
+    heightValueBits,
+    layerMaskResolutions: [2, 1],
+  });
 }
 
 function dataView(bytes: Uint8Array): DataView {
@@ -197,27 +205,18 @@ function createDataset(): VegetationDataset {
       {
         id: 7,
         key: 'grass',
-        displayName: 'Grass',
         maskResolution: 2,
-        activeCellCount: 3,
         maskData: new Uint8Array([1, 0, 1, 1]),
       },
       {
         id: 9,
         key: 'flowers',
-        displayName: 'Flowers',
         maskResolution: 1,
-        activeCellCount: 1,
         maskData: new Uint8Array([1]),
       },
     ],
     chunkLookup: new Int32Array([0, -1]),
-    chunks: [{
-      gridX: 0,
-      gridY: 0,
-      minimumHeight: 0,
-      maximumHeight: 3,
-    }],
+    storedChunkHeightRanges: [{ minimumHeight: 0, maximumHeight: 3 }],
     heightData: new Float64Array([0, 1, 2, 3]),
   };
 }

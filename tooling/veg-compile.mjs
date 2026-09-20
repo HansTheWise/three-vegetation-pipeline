@@ -2,7 +2,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
-import { createVegFile } from '../dist/offline/compiler/NodeVegCompiler.js';
+import { createVegFile } from '../dist/offline/offline-compilation-orchestration/NodeVegCompiler.js';
 
 const HELP = `Usage:
   veg-compile --input <model.glb> --config <config.js|config.ts> --output <asset.veg>
@@ -76,7 +76,7 @@ function printReport(result) {
     'VEGFILE created successfully',
     `Input: ${result.inputPath}`,
     `Output: ${result.outputPath}`,
-    `Meshes / triangles: ${report.sourceMeshCount} / ${report.triangleCount}`,
+    `Included meshes / triangles: ${report.includedMeshCount} / ${report.includedTriangleCount}`,
     `Chunks: ${report.storedChunkCount} stored of ${report.possibleChunkCount}`,
     `Heightmap: ${report.heightResolution} x ${report.heightResolution}, ${report.heightValueBits} bit`,
     `Seed: ${report.seed}`,

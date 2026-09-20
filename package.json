@@ -26,24 +26,24 @@
       "default": "./dist/runtime/index.js"
     },
     "./webgl": {
-      "types": "./dist/runtime/rendering/webgl/index.d.ts",
-      "import": "./dist/runtime/rendering/webgl/index.js",
-      "default": "./dist/runtime/rendering/webgl/index.js"
+      "types": "./dist/webgl.d.ts",
+      "import": "./dist/webgl.js",
+      "default": "./dist/webgl.js"
     },
     "./profiles/grass": {
-      "types": "./dist/runtime/profiles/grass/index.d.ts",
-      "import": "./dist/runtime/profiles/grass/index.js",
-      "default": "./dist/runtime/profiles/grass/index.js"
+      "types": "./dist/layer-profiles/grass/index.d.ts",
+      "import": "./dist/layer-profiles/grass/index.js",
+      "default": "./dist/layer-profiles/grass/index.js"
     },
     "./debug": {
-      "types": "./dist/runtime/debug/index.d.ts",
-      "import": "./dist/runtime/debug/index.js",
-      "default": "./dist/runtime/debug/index.js"
+      "types": "./dist/debug.d.ts",
+      "import": "./dist/debug.js",
+      "default": "./dist/debug.js"
     },
     "./node": {
-      "types": "./dist/offline/compiler/NodeVegCompiler.d.ts",
-      "import": "./dist/offline/compiler/NodeVegCompiler.js",
-      "default": "./dist/offline/compiler/NodeVegCompiler.js"
+      "types": "./dist/offline/offline-compilation-orchestration/NodeVegCompiler.d.ts",
+      "import": "./dist/offline/offline-compilation-orchestration/NodeVegCompiler.js",
+      "default": "./dist/offline/offline-compilation-orchestration/NodeVegCompiler.js"
     }
   },
   "scripts": {
@@ -51,6 +51,8 @@
     "prebuild": "npm run clean",
     "build": "tsc -p tsconfig.build.json",
     "build:watch": "tsc -p tsconfig.build.json --watch",
+    "benchmark": "vitest bench --run benchmarks",
+    "benchmark:webgl": "vite --host 127.0.0.1 --open /benchmarks/webgl-render-tile-submission.html",
     "debug:webgl": "vite --host 127.0.0.1 --open /examples/webgl-debug-chunks.html?near",
     "example:webgl": "vite --host 127.0.0.1 --open /examples/webgl-runtime.html",
     "veg:compile": "tsc -p tsconfig.build.json && node --experimental-strip-types tooling/veg-compile.mjs",

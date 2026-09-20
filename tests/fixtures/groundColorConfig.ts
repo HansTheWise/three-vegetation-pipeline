@@ -37,6 +37,10 @@ export const groundColorConfig = {
           bottom: { startsAtMeters: 30, endsAtMeters: 120, curveStrength: 0 },
           top: { startsAtMeters: 60, endsAtMeters: 180, curveStrength: 2 },
         },
+        groundColorAdaptation: {
+          bottomBias: 0.35,
+          topBias: 0.7,
+        },
       },
     },
   }],

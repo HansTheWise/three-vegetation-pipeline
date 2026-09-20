@@ -8,7 +8,7 @@ import {
   Uint16BufferAttribute,
 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { ThreeGlbReader } from '../src/offline/reader/ThreeGlbReader.js';
+import { ThreeGlbReader } from '../src/offline/three-glb-model-reading/ThreeGlbReader.js';
 import { createMinimalGlb } from './fixtures/createMinimalGlb.js';
 
 describe('ThreeGlbReader', () => {
@@ -26,24 +26,23 @@ describe('ThreeGlbReader', () => {
     mesh.position.set(1, 2, 3);
     surface.add(mesh);
 
-    const result = new ThreeGlbReader().readObject(root);
+    const result = new ThreeGlbReader().readModelRoot(root);
 
-    expect(result.coordinateSpace).toBe('model-local');
-    expect(result.sourceMeshCount).toBe(1);
-    expect(result.triangleCount).toBe(1);
+    expect(result.includedMeshCount).toBe(1);
+    expect(result.includedTriangleCount).toBe(1);
     expect(result.primitives).toHaveLength(1);
-    expect([...result.primitives[0]!.positions]).toEqual([
+    expect([...result.primitives[0]!.modelLocalVertexPositions]).toEqual([
       11, 22, 33,
       12, 22, 33,
       11, 23, 33,
     ]);
-    expect(result.primitives[0]!.hierarchyNames).toEqual([
+    expect(result.primitives[0]!.hierarchyNodeNames).toEqual([
       'world',
       'surface',
       'ground',
     ]);
     expect(result.primitives[0]!.materialName).toBe('meadow');
-    expect(result.bounds).toEqual({
+    expect(result.modelLocalBounds).toEqual({
       minX: 11,
       minY: 22,
       minZ: 33,
@@ -72,16 +71,17 @@ describe('ThreeGlbReader', () => {
     const mesh = new Mesh(geometry, [grass, path]);
     mesh.name = 'surface';
 
-    const result = new ThreeGlbReader().readObject(mesh);
+    const result = new ThreeGlbReader().readModelRoot(mesh);
 
     expect(result.primitives.map((primitive) => primitive.materialName)).toEqual([
       'meadow',
       'path',
     ]);
-    expect([...result.primitives[0]!.indices]).toEqual([0, 1, 2]);
-    expect([...result.primitives[1]!.indices]).toEqual([0, 2, 3]);
-    expect(result.primitives[0]!.positions).toBe(result.primitives[1]!.positions);
-    expect(result.triangleCount).toBe(2);
+    expect([...result.primitives[0]!.triangleVertexIndices]).toEqual([0, 1, 2]);
+    expect([...result.primitives[1]!.triangleVertexIndices]).toEqual([0, 2, 3]);
+    expect(result.primitives[0]!.modelLocalVertexPositions)
+      .toBe(result.primitives[1]!.modelLocalVertexPositions);
+    expect(result.includedTriangleCount).toBe(2);
   });
 
   it('skips invisible objects unless explicitly included', () => {
@@ -90,19 +90,19 @@ describe('ThreeGlbReader', () => {
     hidden.visible = false;
     root.add(hidden);
 
-    expect(new ThreeGlbReader().readObject(root).primitives).toHaveLength(0);
+    expect(new ThreeGlbReader().readModelRoot(root).primitives).toHaveLength(0);
     expect(new ThreeGlbReader({ includeInvisibleObjects: true })
-      .readObject(root).primitives).toHaveLength(1);
+      .readModelRoot(root).primitives).toHaveLength(1);
   });
 
   it('parses a GLB ArrayBuffer through GLTFLoader', async () => {
-    const result = await new ThreeGlbReader().read(createMinimalGlb());
+    const result = await new ThreeGlbReader().readGlb(createMinimalGlb());
 
     expect(result.primitives).toHaveLength(1);
-    expect(result.primitives[0]!.meshName).toBe('terrain');
+    expect(result.primitives[0]!.hierarchyNodeNames).toEqual(['terrain']);
     expect(result.primitives[0]!.materialName).toBe('meadow');
-    expect([...result.primitives[0]!.indices]).toEqual([0, 1, 2]);
-    expect([...result.primitives[0]!.positions]).toEqual([
+    expect([...result.primitives[0]!.triangleVertexIndices]).toEqual([0, 1, 2]);
+    expect([...result.primitives[0]!.modelLocalVertexPositions]).toEqual([
       10, 20, 30,
       11, 20, 30,
       10, 21, 30,
@@ -114,7 +114,7 @@ describe('ThreeGlbReader', () => {
     const instanced = new InstancedMesh(source.geometry, source.material, 2);
     instanced.name = 'trees';
 
-    expect(() => new ThreeGlbReader().readObject(instanced))
+    expect(() => new ThreeGlbReader().readModelRoot(instanced))
       .toThrow('Instanced mesh "trees" is not supported.');
   });
 });

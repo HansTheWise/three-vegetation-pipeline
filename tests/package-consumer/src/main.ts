@@ -1,10 +1,9 @@
-import { PerspectiveCamera, Scene, type WebGLRenderer } from 'three';
 import {
-  createThreeVegetationSystem,
+  createThreeVegetationSceneBinding,
   grassPreset,
   type WebGLVegetationLayerModule,
 } from 'three-vegetation-pipeline';
-import { WebGLVegetationDebug } from 'three-vegetation-pipeline/debug';
+import { WebGLGrassDebug } from 'three-vegetation-pipeline/debug';
 import {
   grassPreset as grassProfilePreset,
   type GrassLayerPreparedData,
@@ -18,10 +17,6 @@ import {
   type WebGLVegetationLayerRenderer,
 } from 'three-vegetation-pipeline/webgl';
 
-const scene = new Scene();
-const camera = new PerspectiveCamera();
-const renderer = {} as WebGLRenderer;
-const system = createThreeVegetationSystem({ renderer, scene, camera });
 const grass = grassPreset({
   layerId: 0,
   key: 'grass',
@@ -34,7 +29,7 @@ const preparedGrass = null as GrassLayerPreparedData | null;
 const layerRenderer = null as WebGLVegetationLayerRenderer | null;
 
 document.querySelector('#app')!.textContent = [
-  system.constructor.name,
+  createThreeVegetationSceneBinding,
   grass.key,
   customModule,
   frame,
@@ -43,5 +38,5 @@ document.querySelector('#app')!.textContent = [
   grassProfilePreset,
   createWebGLGrassLayerModule,
   parseVegFile,
-  WebGLVegetationDebug,
+  WebGLGrassDebug,
 ].join(':');

@@ -4,9 +4,11 @@ import {
   SynchronousVegetationPreparation,
   WorkerVegetationPreparation,
   installVegetationPreparationWorker,
+  grassLayerPreparation,
   requireGrassRuntimeLayer,
   writeVegFile,
   type PreparedVegetationRuntime,
+  type GrassRuntimeLayerConfig,
   type VegetationLayerPreparation,
   type VegetationPreparationWorkerRequest,
   type VegetationPreparationWorkerScope,
@@ -32,7 +34,7 @@ describe('SynchronousVegetationPreparation', () => {
     const controller = new AbortController();
     controller.abort();
 
-    expect(() => new SynchronousVegetationPreparation().prepare(
+    expect(() => new SynchronousVegetationPreparation([grassLayerPreparation]).prepare(
       new Uint8Array(),
       vegetationRuntimeConfig,
       controller.signal,
@@ -60,7 +62,7 @@ describe('WorkerVegetationPreparation', () => {
     expect(source).toEqual(Uint8Array.of(1, 2, 3));
 
     const result = {
-      dataset: { layers: [], enabledLayers: [] },
+      dataset: { preparedLayers: [] },
       preparationMilliseconds: 4,
     } as unknown as PreparedVegetationRuntime;
     worker.onmessage!({ data: result } as MessageEvent);
@@ -74,7 +76,9 @@ describe('WorkerVegetationPreparation', () => {
       onmessage: null,
       postMessage,
     };
-    installVegetationPreparationWorker(scope);
+    installVegetationPreparationWorker(scope, {
+      layerPreparations: [grassLayerPreparation],
+    });
     const source = createVegetationFileBytes();
 
     scope.onmessage!({
@@ -86,18 +90,19 @@ describe('WorkerVegetationPreparation', () => {
       ArrayBuffer[],
     ];
     expect(response).not.toHaveProperty('error');
-    expect(response.dataset.enabledLayers).toHaveLength(1);
+    expect(response.dataset.preparedLayers).toHaveLength(1);
     const grassData = requireGrassRuntimeLayer(
-      response.dataset.enabledLayers[0]!,
-    ).profileData;
+      response.dataset.preparedLayers[0]!,
+    ).preparedProfileData;
     expect(grassData.activeCells.indices).toHaveLength(4);
     expect(transfer).toContain(response.dataset.file.bytes.buffer);
+    expect(transfer).toContain(response.dataset.storedChunkGridCoordinates.buffer);
     expect(transfer).toContain(grassData.activeCells.indices.buffer);
     const received = structuredClone(response, { transfer });
     expect(received.dataset.file.bytes.byteLength).toBeGreaterThan(0);
     expect(requireGrassRuntimeLayer(
-      received.dataset.enabledLayers[0]!,
-    ).profileData.activeCells.indices).toHaveLength(4);
+      received.dataset.preparedLayers[0]!,
+    ).preparedProfileData.activeCells.indices).toHaveLength(4);
   });
 
   it('lets a custom profile own worker preparation and transferable buffers', () => {
@@ -105,7 +110,14 @@ describe('WorkerVegetationPreparation', () => {
     const scope: VegetationPreparationWorkerScope = { onmessage: null, postMessage };
     const preparation: VegetationLayerPreparation = {
       profileType: 'test-tree',
-      prepare: () => ({ branches: Uint32Array.of(2, 4, 8) }),
+      prepare: () => ({
+        cullingBounds: {
+          horizontalPaddingMeters: 2,
+          belowSurfaceMeters: 0,
+          aboveSurfaceMeters: 10,
+        },
+        preparedProfileData: { branches: Uint32Array.of(2, 4, 8) },
+      }),
       collectTransferBuffers(data, buffers) {
         const buffer = (data as { branches: Uint32Array }).branches.buffer;
         if (buffer instanceof ArrayBuffer) buffers.add(buffer);
@@ -117,11 +129,6 @@ describe('WorkerVegetationPreparation', () => {
         layerId: 0,
         key: 'trees',
         enabled: true,
-        renderBounds: {
-          horizontalPaddingMeters: 2,
-          belowSurfaceMeters: 0,
-          aboveSurfaceMeters: 10,
-        },
         renderProfile: { type: 'test-tree' },
       }],
     } satisfies VegetationRuntimeConfig;
@@ -135,7 +142,7 @@ describe('WorkerVegetationPreparation', () => {
       PreparedVegetationRuntime,
       ArrayBuffer[],
     ];
-    const branches = response.dataset.layers[0]!.profileData as {
+    const branches = response.dataset.preparedLayers[0]!.preparedProfileData as {
       branches: Uint32Array;
     };
     expect([...branches.branches]).toEqual([2, 4, 8]);
@@ -186,14 +193,12 @@ function createVegetationFileBytes(): Uint8Array {
     grid: { width: 1, height: 1, chunkSize: 1, originX: -0.5, originY: -0.5 },
     heightMap: { resolution: 2 },
     chunkLookup: Int32Array.of(0),
-    chunks: [{ gridX: 0, gridY: 0, minimumHeight: 0, maximumHeight: 0 }],
+    storedChunkHeightRanges: [{ minimumHeight: 0, maximumHeight: 0 }],
     heightData: Float64Array.of(0, 0, 0, 0),
     layers: [{
       id: 0,
       key: 'meadow-grass',
-      displayName: 'Meadow grass',
       maskResolution: 2,
-      activeCellCount: 4,
       maskData: Uint8Array.of(1, 1, 1, 1),
     }],
   };

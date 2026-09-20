@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ANCHOR_ORIENTATION_BITS,
+  ANCHOR_REFLECTION_BITS,
+  ANCHOR_SPECIES_BITS,
   CELL_PATTERN_BITS,
   CELL_REFLECTION_BITS,
   CELL_ROTATION_BITS,
@@ -90,9 +93,32 @@ describe('stable vegetation identities', () => {
     });
   });
 
+  it('reserves deterministic Anchor fields for species and orientation', () => {
+    const anchorHash = hashVegetationAnchor(0xd298_42e9, 3);
+
+    expect(readVegetationHashBits(
+      anchorHash,
+      ANCHOR_SPECIES_BITS.offset,
+      ANCHOR_SPECIES_BITS.length,
+    )).toBe(anchorHash & 0xffff);
+    expect(readVegetationHashBits(
+      anchorHash,
+      ANCHOR_ORIENTATION_BITS.offset,
+      ANCHOR_ORIENTATION_BITS.length,
+    )).toBe((anchorHash >>> 16) & 0xff);
+    expect(readVegetationHashBits(
+      anchorHash,
+      ANCHOR_REFLECTION_BITS.offset,
+      ANCHOR_REFLECTION_BITS.length,
+    )).toBe((anchorHash >>> 24) & 1);
+  });
+
   it('generates GLSL readers from the shared identity contract', () => {
     expect(vegetationIdentityShader).toContain('uint vegetationCellHash');
     expect(vegetationIdentityShader).toContain('uint vegetationAnchorHash');
+    expect(vegetationIdentityShader).toContain('uint anchorSpeciesValue');
+    expect(vegetationIdentityShader).toContain('uint anchorOrientationValue');
+    expect(vegetationIdentityShader).toContain('bool anchorIsReflected');
     expect(vegetationIdentityShader).toContain('uint vegetationElementHash');
     expect(vegetationIdentityShader).toContain('uint vegetationElementDetailHash');
     expect(vegetationIdentityShader).toContain('uint cellPatternValue');

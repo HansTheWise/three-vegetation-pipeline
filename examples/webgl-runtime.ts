@@ -12,7 +12,8 @@ import {
 } from 'three';
 
 import {
-  createThreeVegetation,
+  createThreeVegetationSceneBinding,
+  createWebGLGrassLayerModule,
   writeVegFile,
   type VegetationDataset,
 } from '../src/index.js';
@@ -39,12 +40,13 @@ const ground = new Mesh(
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
 
-const vegetation = await createThreeVegetation({
+const vegetation = await createThreeVegetationSceneBinding({
   renderer,
   scene,
   camera,
   source: createExampleVegetationBytes(),
   config: vegetationExampleConfig,
+  layerModules: [createWebGLGrassLayerModule()],
 });
 
 function render(): void {
@@ -80,14 +82,12 @@ function createExampleVegetationBytes(): Uint8Array {
     grid: { width: 1, height: 1, chunkSize: 16, originX: -8, originY: -8 },
     heightMap: { resolution: 2 },
     chunkLookup: Int32Array.of(0),
-    chunks: [{ gridX: 0, gridY: 0, minimumHeight: 0, maximumHeight: 0 }],
+    storedChunkHeightRanges: [{ minimumHeight: 0, maximumHeight: 0 }],
     heightData: Float64Array.of(0, 0, 0, 0),
     layers: [{
       id: 0,
       key: 'grass',
-      displayName: 'Grass',
       maskResolution,
-      activeCellCount: maskData.length,
       maskData,
     }],
   };

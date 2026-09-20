@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import { groundColorConfig } from './fixtures/groundColorConfig.js';
 import {
+  calculateGrassLayerCullingBounds,
   evaluateVegetationDensityCurve,
   grassPreset,
   grassLayerPreparation,
@@ -21,11 +22,50 @@ describe('VegetationRuntimeConfig', () => {
     Object.assign(config.layers[0]!.patches, { vegetation: { enabled: false } });
     expect(() => validateVegetationRuntimeConfig(config)).toThrow('Use density.activeCells');
   });
-  it('accepts independent ground color curves including a linear transition', () => {
+  it('accepts distance-independent ground color adaptation', () => {
     expect(() => validateVegetationRuntimeConfig(groundColorConfig)).not.toThrow();
   });
 
-  it.each(['bottom', 'top'] as const)('rejects invalid %s ground color curves', (endpoint) => {
+  it('validates ground color bias and Clover ground-color response', () => {
+    const valid = structuredClone(groundColorConfig);
+    Object.assign(valid.layers[0]!.renderProfile, {
+      clover: {
+        enabled: true,
+        maximumRatio: 0.4,
+        groundColorBias: 0.9,
+        preferredGroundColor: '#4f8f3d',
+        colorTolerance: 0.15,
+        sizeMeters: { minimum: 0.1, maximum: 0.16 },
+        heightOffsetMeters: 0.02,
+        baseColor: '#397833',
+        highlightColor: '#72ae5f',
+      },
+    });
+    expect(() => validateVegetationRuntimeConfig(valid)).not.toThrow();
+
+    for (const endpoint of ['bottomBias', 'topBias'] as const) {
+      const invalidBias = structuredClone(groundColorConfig);
+      Object.assign(
+        invalidBias.layers[0]!.renderProfile.colors.groundColorAdaptation!,
+        { [endpoint]: 1.1 },
+      );
+      expect(() => validateVegetationRuntimeConfig(invalidBias))
+        .toThrow(`groundColorAdaptation.${endpoint} must be between 0 and 1`);
+    }
+
+    const invalidClover = structuredClone(valid);
+    Object.assign(invalidClover.layers[0]!.renderProfile.clover!, { maximumRatio: -0.1 });
+    expect(() => validateVegetationRuntimeConfig(invalidClover))
+      .toThrow('clover.maximumRatio must be between 0 and 1');
+  });
+
+  it('rejects ground color adaptation without a ground field', () => {
+    const config = structuredClone(groundColorConfig) as VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
+    Object.assign(config.layers[0]!.patches, { ground: { enabled: false } });
+    expect(() => validateVegetationRuntimeConfig(config)).toThrow('enabled ground patches');
+  });
+
+  it.each(['bottom', 'top'] as const)('rejects invalid %s ground fade curves', (endpoint) => {
     for (const invalid of [
       { startsAtMeters: -1, endsAtMeters: 120, curveStrength: 1 },
       { startsAtMeters: 120, endsAtMeters: 120, curveStrength: 1 },
@@ -43,12 +83,6 @@ describe('VegetationRuntimeConfig', () => {
     }
   });
 
-  it('rejects a ground target without a ground field', () => {
-    const config = structuredClone(groundColorConfig) as VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
-    Object.assign(config.layers[0]!.patches, { ground: { enabled: false } });
-    expect(() => validateVegetationRuntimeConfig(config)).toThrow('enabled ground patches');
-  });
-
   it('accepts continuous density values', () => {
     expect(() => validateVegetationRuntimeConfig(vegetationRuntimeConfig)).not.toThrow();
     const layer = vegetationRuntimeConfig.layers[0]!;
@@ -59,6 +93,7 @@ describe('VegetationRuntimeConfig', () => {
       normal: { source: 'ground' },
     });
     expect(layer.renderProfile.type).toBe('grass');
+    expect(layer.renderProfile.clover).toEqual({ enabled: false });
     expect(layer.renderProfile.blade).toMatchObject({ segments: 2, heightSampling: 'bilinear' });
     expect(layer.renderProfile.blade.cameraFacing).toEqual({
       startsAtMeters: 80,
@@ -294,16 +329,25 @@ describe('VegetationRuntimeConfig', () => {
       .toThrow('Use version 3');
   });
 
+  it('skips profile-specific validation for disabled layers', () => {
+    const layer = vegetationRuntimeConfig.layers[0]!;
+    const disabledConfig = {
+      ...vegetationRuntimeConfig,
+      layers: [{
+        ...layer,
+        enabled: false,
+        distribution: { ...layer.distribution, anchorsPerCell: 0 },
+      }],
+    } satisfies VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
+
+    expect(() => validateVegetationRuntimeConfig(disabledConfig)).not.toThrow();
+  });
+
   it('accepts a non-grass layer without grass profile fields', () => {
     const layer = vegetationRuntimeConfig.layers[0]!;
     const customLayer = {
       ...layer,
       key: 'tree-layer',
-      renderBounds: {
-        horizontalPaddingMeters: 3,
-        belowSurfaceMeters: 0.5,
-        aboveSurfaceMeters: 12,
-      },
       lighting: { leafTranslucency: 0.5 },
       renderProfile: { type: 'test-tree', modelScale: 1 },
     };
@@ -317,7 +361,7 @@ describe('VegetationRuntimeConfig', () => {
     expect(() => validateVegetationRuntimeConfig(config)).not.toThrow();
   });
 
-  it('creates a complete grass preset and derives bounds from profile overrides', () => {
+  it('creates a complete grass preset and derives culling bounds during preparation', () => {
     const layer = grassPreset({
       layerId: 4,
       key: 'tall-grass',
@@ -342,8 +386,10 @@ describe('VegetationRuntimeConfig', () => {
       normal: { source: 'ground' },
     });
     expect(layer.renderProfile.blade.segments).toBe(2);
-    expect(layer.renderBounds.aboveSurfaceMeters).toBe(2);
-    expect(layer.renderBounds.horizontalPaddingMeters).toBeGreaterThan(1);
+    const cullingBounds = calculateGrassLayerCullingBounds(layer);
+    expect(cullingBounds.aboveSurfaceMeters).toBe(2);
+    expect(cullingBounds.horizontalPaddingMeters).toBeGreaterThan(1);
+    expect(layer).not.toHaveProperty('renderBounds');
   });
 
   it('keeps untouched Grass defaults when nested preset values are overridden', () => {
@@ -358,6 +404,7 @@ describe('VegetationRuntimeConfig', () => {
     expect(layer.density.activeCells).toHaveLength(3);
     expect(layer.renderProfile.blade.widthMeters).toEqual({ minimum: 0.1, maximum: 0.2 });
     expect(layer.renderProfile.blade.heightMeters).toEqual({ minimum: 0.35, maximum: 0.55 });
+    expect(layer.renderProfile.clover).toEqual({ enabled: false });
     expect(layer.lighting).toEqual({
       directLightWeight: 0.8,
       indirectLightWeight: 1,
@@ -365,22 +412,56 @@ describe('VegetationRuntimeConfig', () => {
     });
   });
 
-  it('rejects grass bounds that do not contain the configured geometry', () => {
-    const layer = vegetationRuntimeConfig.layers[0]!;
-    const config = {
-      ...vegetationRuntimeConfig,
-      layers: [{
-        ...layer,
-        renderBounds: {
-          ...layer.renderBounds,
-          aboveSurfaceMeters: layer.renderProfile.blade.heightMeters.maximum - 0.01,
+  it('fills enabled Clover defaults and includes its size in culling bounds', () => {
+    const layer = grassPreset({
+      layerId: 3,
+      key: 'clover-grass',
+      patches: {
+        ground: {
+          enabled: true,
+          seed: 0,
+          radiusMeters: { minimum: 2, maximum: 4 },
+          targetCoverage: 0.5,
+          allowMerging: true,
+          edgeFalloffMeters: 1,
+          shapeDistortion: 0.35,
+          colors: { baseColor: '#4f8f3d', brightnessVariation: 0.1 },
         },
-      }],
-    } satisfies VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
+      },
+      distribution: { elementRadiusMeters: 0.01 },
+      grass: {
+        blade: {
+          heightMeters: { minimum: 0.05, maximum: 0.05 },
+          widthMeters: { minimum: 0.01, maximum: 0.01 },
+          maximumTiltDegrees: 0,
+        },
+        colors: {
+          groundColorAdaptation: { bottomBias: 0.5, topBias: 0.75 },
+          distanceColorTransition: {
+            farTint: '#8fbd70',
+            startsAtMeters: 10,
+            endsAtMeters: 20,
+            curveStrength: 1,
+          },
+        },
+        clover: { enabled: true, sizeMeters: { minimum: 0.2, maximum: 0.4 } },
+      },
+    });
 
-    expect(() => validateVegetationRuntimeConfig(config))
-      .toThrow('renderBounds.aboveSurfaceMeters does not contain the grass profile');
+    expect(layer.renderProfile.colors.groundColorAdaptation)
+      .toEqual({ bottomBias: 0.5, topBias: 0.75 });
+    expect(layer.renderProfile.clover).toMatchObject({
+      enabled: true,
+      maximumRatio: 0.35,
+      groundColorBias: 0.9,
+      sizeMeters: { minimum: 0.2, maximum: 0.4 },
+    });
+    expect(calculateGrassLayerCullingBounds(layer).horizontalPaddingMeters)
+      .toBeCloseTo(0.21);
+    expect(() => validateVegetationRuntimeConfig({ configVersion: 3, layers: [layer] }))
+      .not.toThrow();
   });
+
 });
 
 function containsFunction(value: unknown): boolean {

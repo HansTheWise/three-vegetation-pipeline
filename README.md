@@ -1,6 +1,8 @@
 # three-vegetation-pipeline
 
-A modular, data-driven vegetation rendering pipeline for Three.js, designed for GPU-driven placement, chunking, LOD, and interchangeable rendering strategies.
+A modular vegetation compilation and WebGL rendering pipeline for Three.js.
+The generic runtime owns VEGFILE parsing, shared chunk visibility and GPU data.
+Layer modules own profile-specific validation, preparation and rendering.
 
 ## Installation
 
@@ -13,29 +15,32 @@ The package is ESM-only. The compiler CLI requires Node.js 22.18 or newer.
 
 ## Three.js quickstart
 
+Grass is an opt-in preset, not a runtime default:
+
 ```ts
 import {
-  createThreeVegetationSystem,
+  createThreeVegetationSceneBinding,
+  createWebGLGrassLayerModule,
   grassPreset,
 } from 'three-vegetation-pipeline'
 
-const system = createThreeVegetationSystem({
+const config = {
+  configVersion: 3,
+  layers: [grassPreset({
+    layerId: 0,
+    key: 'meadow-grass',
+    density: { renderTileSizeCells: 16 },
+  })],
+} as const
+
+const vegetation = await createThreeVegetationSceneBinding({
   renderer,
   scene,
   camera,
-  coordinateRoot: modelRoot,
-})
-
-const vegetation = await system.create({
+  vegetationParent: modelRoot,
   source: vegetationBytes,
-  layers: [
-    grassPreset({
-      layerId: 0,
-      key: 'meadow-grass',
-      density: { renderTileSizeCells: 16 },
-      lighting: { directLightWeight: 0.6 },
-    }),
-  ],
+  config,
+  layerModules: [createWebGLGrassLayerModule()],
 })
 
 function frame() {
@@ -44,78 +49,57 @@ function frame() {
   requestAnimationFrame(frame)
 }
 
-vegetation.setLayerEnabled('meadow-grass', false)
-vegetation.dispose()
+frame()
 ```
 
-The system creates the standard scene and camera adapters. Grass materials use
-the renderer's normal Three.js scene-light, incoming-shadow, tone-mapping,
-exposure, and output-color paths. No separate light or exposure bridge is
-required.
-
-`grassPreset(...)` always returns a complete Grass layer. Nested values passed
-to the preset replace only those values; the remaining defaults stay intact.
+`grassPreset(...)` returns a complete Grass layer config. The Grass module adds
+its validator, CPU preparation and WebGL renderer as one explicit dependency.
 
 ## Custom layer modules
 
-`registerLayerModule(...)` is the router-like extension point. One module owns
-one `renderProfile.type` and may provide its own config validation, CPU
-preparation, transferable buffers, prepared-data validation, and WebGL renderer.
-Only the layer identity, enabled state, conservative culling bounds, and profile
-type are generic requirements.
+A `WebGLVegetationLayerModule` owns exactly one `renderProfile.type` and supplies
+its preparation and renderer. Pass every required module through
+`layerModules`; duplicate profile types are rejected.
 
-```ts
-system.registerLayerModule(treeModule)
-
-const vegetation = await system.create({
-  source: vegetationBytes,
-  layers: [treeLayer],
-})
-```
-
-The built-in Grass module is registered automatically. Registering a custom
-module with `profileType: 'grass'` replaces its preparation and renderer for new
-vegetation instances.
+The generic runtime knows only layer identity, enablement, culling bounds and
+the module selection key. It does not import Grass or another concrete profile.
 
 ## Worker preparation
 
-The built-in Grass preparation can run in a bundler-owned module worker:
+Workers must register the same profile preparations explicitly:
 
 ```ts
-// vegetation.worker.ts
 import {
+  grassLayerPreparation,
   installVegetationPreparationWorker,
   type VegetationPreparationWorkerScope,
 } from 'three-vegetation-pipeline'
 
 installVegetationPreparationWorker(
   self as unknown as VegetationPreparationWorkerScope,
+  { layerPreparations: [grassLayerPreparation] },
 )
 ```
 
-Custom modules with CPU preparation must also register that preparation in the
-worker entry. The main-thread renderer registration cannot cross the worker
-boundary automatically.
+The worker receives preparation functions from its own entry file; functions
+cannot be transferred from the main thread.
 
 ## Package entry points
 
-- `three-vegetation-pipeline`: supported quickstart API;
-- `three-vegetation-pipeline/runtime`: lower-level runtime and preparation;
-- `three-vegetation-pipeline/webgl`: renderer, GPU, and shader contracts;
-- `three-vegetation-pipeline/profiles/grass`: complete Grass preset and features;
-- `three-vegetation-pipeline/debug`: optional debug tools;
-- `three-vegetation-pipeline/node`: Node.js compiler API.
-
-The `veg-compile` CLI accepts JavaScript configs and erasable TypeScript configs.
-Node.js does not read `tsconfig.json` for direct TypeScript execution, so enums,
-path aliases, and syntax requiring transformation are not supported there.
+- `three-vegetation-pipeline`: supported application API
+- `three-vegetation-pipeline/runtime`: lower-level runtime and preparation
+- `three-vegetation-pipeline/webgl`: GPU and rendering contracts
+- `three-vegetation-pipeline/profiles/grass`: Grass-specific APIs
+- `three-vegetation-pipeline/debug`: optional debug tools
+- `three-vegetation-pipeline/node`: Node.js compiler API
 
 ## Architecture
 
-- [Cleanup and refactor plan](CLEANUP_REFACTOR_PLAN.md)
-- [Implementation roadmap](IMPLEMENTATION_ROADMAP.md)
 - [Offline pipeline](src/offline/offline-pipeline.md)
 - [Runtime pipeline](src/runtime/runtime-pipeline.md)
-- [Grass patch-field contract](src/runtime/profiles/grass/patches/patches.md)
-- [Standalone WebGL runtime example](examples/webgl-runtime.html)
-- [Low-level WebGL debug example](examples/webgl-debug-chunks.html)
+- [Grass profile](src/layer-profiles/grass/grass-webgl-rendering/README.md)
+- [Optional debug tools](src/runtime/runtime-debug-visualization/README.md)
+- [WebGL runtime example](examples/webgl-runtime.html)
+- [WebGL tile-submission benchmark](benchmarks/webgl-render-tile-submission.html)
+- [Completed first refactor pass](CLEANUP_REFACTOR_PLAN.md)
+- [Future decision order](IMPLEMENTATION_ROADMAP.md)

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebGL Render Tile Submission Benchmark</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+        background: #111812;
+        color: #e5eee3;
+      }
+
+      body {
+        margin: 0;
+        padding: 24px;
+      }
+
+      main {
+        max-width: 1280px;
+        margin: 0 auto;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 24px;
+      }
+
+      #status {
+        min-height: 24px;
+        color: #b9c9b5;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+        border: 1px solid #344333;
+        background: #91b7ce;
+      }
+
+      .table-wrap {
+        margin-top: 20px;
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+
+      th,
+      td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #344333;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      th:first-child,
+      td:first-child,
+      th:nth-child(2),
+      td:nth-child(2) {
+        text-align: left;
+      }
+
+      #error {
+        color: #ff9d8f;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>WebGL Render Tile Submission Benchmark</h1>
+      <p id="status">Preparing deterministic vegetation data…</p>
+      <div id="canvas-host"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Scenario</th>
+              <th>Strategy</th>
+              <th>Draws</th>
+              <th>Visible Tiles</th>
+              <th>Visible Candidates</th>
+              <th>Submitted Candidates</th>
+              <th>Padding</th>
+              <th>CPU update median</th>
+              <th>CPU render median</th>
+              <th>GPU median</th>
+              <th>GPU p95</th>
+            </tr>
+          </thead>
+          <tbody id="results"></tbody>
+        </table>
+      </div>
+      <pre id="error"></pre>
+    </main>
+    <script type="module" src="./webgl-render-tile-submission.ts"></script>
+  </body>
+</html>

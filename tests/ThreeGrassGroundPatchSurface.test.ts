@@ -51,7 +51,7 @@ describe('ThreeGrassGroundPatchSurface', () => {
     const materialDispose = vi.spyOn(selected, 'dispose');
     const textureDispose = vi.spyOn(texture, 'dispose');
     const surface = createThreeGrassGroundPatchSurface({
-      coordinateRoot: root,
+      groundMaterialRoot: root,
       matchesMaterial: (_object, material) => material.name === 'selected-ground',
     });
 
@@ -81,7 +81,7 @@ describe('ThreeGrassGroundPatchSurface', () => {
     unsupported.name = 'selected-ground';
     root.add(new Mesh(new PlaneGeometry(), unsupported));
     const surface = createThreeGrassGroundPatchSurface({
-      coordinateRoot: root,
+      groundMaterialRoot: root,
       matchesMaterial: () => true,
     });
 
@@ -96,7 +96,7 @@ function createContext(texture: DataTexture) {
       file: { header: { coordinateSystem: { horizontalAxes: ['z', 'x'] } } },
     } as unknown as VegetationRuntimeDataset,
     layer: {
-      profileData: { groundPatchField: field },
+      preparedProfileData: { groundPatchField: field },
     } as GrassRuntimeLayer,
     field,
     texture,

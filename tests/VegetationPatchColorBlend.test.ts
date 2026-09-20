@@ -5,8 +5,8 @@ import {
   evaluatePatchDistance,
   evaluatePatchFieldValue,
   type PatchSource,
-} from '../src/runtime/profiles/grass/patches/GrassGroundPatchNoise.js';
-import type { EnabledGrassGroundPatchConfig } from '../src/runtime/profiles/grass/patches/types.js';
+} from '../src/layer-profiles/grass/grass-ground-patch-generation/GrassGroundPatchNoise.js';
+import type { EnabledGrassGroundPatchConfig } from '../src/layer-profiles/grass/grass-ground-patch-generation/GrassGroundPatchTypes.js';
 
 const config: EnabledGrassGroundPatchConfig = {
   enabled: true, seed: 0, radiusMeters: { minimum: 6, maximum: 6 },

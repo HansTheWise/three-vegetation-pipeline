@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { evaluatePatchDistance, warpPatchPosition } from '../src/runtime/profiles/grass/patches/GrassGroundPatchNoise.js';
+import { evaluatePatchDistance, warpPatchPosition } from '../src/layer-profiles/grass/grass-ground-patch-generation/GrassGroundPatchNoise.js';
 
 import {
   createGrassGroundPatchField,
@@ -243,8 +243,7 @@ function createParsedFile(options: Readonly<{
   return {
     bytes: new Uint8Array(),
     header: {
-      version: 1,
-      fileSize: 0,
+      version: 2,
       seed: 42,
       buildFingerprint: new Uint8Array(16),
       fileChecksum: 0,

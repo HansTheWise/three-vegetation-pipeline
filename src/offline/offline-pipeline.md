@@ -1,144 +1,58 @@
 # Offline-Pipeline
 
 Die Offline-Pipeline übersetzt ein GLB-Modell und eine Compiler-Config in eine
-kompakte, validierte `.veg`-Datei. Sie enthält keine Three.js-Runtime- oder
-GPU-Ressourcen.
+validierte VEGFILE-v2-Datei. Sie erzeugt keine Runtime- oder GPU-Ressourcen.
 
 ## Datenfluss
 
-```mermaid
-flowchart LR
-  GLB["GLB-Datei / ArrayBuffer"]
-  Config["Offline-Config"]
-
-  subgraph Compiler["Offline-Compiler"]
-    Reader["ThreeGlbReader"]
-    ModelData["ModelData<br/>neutrale Primitive im Modellraum"]
-    Extractor["VegetationExtractor"]
-    Dataset["VegetationDataset<br/>Grid, Chunks, Heightmaps, Masken"]
-    Fingerprint["Build-Fingerprint"]
-    Writer["VegWriter"]
-    Bytes["VEGFILE-v1-Bytes"]
-  end
-
-  NodeWrapper["NodeVegCompiler / CLI"]
-  Veg[".veg-Datei"]
-  Report["Kompilierungsbericht"]
-
-  GLB --> Reader
-  Config --> Reader
-  Reader --> ModelData
-  ModelData --> Extractor
-  Config --> Extractor
-  Extractor --> Dataset
-  GLB --> Fingerprint
-  Config --> Fingerprint
-  Dataset --> Writer
-  Config --> Writer
-  Fingerprint --> Writer
-  Writer --> Bytes
-  Bytes --> NodeWrapper
-  NodeWrapper --> Veg
-  ModelData --> Report
-  Dataset --> Report
-  Fingerprint --> Report
-  Bytes --> Report
+```text
+GLB-Bytes + Compiler-Config
+  → ThreeGlbReader
+  → ModelData
+  → VegetationExtractor
+  → VegetationDataset
+  → Vegetation Dataset Validation
+  → VegWriter
+  → VEGFILE-v2-Bytes
+  → NodeVegCompiler
+  → .veg-Datei
 ```
 
-## Stufen und Verantwortung
+## Module
 
-### 1. Eingaben
+| Reihenfolge | Modul | Verantwortung |
+|---:|---|---|
+| 1 | [Offline Compilation Orchestration](./offline-compilation-orchestration/README.md) | Configvertrag, Ablaufsteuerung, Fingerprint, Dateisystem und CLI |
+| 2 | [Three GLB Model Reading](./three-glb-model-reading/README.md) | Three.js-GLB in neutrale `ModelData`-Primitive übersetzen |
+| 3 | [Vegetation Dataset Extraction](./vegetation-dataset-extraction/README.md) | Flächen auswählen, Chunk-Grid bilden, Heightmaps und Layermasken erzeugen |
+| 4 | [Vegetation Dataset Validation](./vegetation-dataset-validation/README.md) | Vollständigkeit und interne Konsistenz vor dem Schreiben prüfen |
+| 5 | [VEGFILE v2 Serialization](./vegfile-v2-serialization/README.md) | Dataset gemäß dem gemeinsamen v2-Schema binär kodieren |
+| 6 | [VEGFILE v2 Format](../vegfile-v2-format/README.md) | Gemeinsame Source of Truth für Writer und Parser |
 
-Die GLB-Datei liefert Geometrie, Hierarchie, Transformationen, Mesh- und
-Materialnamen. Die Offline-Config legt Auswahlregeln, Koordinatensystem,
-Chunkgröße, Heightmap- und Maskenauflösungen, Seed sowie die Höhenquantisierung
-fest.
+## Zentrale Datengrenzen
 
-Feststehende Implementierungsentscheidungen werden nicht als scheinbare
-Auswahlfelder ausgegeben: Der aktuelle Compiler liest GLB über Three.js,
-arbeitet modelllokal, verwendet ein festes Chunk-/Samplingverfahren und schreibt
-VEGFILE v1 little-endian. Erst ein zweiter tatsächlich implementierter Weg
-rechtfertigt dafür einen Strategievertrag.
+- `ModelData` ist unabhängig von Vegetationslayern und Dateiformaten.
+- `VegetationDataset` enthält die extrahierten, noch nicht quantisierten Daten.
+- `Uint8Array` enthält ausschließlich gültige VEGFILE-v2-Bytes.
+- `NodeVegCompiler` besitzt die Dateisystemverantwortung; Reader, Extractor und
+  Writer bleiben davon unabhängig.
 
-Der Configvertrag liegt in `config/types.ts`. Projektbezogene
-Extraktionskonfigurationen bleiben im jeweiligen Consumer.
+## Einstieg
 
-### 2. Reader
-
-`ThreeGlbReader` übersetzt Three.js-kompatible GLB-Daten in `ModelData`:
-
-- Hierarchietransformationen werden in den lokalen Raum der GLB-Wurzel
-  eingerechnet;
-- Dreieckspositionen und Indizes werden als neutrale Primitive ausgegeben;
-- Namen, Hierarchie und User-Data bleiben für spätere Auswahlregeln erhalten;
-- Instanced Meshes, Skinned Meshes und aktive Morph Targets werden in v1
-  ausdrücklich abgelehnt, statt unvollständig interpretiert zu werden.
-
-Der Reader kennt keine Vegetationslayer, Chunks oder VEGFILE-Bytes.
-
-### 3. Extractor
-
-`extractVegetation` verbindet `ModelData` mit der Extraktionsconfig und erzeugt
-das dateiformatunabhängige `VegetationDataset`:
-
-- Auswahl von Höhen- und Vegetationsflächen;
-- Aufbau des logischen Chunk-Grids;
-- `chunkLookup` zwischen logischen und tatsächlich gespeicherten Chunks;
-- unquantisierte Heightmap pro gespeichertem Chunk;
-- binäre Cell-Maske pro Vegetationslayer;
-- Steigungsfilter, Layerüberlappung und Seed.
-
-Die v1-Heightmap speichert pro horizontalem Sample genau eine Höhe. Bei mehreren
-Treffern gewinnt die höchste Fläche; fehlende Samples werden aus dem nächsten
-vorhandenen Sample aufgefüllt.
-
-### 4. Build-Fingerprint
-
-GLB-Bytes und kanonische Compiler-Config erzeugen gemeinsam einen 128-Bit-
-Build-Fingerprint. Er identifiziert die Eingabekombination, nicht nur den
-fertigen Byteinhalt. Gleiche Eingaben erzeugen denselben Fingerprint.
-
-### 5. Writer
-
-`writeVegFile` übernimmt ausschließlich Binärkodierung:
-
-- Dataset validieren;
-- Heightmaps auf 8, 16 oder 32 Bit quantisieren;
-- je 32 Maskenzellen in ein `Uint32` packen;
-- Header, Layer-Metadaten, Lookups und Datenbereiche schreiben;
-- Build-Fingerprint eintragen;
-- CRC32 über die vollständige Datei berechnen.
-
-Der Writer liefert ein `Uint8Array` und führt selbst keine Dateisystemoperation
-aus. Dadurch bleibt er unabhängig von Node.js.
-
-### 6. Node-Compiler und CLI
-
-`compileGlbToVeg` orchestriert Reader, Extractor, Fingerprint und Writer für
-bereits geladene Bytes. `createVegFile` ergänzt die Node.js-Dateischnittstelle
-und ersetzt eine vorhandene Zieldatei erst, nachdem die neue Datei vollständig
-erstellt wurde. Die CLI verarbeitet ausschließlich Pfade und Configimport.
+`compileGlbToVeg` verarbeitet bereits geladene Bytes. `createVegFile` ergänzt
+das atomare Schreiben auf die Festplatte. Die CLI verwendet denselben Ablauf:
 
 ```text
 npm run veg:compile -- --input <model.glb> --config <config.ts> --output <asset.veg>
 ```
 
-## Zentrale Verträge
+## Zurückgestellte Entscheidungen
 
-```text
-ArrayBuffer
-  → ModelData
-  → VegetationDataset
-  → Uint8Array mit VEGFILE v1
-  → .veg-Datei
-```
+Eine zentrale Laufzeitvalidierung direkt geladener JavaScript-Compiler-Configs
+ist bewusst noch nicht umgesetzt. TypeScript-Typen schützen derzeit den
+regulären Configpfad.
 
-Jede Grenze hat genau eine Verantwortung:
-
-- `ModelData` ist readerneutral und kennt keine Vegetationssemantik;
-- `VegetationDataset` ist dateiformatneutral und enthält unquantisierte Daten;
-- VEGFILE v1 ist die persistente CPU-Datenschnittstelle;
-- GPU-Layouts entstehen ausschließlich in Runtime-Adaptern.
-
-Vertiefende Details stehen in `reader/reader.md`, `extractor/extractor.md`,
-`writer/writer.md` und `compiler/compiler.md`.
+VEGFILE v2 enthält außerdem weiterhin die vollständigen `sourceBounds`. Writer
+und Parser validieren sie, die Runtime verwendet sie derzeit jedoch nicht. Ihre
+Entfernung benötigt eine ausdrückliche Änderung des Binärlayouts und eine
+Neuerzeugung bestehender Assets.

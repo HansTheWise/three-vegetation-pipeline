@@ -1,89 +1,83 @@
 import { describe, expect, it } from 'vitest';
-import type { VegetationDataset } from '../src/offline/extractor/types.js';
+import type { VegetationDataset } from '../src/offline/vegetation-dataset-extraction/VegetationExtractionTypes.js';
+import type { HeightValueBits, VegWriterConfig } from '../src/offline/vegfile-v2-serialization/VegWriterTypes.js';
+import { writeVegFile } from '../src/offline/vegfile-v2-serialization/VegWriter.js';
+import { calculateVegFileV2Layout } from '../src/vegfile-v2-format/VegFileV2Layout.js';
 import {
-  calculateVegChecksum,
-  VEG_HEADER_OFFSET,
-  VEG_HEADER_SIZE,
-  VEG_LAYER_METADATA_SIZE,
-} from '../src/offline/writer/format.js';
-import type { HeightValueBits, VegWriterConfig } from '../src/offline/writer/types.js';
-import { writeVegFile } from '../src/offline/writer/VegWriter.js';
+  calculateVegFileChecksum,
+  VEG_FILE_HEADER_OFFSETS,
+} from '../src/vegfile-v2-format/VegFileV2Schema.js';
 
 const TEST_BUILD_FINGERPRINT = Uint8Array.from({ length: 16 }, (_, index) => index);
 
 describe('writeVegFile', () => {
-  it('writes the VEGFILE v1 header, sections and differently sized layer masks', () => {
+  it('writes the VEGFILE v2 header and schema-derived sections', () => {
     const file = writeVegFile(createDataset(), createWriterConfig(16), createFileMetadata());
     const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
+    const layout = createLayout(16);
 
     expect(String.fromCharCode(...file.subarray(0, 8))).toBe('VEGFILE\0');
-    expect(view.getUint16(VEG_HEADER_OFFSET.version, true)).toBe(1);
-    expect(view.getUint16(VEG_HEADER_OFFSET.headerSize, true)).toBe(VEG_HEADER_SIZE);
-    expect(view.getUint32(VEG_HEADER_OFFSET.fileSize, true)).toBe(188);
-    expect(view.getUint32(VEG_HEADER_OFFSET.gridWidth, true)).toBe(1);
-    expect(view.getUint32(VEG_HEADER_OFFSET.gridHeight, true)).toBe(1);
-    expect(view.getUint32(VEG_HEADER_OFFSET.storedChunkCount, true)).toBe(1);
-    expect(view.getUint32(VEG_HEADER_OFFSET.layerCount, true)).toBe(2);
-    expect(view.getUint32(VEG_HEADER_OFFSET.seed, true)).toBe(0xdead_beef);
-    expect(view.getUint8(VEG_HEADER_OFFSET.upAxis)).toBe(2);
-    expect(view.getUint8(VEG_HEADER_OFFSET.horizontalAxisX)).toBe(0);
-    expect(view.getUint8(VEG_HEADER_OFFSET.horizontalAxisY)).toBe(1);
-    expect(view.getUint8(VEG_HEADER_OFFSET.heightValueBits)).toBe(16);
-    expect(view.getUint16(VEG_HEADER_OFFSET.heightResolution, true)).toBe(2);
+    expect(view.getUint16(VEG_FILE_HEADER_OFFSETS.version, true)).toBe(2);
+    expect(view.getUint32(VEG_FILE_HEADER_OFFSETS.gridWidth, true)).toBe(1);
+    expect(view.getUint32(VEG_FILE_HEADER_OFFSETS.gridHeight, true)).toBe(1);
+    expect(view.getUint32(VEG_FILE_HEADER_OFFSETS.storedChunkCount, true)).toBe(1);
+    expect(view.getUint32(VEG_FILE_HEADER_OFFSETS.layerCount, true)).toBe(2);
+    expect(view.getUint32(VEG_FILE_HEADER_OFFSETS.seed, true)).toBe(0xdead_beef);
+    expect(view.getUint8(VEG_FILE_HEADER_OFFSETS.upAxis)).toBe(2);
+    expect(view.getUint8(VEG_FILE_HEADER_OFFSETS.horizontalAxisX)).toBe(0);
+    expect(view.getUint8(VEG_FILE_HEADER_OFFSETS.horizontalAxisY)).toBe(1);
+    expect(view.getUint8(VEG_FILE_HEADER_OFFSETS.heightValueBits)).toBe(16);
+    expect(view.getUint16(VEG_FILE_HEADER_OFFSETS.heightResolution, true)).toBe(2);
     expect([
-      ...file.subarray(VEG_HEADER_OFFSET.buildFingerprint, VEG_HEADER_OFFSET.fileChecksum),
+      ...file.subarray(
+        VEG_FILE_HEADER_OFFSETS.buildFingerprint,
+        VEG_FILE_HEADER_OFFSETS.fileChecksum,
+      ),
     ]).toEqual([...TEST_BUILD_FINGERPRINT]);
-    expect(view.getUint32(VEG_HEADER_OFFSET.fileChecksum, true))
-      .toBe(calculateVegChecksum(file));
+    expect(view.getUint32(VEG_FILE_HEADER_OFFSETS.fileChecksum, true))
+      .toBe(calculateVegFileChecksum(file));
+    expect(file).toHaveLength(layout.fileByteLength);
 
-    expect(view.getUint32(VEG_HEADER_OFFSET.layerMetadata, true)).toBe(128);
-    expect(view.getUint32(VEG_HEADER_OFFSET.chunkLookup, true)).toBe(160);
-    expect(view.getUint32(VEG_HEADER_OFFSET.chunkMetadata, true)).toBe(164);
-    expect(view.getUint32(VEG_HEADER_OFFSET.heightData, true)).toBe(172);
-    expect(view.getUint32(VEG_HEADER_OFFSET.vegetationMaskData, true)).toBe(180);
-
-    expect(readLayerMetadata(view, 0)).toEqual({
+    expect(readLayerMetadata(view, layout.layers[0]!.metadataOffset)).toEqual({
       id: 7,
       resolution: 2,
-      maskOffset: 180,
-      maskByteLength: 4,
+      padding: 0,
     });
-    expect(readLayerMetadata(view, 1)).toEqual({
+    expect(readLayerMetadata(view, layout.layers[1]!.metadataOffset)).toEqual({
       id: 9,
       resolution: 1,
-      maskOffset: 184,
-      maskByteLength: 4,
+      padding: 0,
     });
-
-    expect(view.getInt32(160, true)).toBe(0);
-    expect(view.getFloat32(164, true)).toBe(0);
-    expect(view.getFloat32(168, true)).toBe(3);
-    expect([0, 2, 4, 6].map((offset) => view.getUint16(172 + offset, true)))
-      .toEqual([0, 21_845, 43_690, 65_535]);
-    expect(view.getUint32(180, true)).toBe(0b1101);
-    expect(view.getUint32(184, true)).toBe(0b1);
+    expect(view.getInt32(layout.chunkLookupOffset, true)).toBe(0);
+    expect(view.getFloat32(layout.chunkHeightRangesOffset, true)).toBe(0);
+    expect(view.getFloat32(layout.chunkHeightRangesOffset + 4, true)).toBe(3);
+    expect([0, 2, 4, 6].map((offset) => (
+      view.getUint16(layout.heightDataOffset + offset, true)
+    ))).toEqual([0, 21_845, 43_690, 65_535]);
+    expect(view.getUint32(layout.layers[0]!.maskDataOffset, true)).toBe(0b1101);
+    expect(view.getUint32(layout.layers[1]!.maskDataOffset, true)).toBe(0b1);
   });
 
   it.each([
-    [8, [0, 85, 170, 255], 176, 184],
-    [16, [0, 21_845, 43_690, 65_535], 180, 188],
-    [32, [0, 1_431_655_765, 2_863_311_530, 4_294_967_295], 188, 196],
+    [8, [0, 85, 170, 255], 128, 136],
+    [16, [0, 21_845, 43_690, 65_535], 132, 140],
+    [32, [0, 1_431_655_765, 2_863_311_530, 4_294_967_295], 140, 148],
   ] as const)(
     'quantizes height samples with %i bits',
     (bits, expected, expectedMaskOffset, expectedFileSize) => {
       const file = writeVegFile(createDataset(), createWriterConfig(bits), createFileMetadata());
       const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
-      const heightOffset = view.getUint32(VEG_HEADER_OFFSET.heightData, true);
+      const layout = createLayout(bits);
       const readValue = bits === 8
         ? (offset: number): number => view.getUint8(offset)
         : bits === 16
           ? (offset: number): number => view.getUint16(offset, true)
           : (offset: number): number => view.getUint32(offset, true);
 
-      expect(expected.map((_, index) => readValue(heightOffset + index * (bits / 8))))
-        .toEqual([...expected]);
-      expect(view.getUint32(VEG_HEADER_OFFSET.vegetationMaskData, true))
-        .toBe(expectedMaskOffset);
+      expect(expected.map((_, index) => (
+        readValue(layout.heightDataOffset + index * (bits / 8))
+      ))).toEqual([...expected]);
+      expect(layout.vegetationMaskDataOffset).toBe(expectedMaskOffset);
       expect(file).toHaveLength(expectedFileSize);
     },
   );
@@ -91,7 +85,6 @@ describe('writeVegFile', () => {
   it('produces identical bytes for identical datasets and writer config', () => {
     const first = writeVegFile(createDataset(), createWriterConfig(16), createFileMetadata());
     const second = writeVegFile(createDataset(), createWriterConfig(16), createFileMetadata());
-
     expect(second).toEqual(first);
   });
 
@@ -127,19 +120,27 @@ describe('writeVegFile', () => {
   });
 });
 
-function readLayerMetadata(view: DataView, layerIndex: number) {
-  const offset = VEG_HEADER_SIZE + layerIndex * VEG_LAYER_METADATA_SIZE;
+function createLayout(heightValueBits: HeightValueBits) {
+  return calculateVegFileV2Layout({
+    gridWidth: 1,
+    gridHeight: 1,
+    storedChunkCount: 1,
+    heightResolution: 2,
+    heightValueBits,
+    layerMaskResolutions: [2, 1],
+  });
+}
+
+function readLayerMetadata(view: DataView, byteOffset: number) {
   return {
-    id: view.getUint32(offset, true),
-    resolution: view.getUint16(offset + 4, true),
-    maskOffset: view.getUint32(offset + 8, true),
-    maskByteLength: view.getUint32(offset + 12, true),
+    id: view.getUint32(byteOffset, true),
+    resolution: view.getUint16(byteOffset + 4, true),
+    padding: view.getUint16(byteOffset + 6, true),
   };
 }
+
 function createWriterConfig(heightValueBits: HeightValueBits): VegWriterConfig {
-  return {
-    heightValueBits,
-  };
+  return { heightValueBits };
 }
 
 function createFileMetadata() {
@@ -174,27 +175,18 @@ function createDataset(): VegetationDataset {
       {
         id: 7,
         key: 'grass',
-        displayName: 'Grass',
         maskResolution: 2,
-        activeCellCount: 3,
         maskData: new Uint8Array([1, 0, 1, 1]),
       },
       {
         id: 9,
         key: 'flowers',
-        displayName: 'Flowers',
         maskResolution: 1,
-        activeCellCount: 1,
         maskData: new Uint8Array([1]),
       },
     ],
     chunkLookup: new Int32Array([0]),
-    chunks: [{
-      gridX: 0,
-      gridY: 0,
-      minimumHeight: 0,
-      maximumHeight: 3,
-    }],
+    storedChunkHeightRanges: [{ minimumHeight: 0, maximumHeight: 3 }],
     heightData: new Float64Array([0, 1, 2, 3]),
   };
 }

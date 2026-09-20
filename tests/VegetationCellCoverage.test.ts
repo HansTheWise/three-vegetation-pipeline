@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import {
   createVegetationRuntimeDataset, createVegetationActiveCellData,
+  grassLayerPreparation,
   VegetationRenderTileDensity, type GrassRuntimeLayerConfig, type ParsedVegFile,
   type VegetationRuntimeConfig,
 } from '../src/index.js';
@@ -10,7 +11,7 @@ function createDataset(seed = 42, ratio = 0.25, reordered = false) {
   const file: ParsedVegFile = {
     bytes: new Uint8Array(),
     header: {
-      version: 1, fileSize: 0, seed, buildFingerprint: new Uint8Array(16), fileChecksum: 0,
+      version: 2, seed, buildFingerprint: new Uint8Array(16), fileChecksum: 0,
       sourceBounds: { minX: 0, minY: 0, minZ: 0, maxX: 32, maxY: 0, maxZ: 16 },
       coordinateSystem: { upAxis: 'y', horizontalAxes: ['x', 'z'], unitsPerMeter: 1 },
       grid: { width: 2, height: 1, chunkSize: 16, originX: 0, originY: 0 },
@@ -30,7 +31,7 @@ function createDataset(seed = 42, ratio = 0.25, reordered = false) {
       activeElements: [{ distanceMeters: 0, ratio: 1 }],
     } }],
   } satisfies VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
-  return createVegetationRuntimeDataset(file, config);
+  return createVegetationRuntimeDataset(file, config, [grassLayerPreparation]);
 }
 
 describe('seeded Cell coverage', () => {
@@ -60,7 +61,7 @@ describe('seeded Cell coverage', () => {
     const count = Math.round(1024 * ratio);
     expect(density.visibleTileCount).toBe(count ? 8 : 0);
     for (let tile = 0; tile < density.visibleTileCount; tile++) {
-      expect(density.tileRecords[tile * 4 + 2]! & 0xffff).toBe(count);
+      expect(density.renderTileRecords[tile * 4 + 2]! & 0xffff).toBe(count);
     }
     expect(density.visibleCandidateCount).toBe(count * 8 * 4);
     density.update(Uint32Array.of(0, 1), 2, { x: 0, y: 600, z: 0 });

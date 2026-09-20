@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { VegetationExtractionConfig } from '../src/offline/config/types.js';
-import { extractVegetation } from '../src/offline/extractor/VegetationExtractor.js';
-import type { ModelData, ModelPrimitive } from '../src/offline/reader/types.js';
+import type { VegetationExtractionConfig } from '../src/offline/offline-compilation-orchestration/VegetationCompilerConfig.js';
+import { extractVegetation } from '../src/offline/vegetation-dataset-extraction/VegetationExtractor.js';
+import type { ModelData, ModelPrimitive } from '../src/offline/three-glb-model-reading/ModelInputTypes.js';
 
 describe('extractVegetation', () => {
   it('extracts a flat Z-up surface into one chunk', () => {
@@ -19,15 +19,12 @@ describe('extractVegetation', () => {
       chunkSize: 4,
     });
     expect([...dataset.chunkLookup]).toEqual([0]);
-    expect(dataset.chunks).toEqual([{
-      gridX: 0,
-      gridY: 0,
+    expect(dataset.storedChunkHeightRanges).toEqual([{
       minimumHeight: 2,
       maximumHeight: 2,
     }]);
     expect([...dataset.heightData]).toEqual(new Array(9).fill(2));
     expect([...dataset.layers[0]!.maskData]).toEqual(new Array(16).fill(1));
-    expect(dataset.layers[0]!.activeCellCount).toBe(16);
   });
 
   it('does not create extra chunks for GLB floating-point noise at chunk boundaries', () => {
@@ -57,7 +54,7 @@ describe('extractVegetation', () => {
 
     expect(dataset.grid.width).toBe(2);
     expect([...dataset.chunkLookup]).toEqual([0, -1]);
-    expect(dataset.chunks).toHaveLength(1);
+    expect(dataset.storedChunkHeightRanges).toHaveLength(1);
     expect(dataset.heightData).toHaveLength(9);
     expect(dataset.layers[0]!.maskData).toHaveLength(16);
   });
@@ -100,13 +97,41 @@ describe('extractVegetation', () => {
     const primitive = slopedSquarePrimitive();
     const dataset = extractVegetation(modelWithPrimitives([primitive]), createConfig());
 
-    expect(dataset.chunks[0]!.minimumHeight).toBe(0);
-    expect(dataset.chunks[0]!.maximumHeight).toBe(4);
+    expect(dataset.storedChunkHeightRanges[0]!.minimumHeight).toBe(0);
+    expect(dataset.storedChunkHeightRanges[0]!.maximumHeight).toBe(4);
     expect([...dataset.heightData]).toEqual([
       0, 2, 4,
       0, 2, 4,
       0, 2, 4,
     ]);
+  });
+
+  it('does not clamp heights from outside a chunk onto its sample grid', () => {
+    const primitive = multiChunkSlopedTrianglePrimitive();
+    const dataset = extractVegetation(modelWithPrimitives([primitive]), createConfig());
+
+    expect(dataset.storedChunkHeightRanges).toEqual([
+      { minimumHeight: 0, maximumHeight: 4 },
+      { minimumHeight: 4, maximumHeight: 8 },
+    ]);
+    expect([...dataset.heightData]).toEqual([
+      0, 2, 4,
+      0, 2, 4,
+      0, 2, 4,
+      4, 6, 8,
+      4, 6, 8,
+      4, 6, 8,
+    ]);
+  });
+
+  it('seeds a heightmap when a narrow surface misses every grid sample', () => {
+    const primitive = narrowTrianglePrimitive();
+    const dataset = extractVegetation(modelWithPrimitives([primitive]), createConfig());
+
+    expect(dataset.storedChunkHeightRanges).toEqual([
+      { minimumHeight: 5, maximumHeight: 5 },
+    ]);
+    expect([...dataset.heightData]).toEqual(new Array(9).fill(5));
   });
 
   it('uses generated and manual seeds exactly as configured', () => {
@@ -122,18 +147,51 @@ describe('extractVegetation', () => {
     expect(generated.seed).toBe(0xdead_beef);
   });
 
-  it('matches mesh names across the complete node hierarchy', () => {
+  it('matches names across the complete node hierarchy', () => {
     const primitive = {
       ...squarePrimitive('child', 'grass', 0, 0, 4, 4, 0),
-      hierarchyNames: ['world', 'TeRrAiN', 'child'],
+      hierarchyNodeNames: ['world', 'TeRrAiN', 'child'],
     };
     const config = createConfig({
       heightMesh: 'terrain',
       layers: [createLayer(0, 'grass', 'grass', 'terrain')],
     });
 
-    expect(extractVegetation(modelWithPrimitives([primitive]), config).chunks)
+    expect(extractVegetation(
+      modelWithPrimitives([primitive]),
+      config,
+    ).storedChunkHeightRanges)
       .toHaveLength(1);
+  });
+
+  it('removes cells covered by configured hierarchy-name prefixes', () => {
+    const ground = squarePrimitive('surface', 'grass', 0, 0, 4, 4, 0);
+    const building = {
+      ...squarePrimitive('roof', 'building', 0, 0, 2, 4, 3),
+      hierarchyNodeNames: ['world', 'Haus_20', 'roof'],
+    };
+    const layer = {
+      ...createLayer(0, 'grass', 'grass'),
+      exclusionSurfaceSelector: {
+        any: [{
+          type: 'hierarchy-node-name-prefix' as const,
+          values: ['haus_'],
+          caseSensitive: false,
+        }],
+      },
+    };
+
+    const dataset = extractVegetation(
+      modelWithPrimitives([ground, building]),
+      createConfig({ layers: [layer] }),
+    );
+
+    expect([...dataset.layers[0]!.maskData]).toEqual([
+      0, 0, 1, 1,
+      0, 0, 1, 1,
+      0, 0, 1, 1,
+      0, 0, 1, 1,
+    ]);
   });
 
   it('rejects invalid coordinate axes and duplicate layer IDs', () => {
@@ -187,7 +245,7 @@ function createConfig(overrides: ConfigOverrides = {}): VegetationExtractionConf
       includeInvisibleObjects: false,
       heightSurfaceSelector: {
         any: [{
-          type: 'mesh-name',
+          type: 'hierarchy-node-name',
           values: [overrides.heightMesh ?? 'surface'],
           caseSensitive: false,
         }],
@@ -200,7 +258,6 @@ function createConfig(overrides: ConfigOverrides = {}): VegetationExtractionConf
       },
       grid: {
         chunkSize: 4,
-        includeEmptyChunks: false,
       },
       heightMap: {
         resolution: 3,
@@ -217,20 +274,18 @@ function createLayer(
   id: number,
   key: string,
   materialName: string,
-  meshName = 'surface',
+  hierarchyNodeName = 'surface',
   maskResolution = 4,
 ) {
   return {
     id,
     key,
-    displayName: key,
-    enabled: true,
     maskResolution,
     surfaceSelector: {
       all: [
         {
-          type: 'mesh-name' as const,
-          values: [meshName],
+          type: 'hierarchy-node-name' as const,
+          values: [hierarchyNodeName],
           caseSensitive: false,
         },
         {
@@ -245,7 +300,7 @@ function createLayer(
 }
 
 function squarePrimitive(
-  meshName: string,
+  hierarchyNodeName: string,
   materialName: string,
   minX: number,
   minY: number,
@@ -254,26 +309,22 @@ function squarePrimitive(
   height: number,
 ): ModelPrimitive {
   return {
-    meshName,
-    nodePath: meshName,
-    hierarchyNames: [meshName],
+    hierarchyNodeNames: [hierarchyNodeName],
     materialName,
-    meshUserData: {},
-    materialUserData: {},
-    positions: new Float32Array([
+    modelLocalVertexPositions: new Float32Array([
       minX, minY, height,
       maxX, minY, height,
       maxX, maxY, height,
       minX, maxY, height,
     ]),
-    indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+    triangleVertexIndices: new Uint32Array([0, 1, 2, 0, 2, 3]),
   };
 }
 
 function slopedSquarePrimitive(): ModelPrimitive {
   return {
     ...squarePrimitive('surface', 'grass', 0, 0, 4, 4, 0),
-    positions: new Float32Array([
+    modelLocalVertexPositions: new Float32Array([
       0, 0, 0,
       4, 0, 4,
       4, 4, 4,
@@ -282,11 +333,36 @@ function slopedSquarePrimitive(): ModelPrimitive {
   };
 }
 
+function multiChunkSlopedTrianglePrimitive(): ModelPrimitive {
+  return {
+    hierarchyNodeNames: ['surface'],
+    materialName: 'grass',
+    modelLocalVertexPositions: new Float32Array([
+      0, 0, 0,
+      8, 0, 8,
+      0, 4, 0,
+    ]),
+    triangleVertexIndices: new Uint32Array([0, 1, 2]),
+  };
+}
+
+function narrowTrianglePrimitive(): ModelPrimitive {
+  return {
+    hierarchyNodeNames: ['surface'],
+    materialName: 'grass',
+    modelLocalVertexPositions: new Float32Array([
+      0.9, 0.9, 5,
+      1.1, 0.9, 5,
+      1, 1.1, 5,
+    ]),
+    triangleVertexIndices: new Uint32Array([0, 1, 2]),
+  };
+}
+
 function modelWithPrimitives(primitives: readonly ModelPrimitive[]): ModelData {
   return {
-    coordinateSpace: 'model-local',
     primitives,
-    bounds: {
+    modelLocalBounds: {
       minX: -100,
       minY: -100,
       minZ: -100,
@@ -294,7 +370,10 @@ function modelWithPrimitives(primitives: readonly ModelPrimitive[]): ModelData {
       maxY: 100,
       maxZ: 100,
     },
-    sourceMeshCount: primitives.length,
-    triangleCount: primitives.reduce((sum, primitive) => sum + primitive.indices.length / 3, 0),
+    includedMeshCount: primitives.length,
+    includedTriangleCount: primitives.reduce(
+      (sum, primitive) => sum + primitive.triangleVertexIndices.length / 3,
+      0,
+    ),
   };
 }

@@ -18,12 +18,14 @@ import {
 } from 'three';
 
 import {
-  createRuntimeChunkBoundingBoxes,
+  createRuntimeStoredChunkCullingBounds,
   createVegetationRuntimeDataset,
-  FrustumChunkVisibility,
-  WebGLVegetationDebug,
-  WebGLGrassView,
-  WebGLVegetationAdapter,
+  FrustumStoredChunkVisibility,
+  grassLayerPreparation,
+  requireGrassRuntimeLayer,
+  WebGLGrassLayerRenderer,
+  WebGLGrassDebug,
+  WebGLSharedVegetationResources,
   type ParsedVegFile,
 } from '../src/index.js';
 import { vegetationExampleConfig } from './vegetationExampleConfig.js';
@@ -57,20 +59,24 @@ const parsedVegFile = createExampleVegetationFile();
 const runtimeDataset = createVegetationRuntimeDataset(
   parsedVegFile,
   vegetationExampleConfig,
+  [grassLayerPreparation],
 );
-const gpuAdapter = new WebGLVegetationAdapter(
+const sharedResources = new WebGLSharedVegetationResources(
   renderer,
   runtimeDataset,
 );
-const chunkBoundingBoxes = createRuntimeChunkBoundingBoxes(runtimeDataset);
-const chunkVisibility = new FrustumChunkVisibility(
-  chunkBoundingBoxes,
+const storedChunkCullingBounds = createRuntimeStoredChunkCullingBounds(runtimeDataset);
+const chunkVisibility = new FrustumStoredChunkVisibility(
+  storedChunkCullingBounds,
 );
-const grass = new WebGLGrassView(gpuAdapter, 0);
+const grassRenderer = new WebGLGrassLayerRenderer({
+  sharedResources,
+  layer: requireGrassRuntimeLayer(runtimeDataset.preparedLayers[0]!),
+});
 
 const scene = new Scene();
 scene.background = new Color('#9bc4dc');
-scene.add(grass.mesh);
+scene.add(grassRenderer.object3d);
 const ground = new Mesh(
   new PlaneGeometry(32, 32),
   new MeshLambertMaterial({ color: '#527d3d', side: DoubleSide }),
@@ -89,23 +95,23 @@ const center = minimum.clone().add(maximum).multiplyScalar(0.5);
 const sceneRadius = Math.max(minimum.distanceTo(maximum) * 0.5, 1);
 const useNearTestView = new URLSearchParams(window.location.search).has('near');
 const nearChunkIndex = findDensestStoredChunk(
-  runtimeDataset.enabledLayers[0]!.fileLayer.maskData,
-  runtimeDataset.enabledLayers[0]!.fileLayer.maskWordsPerChunk,
+  runtimeDataset.preparedLayers[0]!.fileLayer.maskData,
+  runtimeDataset.preparedLayers[0]!.fileLayer.maskWordsPerChunk,
   parsedVegFile.header.storedChunkCount,
 );
 const nearChunkOffset = nearChunkIndex * 6;
 const nearChunkCenter = new Vector3(
   (
-    chunkBoundingBoxes.minMaxCoordinates[nearChunkOffset]!
-    + chunkBoundingBoxes.minMaxCoordinates[nearChunkOffset + 3]!
+    storedChunkCullingBounds.minimumMaximumCoordinates[nearChunkOffset]!
+    + storedChunkCullingBounds.minimumMaximumCoordinates[nearChunkOffset + 3]!
   ) * 0.5,
   (
-    chunkBoundingBoxes.minMaxCoordinates[nearChunkOffset + 1]!
-    + chunkBoundingBoxes.minMaxCoordinates[nearChunkOffset + 4]!
+    storedChunkCullingBounds.minimumMaximumCoordinates[nearChunkOffset + 1]!
+    + storedChunkCullingBounds.minimumMaximumCoordinates[nearChunkOffset + 4]!
   ) * 0.5,
   (
-    chunkBoundingBoxes.minMaxCoordinates[nearChunkOffset + 2]!
-    + chunkBoundingBoxes.minMaxCoordinates[nearChunkOffset + 5]!
+    storedChunkCullingBounds.minimumMaximumCoordinates[nearChunkOffset + 2]!
+    + storedChunkCullingBounds.minimumMaximumCoordinates[nearChunkOffset + 5]!
   ) * 0.5,
 );
 const axisVectors = {
@@ -138,7 +144,7 @@ scene.add(directionalLight, directionalLight.target);
 const upAxisIndex = upAxis === 'x' ? 0 : upAxis === 'y' ? 1 : 2;
 nearChunkCenter.setComponent(
   upAxisIndex,
-  chunkBoundingBoxes.minMaxCoordinates[nearChunkOffset + 3 + upAxisIndex]!,
+  storedChunkCullingBounds.minimumMaximumCoordinates[nearChunkOffset + 3 + upAxisIndex]!,
 );
 const cameraTarget = useNearTestView ? nearChunkCenter : center;
 const cameraDistance = useNearTestView
@@ -201,8 +207,13 @@ const renderControls = {
     window.history.replaceState(null, '', url);
   },
 };
-const debug = new WebGLVegetationDebug({
-  adapter: gpuAdapter, grass, camera: cullingCamera, scene, panelParent: document.body, renderControls,
+const debug = new WebGLGrassDebug({
+  sharedResources,
+  grassRenderer,
+  camera: cullingCamera,
+  scene,
+  panelParent: document.body,
+  renderControls,
 });
 
 const clipFromModelMatrix = new Matrix4();
@@ -213,31 +224,35 @@ let previousFrameTime = performance.now();
 function render(frameTime = performance.now()): void {
   const deltaSeconds = (frameTime - previousFrameTime) / 1000;
   previousFrameTime = frameTime;
-  debug.update(deltaSeconds);
+  debug.updateCameraController(deltaSeconds);
   const visibilityCamera = debug.cullingCamera;
   const cpuStart = performance.now();
-  grass.mesh.updateMatrixWorld();
+  grassRenderer.object3d.updateMatrixWorld();
   clipFromModelMatrix
     .multiplyMatrices(visibilityCamera.projectionMatrix, visibilityCamera.matrixWorldInverse)
-    .multiply(grass.mesh.matrixWorld);
+    .multiply(grassRenderer.object3d.matrixWorld);
 
-  const visibleChunkCount = chunkVisibility.updateVisibleChunks(
+  const visibleStoredChunkCount = chunkVisibility.updateVisibleStoredChunks(
     clipFromModelMatrix.elements,
     'negative-one-to-one',
   );
-  gpuAdapter.updateVisibleChunks(
-    chunkVisibility.visibleChunkIndices,
-    visibleChunkCount,
+  sharedResources.visibleStoredChunkTexture.update(
+    chunkVisibility.visibleStoredChunkIndices,
+    visibleStoredChunkCount,
   );
-  modelFromWorldMatrix.copy(grass.mesh.matrixWorld).invert();
+  modelFromWorldMatrix.copy(grassRenderer.object3d.matrixWorld).invert();
   cameraPositionModel
     .setFromMatrixPosition(visibilityCamera.matrixWorld)
     .applyMatrix4(modelFromWorldMatrix);
-  grass.updateDensity(cameraPositionModel, clipFromModelMatrix.elements, 'negative-one-to-one');
-  debug.recordFrame(deltaSeconds, performance.now() - cpuStart);
-  debug.beginGpuFrame();
+  grassRenderer.updateRenderTileSelection(
+    cameraPositionModel,
+    clipFromModelMatrix.elements,
+    'negative-one-to-one',
+  );
+  debug.recordFrameDiagnostics(deltaSeconds, performance.now() - cpuStart);
+  debug.beginGpuFrameMeasurement();
   renderer.render(scene, cullingCamera);
-  debug.endGpuFrame();
+  debug.endGpuFrameMeasurement();
   requestAnimationFrame(render);
 }
 
@@ -282,8 +297,7 @@ function createExampleVegetationFile(): ParsedVegFile {
   return {
     bytes: new Uint8Array(),
     header: {
-      version: 1,
-      fileSize: 0,
+      version: 2,
       seed: 42,
       buildFingerprint: new Uint8Array(16),
       fileChecksum: 0,

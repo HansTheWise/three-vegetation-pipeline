@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vitest';
 import {
   compileGlbToVeg,
   type VegCompilerConfig,
-} from '../src/offline/compiler/VegCompiler.js';
+} from '../src/offline/offline-compilation-orchestration/VegCompiler.js';
 import {
   checkVegFile,
   createVegFile,
-} from '../src/offline/compiler/NodeVegCompiler.js';
+} from '../src/offline/offline-compilation-orchestration/NodeVegCompiler.js';
 import { createMinimalGlb } from './fixtures/createMinimalGlb.js';
 
 describe('VegCompiler', () => {
@@ -21,15 +21,15 @@ describe('VegCompiler', () => {
     expect(result.buildFingerprint).toHaveLength(16);
     expect(result.dataset.layers[0]!.maskResolution).toBe(4);
     expect(result.report).toEqual({
-      sourceMeshCount: 1,
-      triangleCount: 1,
+      includedMeshCount: 1,
+      includedTriangleCount: 1,
       possibleChunkCount: 1,
       storedChunkCount: 1,
       heightResolution: 3,
       heightValueBits: 16,
       seed: 42,
       buildFingerprint: expect.stringMatching(/^[0-9a-f]{32}$/),
-      fileByteLength: 180,
+      fileByteLength: 140,
       layers: [{
         id: 5,
         key: 'test-grass',
@@ -151,7 +151,7 @@ function createConfig(): VegCompilerConfig {
       includeInvisibleObjects: false,
       heightSurfaceSelector: {
         any: [{
-          type: 'mesh-name',
+          type: 'hierarchy-node-name',
           values: ['terrain'],
           caseSensitive: false,
         }],
@@ -161,7 +161,6 @@ function createConfig(): VegCompilerConfig {
       seed: { mode: 'manual', manualValue: 42 },
       grid: {
         chunkSize: 4,
-        includeEmptyChunks: false,
       },
       heightMap: {
         resolution: 3,
@@ -172,13 +171,11 @@ function createConfig(): VegCompilerConfig {
       vegetationLayers: [{
         id: 5,
         key: 'test-grass',
-        displayName: 'Test grass',
-        enabled: true,
         maskResolution: 4,
         surfaceSelector: {
           all: [
             {
-              type: 'mesh-name',
+              type: 'hierarchy-node-name',
               values: ['terrain'],
               caseSensitive: false,
             },

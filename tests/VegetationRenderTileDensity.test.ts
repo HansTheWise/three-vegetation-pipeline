@@ -4,6 +4,7 @@ import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import {
   createVegetationRuntimeDataset,
   createVegetationActiveCellData,
+  grassLayerPreparation,
   MAXIMUM_WEBGL_INSTANCE_COUNT,
   validateWebGLInstanceCount,
   VegetationRenderTileDensity,
@@ -19,8 +20,7 @@ function createDataset(configure?: (config: GrassRuntimeConfig) => GrassRuntimeC
   const file: ParsedVegFile = {
     bytes: new Uint8Array(),
     header: {
-      version: 1,
-      fileSize: 0,
+      version: 2,
       seed: 42,
       buildFingerprint: new Uint8Array(16),
       fileChecksum: 0,
@@ -48,7 +48,11 @@ function createDataset(configure?: (config: GrassRuntimeConfig) => GrassRuntimeC
       density: { ...sourceLayer.density, renderTileSizeCells: 2 },
     }],
   };
-  return createVegetationRuntimeDataset(file, configure ? configure(config) : config);
+  return createVegetationRuntimeDataset(
+    file,
+    configure ? configure(config) : config,
+    [grassLayerPreparation],
+  );
 }
 
 function constantCurve(ratio: number) {
@@ -68,7 +72,7 @@ describe('VegetationRenderTileDensity', () => {
     const original = new VegetationRenderTileDensity(dataset, 0);
     density.update(Uint32Array.of(0), 1, { x: 1, y: 100, z: 1 });
     original.update(Uint32Array.of(0), 1, { x: 1, y: 100, z: 1 });
-    expect(density.tileRecords).toEqual(original.tileRecords);
+    expect(density.renderTileRecords).toEqual(original.renderTileRecords);
     expect(() => new VegetationRenderTileDensity(dataset, 0, {
       ...prepared, renderTileSizeCells: 99,
     })).toThrow('Prepared active Cells do not match');
@@ -90,6 +94,7 @@ describe('VegetationRenderTileDensity', () => {
   });
 
   it('does not use ground coverage for Cell admission', () => {
+    const baseline = new VegetationRenderTileDensity(createDataset(), 0);
     const dataset = createDataset((config) => ({
       ...config,
       layers: config.layers.map((layer) => ({
@@ -103,7 +108,15 @@ describe('VegetationRenderTileDensity', () => {
         },
       })),
     }));
-    expect(new VegetationRenderTileDensity(dataset, 0).activeCellIndices).toHaveLength(5);
+    const withGroundPatches = new VegetationRenderTileDensity(dataset, 0);
+    expect(withGroundPatches.activeCellIndices).toEqual(baseline.activeCellIndices);
+    for (const distance of [0, 50, 220, 500]) {
+      const camera = { x: 1, y: distance, z: 1 };
+      baseline.update(Uint32Array.of(0), 1, camera);
+      withGroundPatches.update(Uint32Array.of(0), 1, camera);
+      expect(withGroundPatches.renderTileRecords).toEqual(baseline.renderTileRecords);
+      expect(withGroundPatches.visibleCandidateCount).toBe(baseline.visibleCandidateCount);
+    }
   });
 
   it('preserves every distance budget when eligibility is unchanged', () => {
@@ -115,7 +128,7 @@ describe('VegetationRenderTileDensity', () => {
       const camera = { x: 1, y: distance, z: 1 };
       original.update(Uint32Array.of(0), 1, camera);
       patched.update(Uint32Array.of(0), 1, camera);
-      expect(patched.tileRecords).toEqual(original.tileRecords);
+      expect(patched.renderTileRecords).toEqual(original.renderTileRecords);
       expect(patched.bucketTileCounts).toEqual(original.bucketTileCounts);
       expect(patched.visibleCandidateCount).toBe(original.visibleCandidateCount);
     }
@@ -137,7 +150,7 @@ describe('VegetationRenderTileDensity', () => {
     })), (index) => index < 2);
     const density = new VegetationRenderTileDensity(dataset, 0);
     const cells = density.activeCellIndices;
-    const fieldBefore = dataset.layers[0]!.fileLayer.maskData.slice();
+    const fieldBefore = dataset.preparedLayers[0]!.fileLayer.maskData.slice();
     for (const [distance, expected] of [
       [0, { cells: 2, anchors: 8, elements: 16 }],
       [100, { cells: 1, anchors: 2, elements: 2 }],
@@ -145,12 +158,12 @@ describe('VegetationRenderTileDensity', () => {
     ] as const) {
       density.update(Uint32Array.of(0), 1, { x: 1, y: distance, z: 1 });
       expect(density.visibleTileCount).toBe(1);
-      expect(unpackRecord(density.tileRecords)).toMatchObject(expected);
+      expect(unpackRecord(density.renderTileRecords)).toMatchObject(expected);
       expect(density.activeCellIndices).toBe(cells);
     }
     density.update(Uint32Array.of(0), 1, { x: 1, y: 200, z: 1 });
     expect(density.visibleCandidateCount).toBe(0);
-    expect(dataset.layers[0]!.fileLayer.maskData).toEqual(fieldBefore);
+    expect(dataset.preparedLayers[0]!.fileLayer.maskData).toEqual(fieldBefore);
   });
 
   it('computes tile-wide budgets and uses the smallest power-of-two bucket', () => {
@@ -173,10 +186,45 @@ describe('VegetationRenderTileDensity', () => {
     expect(density.visibleCandidateCount).toBe(7);
     expect([...density.bucketTileCounts]).toEqual([1, 0, 0, 1, 0]);
     expect([...density.bucketRecordOffsets]).toEqual([0, 1, 1, 1, 2]);
-    const distantRecord = density.tileRecords.slice(0, 4);
-    const nearRecord = density.tileRecords.slice(4, 8);
+    const distantRecord = density.renderTileRecords.slice(0, 4);
+    const nearRecord = density.renderTileRecords.slice(4, 8);
     expect(unpackRecord(distantRecord)).toMatchObject({ cells: 1, anchors: 1, elements: 1 });
     expect(unpackRecord(nearRecord)).toMatchObject({ cells: 4, anchors: 6, elements: 6 });
+  });
+
+  it('supports validated custom candidate capacity buckets for renderer benchmarks', () => {
+    const dataset = createDataset((config) => ({
+      ...config,
+      layers: config.layers.map((layer) => ({
+        ...layer,
+        density: {
+          ...layer.density,
+          activeCells: constantCurve(1),
+          activeAnchors: constantCurve(0.345),
+          activeElements: constantCurve(1),
+        },
+      })),
+    }));
+    const capacities = Uint32Array.of(1, 3, 5, 8, 16);
+    const density = new VegetationRenderTileDensity(dataset, 0, undefined, capacities);
+    capacities[3] = 7;
+
+    density.update(Uint32Array.of(0), 1, { x: 1, y: 0, z: 1 });
+
+    expect([...density.bucketCapacities]).toEqual([1, 3, 5, 8, 16]);
+    expect([...density.bucketTileCounts]).toEqual([1, 0, 0, 1, 0]);
+    expect(() => new VegetationRenderTileDensity(
+      dataset,
+      0,
+      undefined,
+      Uint32Array.of(1, 4),
+    )).toThrow('does not cover maximum Tile budget');
+    expect(() => new VegetationRenderTileDensity(
+      dataset,
+      0,
+      undefined,
+      Uint32Array.of(1, 8, 8, 16),
+    )).toThrow('strictly increasing');
   });
 
   it('culls subchunk Tiles that are outside the frustum of an otherwise visible Chunk', () => {
@@ -199,7 +247,7 @@ describe('VegetationRenderTileDensity', () => {
     expect(density.frustumTestedTileCount).toBe(2);
     expect(density.frustumCulledTileCount).toBe(1);
     expect(density.visibleTileCount).toBe(1);
-    expect(unpackRecord(density.tileRecords)).toMatchObject({ cells: 4 });
+    expect(unpackRecord(density.renderTileRecords)).toMatchObject({ cells: 4 });
   });
 
   it('uses profile bounds for shared Tile-frustum culling', () => {
@@ -214,7 +262,13 @@ describe('VegetationRenderTileDensity', () => {
       ...config,
       layers: config.layers.map((layer) => ({
         ...layer,
-        renderBounds: { ...layer.renderBounds, aboveSurfaceMeters: 8 },
+        renderProfile: {
+          ...layer.renderProfile,
+          blade: {
+            ...layer.renderProfile.blade,
+            heightMeters: { minimum: 8, maximum: 8 },
+          },
+        },
       })),
     })), 0);
 
@@ -227,12 +281,12 @@ describe('VegetationRenderTileDensity', () => {
 
   it('reuses its work arrays and omits zero-density or out-of-range Tiles', () => {
     const density = new VegetationRenderTileDensity(createDataset(), 0);
-    const records = density.tileRecords;
+    const records = density.renderTileRecords;
     const cells = density.activeCellIndices;
     density.update(Uint32Array.of(0), 1, { x: 1_000, y: 0, z: 1_000 });
     expect(density.visibleTileCount).toBe(0);
     expect(density.visibleCandidateCount).toBe(0);
-    expect(density.tileRecords).toBe(records);
+    expect(density.renderTileRecords).toBe(records);
     expect(density.activeCellIndices).toBe(cells);
 
     const zeroDensity = new VegetationRenderTileDensity(createDataset((config) => ({
@@ -277,12 +331,12 @@ function withMask(
   dataset: VegetationRuntimeDataset,
   admitted: (index: number) => boolean,
 ): VegetationRuntimeDataset {
-  const maskData = dataset.layers[0]!.fileLayer.maskData.slice();
+  const maskData = dataset.preparedLayers[0]!.fileLayer.maskData.slice();
   for (let index = 0; index < 64; index += 1) {
     if (!admitted(index)) maskData[Math.floor(index / 32)]! &= ~(1 << (index % 32));
   }
-  const layer = { ...dataset.layers[0]!, fileLayer: {
-    ...dataset.layers[0]!.fileLayer, maskData,
+  const layer = { ...dataset.preparedLayers[0]!, fileLayer: {
+    ...dataset.preparedLayers[0]!.fileLayer, maskData,
   } };
-  return { ...dataset, layers: [layer], enabledLayers: [layer] };
+  return { ...dataset, preparedLayers: [layer] };
 }

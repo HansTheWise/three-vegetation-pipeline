@@ -35,6 +35,8 @@ These rules override everything else in this file when in conflict:
 **Goal: the minimum code that solves the stated problem. Nothing speculative.**
 - No features beyond what was asked.
 - No abstractions for single-use code. No configurability, flexibility, or hooks that were not requested.
+- Every abstraction and layer of indirection must provide a concrete benefit such as clearer responsibilities, enforced invariants, or proven reuse. Inline or remove it when it only obscures the data path.
+- Optimize for readable control flow, not minimum line count. Do not compress understandable multi-step code into dense expressions merely to use fewer lines.
 - No error handling for impossible scenarios. Handle the failures that can actually happen.
 - If the solution runs 200 lines and could be 50, rewrite it before showing it.
 - If you find yourself adding "for future extensibility", stop. Future extensibility is a future decision.
@@ -143,10 +145,13 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 - Do not modify: `dist/` (generated build output) or `node_modules/`
 
 ### Conventions specific to this repo
-- Naming: PascalCase for exported classes/types and camelCase for functions/values
+- Naming: PascalCase for exported classes/types and camelCase for functions/values. Every identifier must describe its concrete responsibility without relying on surrounding context; avoid generic names such as `manager`, `handler`, `data`, `item`, or `value` unless a precise qualifier makes the role explicit.
 - Import style: ESM with explicit `.js` suffixes for local imports; use `import type` for type-only imports
 - Error handling pattern: validate external/config data early and throw descriptive `Error` instances
 - Testing pattern and framework: Vitest test files named `*.test.ts`
+- Documentation: every module directory has a concise English `README.md` covering its responsibility, data flow, important behavior, configuration, and constraints without repeating implementation details.
+- Inline comments: add them only where precise naming and straightforward structure cannot explain an invariant, data layout, non-obvious decision, or external constraint; never narrate obvious statements.
+- Constants: no unexplained numeric or string literals. Put implementation constants at the file top with responsibility-based names; put user-controlled values in the relevant config. Use enums only for real closed domain sets, not as decorative wrappers.
 
 ### Forbidden
 - Do not hand-edit `dist/`; run the clean build.
@@ -168,23 +173,39 @@ When the user corrects your approach, append a one-line rule here before ending 
 - Treat the angled 2.5D top-down far view as the primary grass presentation: a vegetation-mask-bound ground detail layer maintains continuous coverage while blade geometry supplies secondary close-range detail.
 - Keep maximum Anchor/Element counts in one distribution block and derive active Cell, Anchor and Element budgets from separate continuous distance curves without duplicate LOD rows.
 - Verify linked-library changes through Vite's served modules, not only Node tests/builds; keep the local pipeline outside dependency pre-bundling and node_modules watcher exclusions.
-- Derive ground variation from the shared patch field and `layers[].patches.colors`; do not generate a second independent ground-noise texture from blade colors.
+- Treat production ground variation as authored static material data; retain the runtime patch field only as a temporary test source behind the same ground-color adaptation contract.
 - Verify campus ground material extensions against the production `campus.glb` and confirm the patched `map_grun` shader compiles in the Vite-served WebGL runtime; isolated shader-string tests are insufficient.
 - When replacing an `onBeforeCompile` material patch at runtime, dispose the material during cleanup so Three.js cannot reuse a cached program with stale custom uniforms; `needsUpdate` alone is insufficient for an unchanged custom cache key.
 - Treat `map_grun` only as the ground mesh selector and PBR carrier: patch albedo must fully replace its original diffuse color or texture, without opacity mixing; `brightnessVariation` only varies patch albedo.
 - Provide one default Three.js scene adapter that reads camera/root matrices into reusable frame data and routes layer lighting through Three.js scene-light, incoming-shadow, tone-mapping and output-color chunks; never require a parallel manual camera, light or exposure bridge in a consumer.
 - Do not accept distance-based camera-facing from builds or shader-string checks alone; first force full facing across the visible range and verify the camera response in the served WebGL runtime.
 - Keep vegetation patch coverage static and independent of distance LOD; let the ground detail cover density transitions instead of preserving patch cores through distance-prioritized Cell selection.
-- Patch integration must replace the old ground noise with the same field used for Grass ground and blade-color transitions; Cell admission remains density-driven, and expensive startup generation stays outside the UI thread.
+- Compute one effective ground-color bias per endpoint as `mix(startBias, 1, distanceProgress)` and apply color once; verify that start bias 1 is invariant under all distance-curve ranges for every enabled species and density material.
 - Use `edgeFalloffMeters` for individual patch-color blending and the transition to base color, not only for the union coverage edge; keep geometric union smoothing independent.
 - For soft meadow ground, use broad falloff and moderate domain distortion; moving generation into a worker does not replace profiling and removing full-field/per-source startup rescans.
 - Do not assume patch coverage belongs per Cell or in the VEGFILE; compare a low-resolution global R8 field with deterministic runtime generation using measured file-size and startup costs first.
 - For debug performance comparisons, expose physical drawing-buffer resolution and asynchronous GPU render time/throughput; do not treat requestAnimationFrame FPS as uncapped performance or silently cap pipeline DPR to 1.
 - Keep chunking, frustum evaluation and future occlusion infrastructure global and shared, while distribution, patterns, LOD/density, lighting, shadows and profile settings remain layer-specific; shared culling must consume each profile's bounds.
 - Keep opinionated features such as vegetation patches inside their owning layer renderer and preset; the generic layer manager must not know Grass-specific feature contracts.
+- Keep debug-only layer masks out of shared runtime resources; create and dispose them exclusively with the debug view.
 - Keep the generic layer contract limited to identity, enablement, shared-culling bounds and module selection; each registered module optionally owns its config shape, validation, preparation, transfer buffers and renderer.
 - When vegetation startup controls the visibility of shadow-casting scene content, explicitly invalidate cached shadow maps after reveal; camera movement must never be the refresh trigger.
 - Do not assert mutable visual-tuning values in integration tests; validate their schema and behavior, and reserve exact-value assertions for explicit compatibility contracts.
+- When a vegetation request is exploratory or design-oriented, agree on a plan before implementing or editing runtime code.
+- For first-pass vegetation test geometry, configure an intentionally obvious diagnostic variant and report visual acceptance as pending; shader compilation alone does not demonstrate visibility.
+- Generate simple stylized Clover RG8 cutout masks once per Grass-layer setup; keep base/highlight colors in config instead of shipping bitmap assets or evaluating the shape per fragment.
+- Before accepting a linked-library runtime fix, verify the consumer Vite server uses `VEGETATION_PIPELINE_DEV=1` and serves the changed `dist` module instead of a prebundled dependency cache.
+- For static Lambert ground and Grass under cached sun shadows, share one model-space pre-albedo lighting field refreshed after shadow updates instead of independently reconstructing receiver lighting.
+- Drive shared lighting-field bakes from explicit Day/Night revisions, keep the initial request pending until the model is visible, and do not require a shadow texture when the active lighting state has no sun shadow.
+- Sample shared offscreen lighting with the bake camera's exact world-to-texture matrix in both ground and vegetation shaders; do not reconstruct its UVs independently from grid bounds.
+- Do not accept lighting-field alignment from matrix reasoning, shader compilation or CPU-only landmarks; numerically compare baked texel positions with GPU-sampled visible receivers at the active canvas DPR before changing projection code.
+- Preserve transparent uncovered lighting-field texels and normalize linearly filtered RGB by their alpha coverage; replacing uncovered texels with black or white creates dark or bright receiver-edge halos.
+- Distinguish concrete pipeline implementations from unused interfaces, and prefer explicit responsibility-based identifiers with concise module documentation during cleanup.
+- Do not impose arbitrary vegetation-map size caps; reject only sizes that cannot be represented or allocated safely.
+- Treat runtime layer config as an explicit VEGFILE selection: never prepare or upload unconfigured or disabled layers; enabling a previously disabled config requires recreating the runtime.
+- Do not start vegetation implementation until the user has explicitly approved the complete change set and all identified design questions are resolved; never fill unresolved design gaps with assumptions.
+- Keep module names and documentation link labels in English, even when the surrounding explanation is German.
+- Keep generic preparation and rendering registries profile-agnostic and empty by default; Grass is opt-in through the simple `createWebGLGrassLayerModule()` preset and must never be imported or registered implicitly by the runtime core.
 
 ---
 ## 12. How this file was built
