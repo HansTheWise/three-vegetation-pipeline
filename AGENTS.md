@@ -199,6 +199,7 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 
 - When the user corrects your approach, append a one-line rule here before ending the session. Write it concretely ("Always use X for Y"), never abstractly ("be careful with Y"). If an existing line already covers the correction, tighten it instead of adding a new one. Remove lines when the underlying issue goes away (model upgrades, refactors, process changes).
 - After integrating a dirty feature branch in a temporary worktree, return the verified result to the user's existing branch and remove the temporary worktree before handing it over.
+- Ask the user whenever requirements are unclear or a critical decision would materially affect architecture, visible behavior, data, or Git history; do not choose silently.
 
 ---
 
