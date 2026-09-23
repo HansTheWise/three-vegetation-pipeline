@@ -37,6 +37,30 @@ type LayerMetadata = Readonly<{
   maskResolution: number;
 }>;
 
+const UNSUPPORTED_VEG_FILE_VERSION_ERROR_NAME = 'UnsupportedVegFileVersionError';
+
+/** Reports a VEGFILE version that this runtime cannot read. */
+export class UnsupportedVegFileVersionError extends Error {
+  readonly actualVersion: number;
+  readonly expectedVersion: number;
+
+  constructor(actualVersion: number, expectedVersion: number) {
+    super(
+      `Unsupported .veg file version ${actualVersion}; expected version ${expectedVersion}.`,
+    );
+    this.name = UNSUPPORTED_VEG_FILE_VERSION_ERROR_NAME;
+    this.actualVersion = actualVersion;
+    this.expectedVersion = expectedVersion;
+  }
+}
+
+/** Also recognizes an error reconstructed across the preparation Worker boundary. */
+export function isUnsupportedVegFileVersionError(
+  error: unknown,
+): error is UnsupportedVegFileVersionError {
+  return error instanceof Error && error.name === UNSUPPORTED_VEG_FILE_VERSION_ERROR_NAME;
+}
+
 /** Reads VEGFILE v2 into validated views without expanding packed data. */
 export function parseVegFile(source: ArrayBuffer | Uint8Array): ParsedVegFile {
   const file = openVegFile(source);
@@ -181,7 +205,7 @@ function validateFileIdentity(data: DataView): void {
   }
   const version = data.getUint16(VEG_FILE_HEADER_OFFSETS.version, true);
   if (version !== VEG_FILE_FORMAT_VERSION) {
-    throw new Error(`Unsupported .veg file version ${version}; expected version 2.`);
+    throw new UnsupportedVegFileVersionError(version, VEG_FILE_FORMAT_VERSION);
   }
 }
 

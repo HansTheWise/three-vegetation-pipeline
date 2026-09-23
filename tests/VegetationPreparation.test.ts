@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SynchronousVegetationPreparation,
   WorkerVegetationPreparation,
+  isUnsupportedVegFileVersionError,
   installVegetationPreparationWorker,
   grassLayerPreparation,
   requireGrassRuntimeLayer,
@@ -166,8 +167,13 @@ describe('WorkerVegetationPreparation', () => {
     const reported = new WorkerVegetationPreparation(
       () => reportedWorker as unknown as Worker,
     ).prepare(new Uint8Array(), vegetationRuntimeConfig, new AbortController().signal);
-    reportedWorker.onmessage!({ data: { error: 'Invalid VEGFILE' } } as MessageEvent);
-    await expect(reported).rejects.toThrow('Invalid VEGFILE');
+    reportedWorker.onmessage!({
+      data: {
+        error: 'Unsupported .veg file version 1; expected version 2.',
+        errorName: 'UnsupportedVegFileVersionError',
+      },
+    } as MessageEvent);
+    await expect(reported).rejects.toSatisfy(isUnsupportedVegFileVersionError);
 
     const nativeWorker = new TestWorker();
     const native = new WorkerVegetationPreparation(

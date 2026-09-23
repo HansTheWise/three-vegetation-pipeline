@@ -43,8 +43,11 @@ export class WorkerVegetationPreparation implements VegetationPreparationAdapter
       signal.addEventListener('abort', abort, { once: true });
       worker.onmessage = (event: MessageEvent<VegetationPreparationWorkerResponse>) => {
         if (!finish()) return;
-        if ('error' in event.data) reject(new Error(event.data.error));
-        else resolve(event.data);
+        if ('error' in event.data) {
+          const error = new Error(event.data.error);
+          if (event.data.errorName) error.name = event.data.errorName;
+          reject(error);
+        } else resolve(event.data);
       };
       worker.onerror = (event) => {
         if (!finish()) return;

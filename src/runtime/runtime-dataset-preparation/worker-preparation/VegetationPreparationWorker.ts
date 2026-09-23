@@ -38,6 +38,7 @@ export function installVegetationPreparationWorker(
     } catch (error) {
       workerScope.postMessage({
         error: error instanceof Error ? error.message : String(error),
+        ...(error instanceof Error ? { errorName: error.name } : {}),
       } satisfies VegetationPreparationWorkerResponse, []);
     }
   };

@@ -23,4 +23,4 @@ export type VegetationPreparationWorkerRequest = Readonly<{
 
 export type VegetationPreparationWorkerResponse =
   | PreparedVegetationRuntime
-  | Readonly<{ error: string }>;
+  | Readonly<{ error: string; errorName?: string }>;

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { VegetationDataset } from '../src/offline/vegetation-dataset-extraction/VegetationExtractionTypes.js';
 import { writeVegFile } from '../src/offline/vegfile-v2-serialization/VegWriter.js';
-import { parseVegFile } from '../src/runtime/vegfile-v2-parsing/VegParser.js';
+import {
+  isUnsupportedVegFileVersionError,
+  parseVegFile,
+} from '../src/runtime/vegfile-v2-parsing/VegParser.js';
 import { calculateVegFileV2Layout } from '../src/vegfile-v2-format/VegFileV2Layout.js';
 import {
   VEG_FILE_HEADER_OFFSETS,
@@ -101,6 +104,12 @@ describe('parseVegFile', () => {
 
     expect(() => parseVegFile(invalidMagic)).toThrow('Invalid VEGFILE signature');
     expect(() => parseVegFile(versionOne)).toThrow('expected version 2');
+    try {
+      parseVegFile(versionOne);
+      expect.unreachable('Expected an unsupported VEGFILE version error.');
+    } catch (error) {
+      expect(isUnsupportedVegFileVersionError(error)).toBe(true);
+    }
     expect(() => parseVegFile(truncated)).toThrow('byte length');
   });
 
