@@ -14,9 +14,10 @@ import {
 import {
   createThreeVegetationSceneBinding,
   createWebGLGrassLayerModule,
+  WorkerVegFileDatasetCreationAdapter,
   writeVegFile,
   type VegetationDataset,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 import { vegetationExampleConfig } from './vegetationExampleConfig.js';
 
 const renderer = new WebGLRenderer({ antialias: true });
@@ -40,12 +41,18 @@ const ground = new Mesh(
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
 
+const datasetCreationAdapter = new WorkerVegFileDatasetCreationAdapter(() => new Worker(
+  new URL('./vegetationDatasetCreation.worker.ts', import.meta.url),
+  { type: 'module' },
+));
+
 const vegetation = await createThreeVegetationSceneBinding({
   renderer,
   scene,
   camera,
-  source: createExampleVegetationBytes(),
-  config: vegetationExampleConfig,
+  vegFileBytes: createExampleVegetationBytes(),
+  vegetationRuntimeConfig: vegetationExampleConfig,
+  datasetCreationAdapter,
   layerModules: [createWebGLGrassLayerModule()],
 });
 
@@ -62,14 +69,14 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 window.addEventListener('pagehide', () => {
-  vegetation.dispose();
+  vegetation.destroy();
   renderer.dispose();
 }, { once: true });
 
 /** Creates an in-memory demo asset; applications normally fetch their compiled .veg file. */
 function createExampleVegetationBytes(): Uint8Array {
-  const maskResolution = 32;
-  const maskData = new Uint8Array(maskResolution ** 2).fill(1);
+  const maskResolutionPerChunkAxis = 32;
+  const maskData = new Uint8Array(maskResolutionPerChunkAxis ** 2).fill(1);
   const dataset: VegetationDataset = {
     sourceBounds: {
       minX: -8, minY: 0, minZ: -8,
@@ -78,16 +85,16 @@ function createExampleVegetationBytes(): Uint8Array {
     coordinateSystem: {
       upAxis: 'y', horizontalAxes: ['x', 'z'], unitsPerMeter: 1,
     },
-    seed: 42,
+    vegetationSeed: 42,
     grid: { width: 1, height: 1, chunkSize: 16, originX: -8, originY: -8 },
-    heightMap: { resolution: 2 },
+    heightMap: { resolutionPerChunkAxis: 2 },
     chunkLookup: Int32Array.of(0),
     storedChunkHeightRanges: [{ minimumHeight: 0, maximumHeight: 0 }],
     heightData: Float64Array.of(0, 0, 0, 0),
     layers: [{
-      id: 0,
-      key: 'grass',
-      maskResolution,
+      vegetationLayerId: 0,
+      vegetationLayerKey: 'grass',
+      maskResolutionPerChunkAxis,
       maskData,
     }],
   };

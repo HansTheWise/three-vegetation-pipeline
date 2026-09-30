@@ -12,7 +12,7 @@ import {
   hashVegetationElementDetails,
   readVegetationHashBits,
 } from '../deterministic-vegetation-identity/VegetationIds.js';
-import type { QuantizedHeightData } from '../../../runtime/vegfile-v2-parsing/ParsedVegetationFile.js';
+import type { QuantizedHeightData } from '../../../shared/vegfile-parsing/ParsedVegFileTypes.js';
 
 const HASH_BYTE_MAXIMUM = 255;
 
@@ -38,13 +38,13 @@ export type VegetationElementVariation = Readonly<{
 /** CPU reference for the dense instance-address calculation used by the shader. */
 export function readVegetationInstanceAddress(
   instanceIndex: number,
-  maskResolution: number,
+  maskResolutionPerChunkAxis: number,
   anchorsPerCell: number,
   elementsPerAnchor: number,
 ): VegetationInstanceAddress {
   for (const [name, value] of [
     ['instanceIndex', instanceIndex],
-    ['maskResolution', maskResolution],
+    ['maskResolutionPerChunkAxis', maskResolutionPerChunkAxis],
     ['anchorsPerCell', anchorsPerCell],
     ['elementsPerAnchor', elementsPerAnchor],
   ] as const) {
@@ -54,7 +54,7 @@ export function readVegetationInstanceAddress(
   }
 
   const elementsPerCell = anchorsPerCell * elementsPerAnchor;
-  const elementsPerChunk = maskResolution * maskResolution * elementsPerCell;
+  const elementsPerChunk = maskResolutionPerChunkAxis * maskResolutionPerChunkAxis * elementsPerCell;
   if (!Number.isSafeInteger(elementsPerChunk)) {
     throw new Error('Placement dimensions exceed the safe integer range.');
   }
@@ -64,8 +64,8 @@ export function readVegetationInstanceAddress(
   const cellElementIndex = chunkElementIndex % elementsPerCell;
   return {
     visibleChunkIndex,
-    localCellX: cellIndex % maskResolution,
-    localCellY: Math.floor(cellIndex / maskResolution),
+    localCellX: cellIndex % maskResolutionPerChunkAxis,
+    localCellY: Math.floor(cellIndex / maskResolutionPerChunkAxis),
     anchorIndex: Math.floor(cellElementIndex / elementsPerAnchor),
     elementIndex: cellElementIndex % elementsPerAnchor,
   };

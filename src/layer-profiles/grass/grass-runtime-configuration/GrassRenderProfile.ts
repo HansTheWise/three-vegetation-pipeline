@@ -1,4 +1,4 @@
-import type { VegetationRuntimeLayerConfig } from '../../../runtime/runtime-dataset-preparation/configuration/VegetationRuntimeConfig.js';
+import type { VegetationRuntimeLayerConfig } from '../../../runtime/dataset-preparation/configuration/VegetationRuntimeConfig.js';
 import type {
   GrassRenderProfileConfig,
   GrassRuntimeLayerConfig,
@@ -9,7 +9,7 @@ export function requireGrassRenderProfile(
 ): GrassRenderProfileConfig {
   if (layer.renderProfile.type !== 'grass') {
     throw new Error(
-      `Runtime layer "${layer.key}" uses render profile "${layer.renderProfile.type}", not "grass".`,
+      `Runtime layer "${layer.vegetationLayerKey}" uses render profile "${layer.renderProfile.type}", not "grass".`,
     );
   }
   return layer.renderProfile as GrassRenderProfileConfig;

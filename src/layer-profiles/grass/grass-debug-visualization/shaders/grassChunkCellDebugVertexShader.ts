@@ -7,12 +7,12 @@ export const grassChunkCellDebugVertexShader = /* glsl */ `
   uniform mat4 modelViewMatrix;
   uniform mat4 projectionMatrix;
   uniform highp usampler2D visibleStoredChunkIndices;
-  uniform highp usampler2D storedChunkGridCoordinates;
+  uniform highp usampler2D storedChunkGridCoordinateLookup;
   uniform highp sampler2D chunkHeightRanges;
   uniform highp usampler2D heightData;
   uniform vec2 gridOrigin;
   uniform float chunkSize;
-  uniform int heightResolution;
+  uniform int heightMapResolutionPerChunkAxis;
   uniform float maximumQuantizedHeight;
   uniform vec3 horizontalAxisA;
   uniform vec3 horizontalAxisB;
@@ -37,10 +37,10 @@ export const grassChunkCellDebugVertexShader = /* glsl */ `
       0
     ).r;
     chunkGridCoordinates = texelFetch(
-      storedChunkGridCoordinates,
+      storedChunkGridCoordinateLookup,
       linearTextureCoordinate(
         int(storedChunkIndex),
-        textureSize(storedChunkGridCoordinates, 0).x
+        textureSize(storedChunkGridCoordinateLookup, 0).x
       ),
       0
     ).rg;
@@ -55,10 +55,10 @@ export const grassChunkCellDebugVertexShader = /* glsl */ `
 
     chunkUv = position.xy;
     ivec2 heightCoordinate = ivec2(
-      round(chunkUv * float(heightResolution - 1))
+      round(chunkUv * float(heightMapResolutionPerChunkAxis - 1))
     );
-    int heightIndex = heightCoordinate.y * heightResolution + heightCoordinate.x;
-    int heightValuesPerChunk = heightResolution * heightResolution;
+    int heightIndex = heightCoordinate.y * heightMapResolutionPerChunkAxis + heightCoordinate.x;
+    int heightValuesPerChunk = heightMapResolutionPerChunkAxis * heightMapResolutionPerChunkAxis;
     int linearHeightIndex = int(storedChunkIndex) * heightValuesPerChunk + heightIndex;
     uint quantizedHeight = texelFetch(
       heightData,

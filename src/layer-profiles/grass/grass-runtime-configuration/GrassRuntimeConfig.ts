@@ -10,7 +10,7 @@ import type {
   VegetationPatternConfig,
   VegetationRenderProfileConfig,
   VegetationRuntimeLayerConfig,
-} from '../../../runtime/runtime-dataset-preparation/configuration/VegetationRuntimeConfig.js';
+} from '../../../runtime/dataset-preparation/configuration/VegetationRuntimeConfig.js';
 
 export type GrassLightingNormalConfig = Readonly<{
   source: 'ground';

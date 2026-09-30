@@ -6,7 +6,7 @@ import type {
   HexColor,
   NumericRange,
   VegetationRuntimeLayerConfig,
-} from '../../../runtime/runtime-dataset-preparation/configuration/VegetationRuntimeConfig.js';
+} from '../../../runtime/dataset-preparation/configuration/VegetationRuntimeConfig.js';
 import { validateGrassPatchConfig } from '../grass-ground-patch-generation/validateGrassPatchConfig.js';
 import type {
   GrassRenderProfileConfig,
@@ -20,7 +20,7 @@ export function validateGrassRuntimeLayerConfig(
   config: VegetationRuntimeLayerConfig,
 ): void {
   const grassLayer = config as GrassRuntimeLayerConfig;
-  const label = `Runtime layer "${grassLayer.key}"`;
+  const label = `Runtime layer "${grassLayer.vegetationLayerKey}"`;
   if (!isRecord(grassLayer.lighting)) {
     throw new Error(`${label}.lighting must be an object.`);
   }

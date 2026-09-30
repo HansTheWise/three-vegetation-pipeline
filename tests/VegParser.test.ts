@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { VegetationDataset } from '../src/offline/vegetation-dataset-extraction/VegetationExtractionTypes.js';
-import { writeVegFile } from '../src/offline/vegfile-v2-serialization/VegWriter.js';
+import type { VegetationDataset } from '../src/pre-runtime-compiler-core/vegetation-dataset-extraction/VegetationExtractionTypes.js';
+import { writeVegFile } from '../src/pre-runtime-compiler-core/veg-file-writing/VegFileWriter.js';
 import {
   isUnsupportedVegFileVersionError,
   parseVegFile,
-} from '../src/runtime/vegfile-v2-parsing/VegParser.js';
-import { calculateVegFileV2Layout } from '../src/vegfile-v2-format/VegFileV2Layout.js';
+} from '../src/shared/vegfile-parsing/VegParser.js';
+import { calculateVegFileV2ByteLayout } from '../src/shared/vegfile-format/VegFileV2ByteLayout.js';
 import {
   VEG_FILE_HEADER_OFFSETS,
   VEG_FILE_HEADER_SIZE,
   VEG_FILE_LAYER_METADATA_SIZE,
-} from '../src/vegfile-v2-format/VegFileV2Schema.js';
-import type { HeightValueBits } from '../src/vegfile-v2-format/VegetationFileTypes.js';
+} from '../src/shared/vegfile-format/VegFileV2Schema.js';
+import type { HeightValueBits } from '../src/shared/vegfile-format/VegetationFileTypes.js';
 
 const TEST_BUILD_FINGERPRINT = Uint8Array.from({ length: 16 }, (_, index) => index);
 
@@ -28,7 +28,7 @@ describe('parseVegFile', () => {
 
       expect(parsed.header).toEqual({
         version: 2,
-        seed: 0xdead_beef,
+        vegetationSeed: 0xdead_beef,
         buildFingerprint: TEST_BUILD_FINGERPRINT,
         fileChecksum: dataView(file).getUint32(
           VEG_FILE_HEADER_OFFSETS.fileChecksum,
@@ -56,7 +56,7 @@ describe('parseVegFile', () => {
         },
         storedChunkCount: 1,
         heightMap: {
-          resolution: 2,
+          resolutionPerChunkAxis: 2,
           valueBits: heightValueBits,
           valuesPerChunk: 4,
         },
@@ -67,13 +67,13 @@ describe('parseVegFile', () => {
       expect(parsed.heightData).toBeInstanceOf(HeightArray);
       expect([...parsed.heightData]).toEqual([...expectedHeights]);
       expect(parsed.layers.map((layer) => ({
-        id: layer.id,
-        maskResolution: layer.maskResolution,
+        vegetationLayerId: layer.vegetationLayerId,
+        maskResolutionPerChunkAxis: layer.maskResolutionPerChunkAxis,
         maskWordsPerChunk: layer.maskWordsPerChunk,
         maskData: [...layer.maskData],
       }))).toEqual([
-        { id: 7, maskResolution: 2, maskWordsPerChunk: 1, maskData: [0b1101] },
-        { id: 9, maskResolution: 1, maskWordsPerChunk: 1, maskData: [0b1] },
+        { vegetationLayerId: 7, maskResolutionPerChunkAxis: 2, maskWordsPerChunk: 1, maskData: [0b1101] },
+        { vegetationLayerId: 9, maskResolutionPerChunkAxis: 1, maskWordsPerChunk: 1, maskData: [0b1] },
       ]);
 
       expect(parsed.bytes.buffer).toBe(file.buffer);
@@ -172,13 +172,13 @@ function createFile(heightValueBits: HeightValueBits): Uint8Array {
 }
 
 function createLayout(heightValueBits: HeightValueBits) {
-  return calculateVegFileV2Layout({
+  return calculateVegFileV2ByteLayout({
     gridWidth: 2,
     gridHeight: 1,
     storedChunkCount: 1,
-    heightResolution: 2,
+    heightMapResolutionPerChunkAxis: 2,
     heightValueBits,
-    layerMaskResolutions: [2, 1],
+    layerMaskResolutionsPerChunkAxis: [2, 1],
   });
 }
 
@@ -201,7 +201,7 @@ function createDataset(): VegetationDataset {
       horizontalAxes: ['x', 'y'],
       unitsPerMeter: 1,
     },
-    seed: 0xdead_beef,
+    vegetationSeed: 0xdead_beef,
     grid: {
       originX: 0,
       originY: 0,
@@ -209,18 +209,18 @@ function createDataset(): VegetationDataset {
       height: 1,
       chunkSize: 4,
     },
-    heightMap: { resolution: 2 },
+    heightMap: { resolutionPerChunkAxis: 2 },
     layers: [
       {
-        id: 7,
-        key: 'grass',
-        maskResolution: 2,
+        vegetationLayerId: 7,
+        vegetationLayerKey: 'grass',
+        maskResolutionPerChunkAxis: 2,
         maskData: new Uint8Array([1, 0, 1, 1]),
       },
       {
-        id: 9,
-        key: 'flowers',
-        maskResolution: 1,
+        vegetationLayerId: 9,
+        vegetationLayerKey: 'flowers',
+        maskResolutionPerChunkAxis: 1,
         maskData: new Uint8Array([1]),
       },
     ],

@@ -15,7 +15,7 @@ import {
   selectCellPattern,
   selectVegetationHashIndex,
   vegetationIdentityShader,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 const patternConfig = {
   patternCount: 4,
@@ -27,7 +27,7 @@ const patternConfig = {
 describe('stable vegetation identities', () => {
   it('creates deterministic hierarchical hashes from explicit IDs', () => {
     const cellHash = hashVegetationCell(42, {
-      layerId: 7,
+      vegetationLayerId: 7,
       globalCellX: 12,
       globalCellY: 9,
     });
@@ -39,14 +39,14 @@ describe('stable vegetation identities', () => {
     expect(elementHash).toBe(0x61b7_3daf);
     expect(hashVegetationElementDetails(elementHash)).toBe(0x98df_35f7);
     expect(hashVegetationCell(42, {
-      layerId: 7,
+      vegetationLayerId: 7,
       globalCellX: 12,
       globalCellY: 9,
     })).toBe(cellHash);
     expect(hashVegetationAnchor(cellHash, 3)).toBe(anchorHash);
     expect(hashVegetationElement(anchorHash, 5)).toBe(elementHash);
     expect(hashVegetationCell(42, {
-      layerId: 7,
+      vegetationLayerId: 7,
       globalCellX: 13,
       globalCellY: 9,
     })).not.toBe(cellHash);
@@ -77,7 +77,7 @@ describe('stable vegetation identities', () => {
 
   it('uses the same cell fields for CPU pattern selection', () => {
     const cellHash = hashVegetationCell(42, {
-      layerId: 7,
+      vegetationLayerId: 7,
       globalCellX: 12,
       globalCellY: 9,
     });
@@ -129,7 +129,7 @@ describe('stable vegetation identities', () => {
 
   it('rejects values outside the unsigned 32-bit contract', () => {
     expect(() => hashVegetationCell(-1, {
-      layerId: 0,
+      vegetationLayerId: 0,
       globalCellX: 0,
       globalCellY: 0,
     })).toThrow('seed must be an unsigned 32-bit integer.');

@@ -1,7 +1,7 @@
 import { Matrix4, Object3D, PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { ThreeCameraFrameStateAdapter } from '../src/index.js';
+import { ThreeCameraFrameStateAdapter } from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 describe('ThreeCameraFrameStateAdapter', () => {
   it('reuses frame data and converts a transformed vegetation model root correctly', () => {

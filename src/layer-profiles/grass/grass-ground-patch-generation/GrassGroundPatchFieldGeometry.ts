@@ -1,4 +1,4 @@
-import type { ParsedVegFile, ParsedVegLayer } from '../../../runtime/vegfile-v2-parsing/ParsedVegetationFile.js';
+import type { ParsedVegFile, ParsedVegLayer } from '../../../shared/vegfile-parsing/ParsedVegFileTypes.js';
 import type { EnabledGrassGroundPatchConfig } from './GrassGroundPatchTypes.js';
 
 const FIELD_SAMPLES_PER_FALLOFF = 4;
@@ -92,16 +92,16 @@ export function isVegetationAllowedAtMeters(
   const storedChunkIndex = file.chunkLookup[chunkGridY * grid.width + chunkGridX]!;
   if (storedChunkIndex < 0) return false;
 
-  const cellSize = grid.chunkSize / layer.maskResolution;
+  const cellSize = grid.chunkSize / layer.maskResolutionPerChunkAxis;
   const cellX = Math.min(
-    layer.maskResolution - 1,
+    layer.maskResolutionPerChunkAxis - 1,
     Math.floor((relativeX - chunkGridX * grid.chunkSize) / cellSize),
   );
   const cellY = Math.min(
-    layer.maskResolution - 1,
+    layer.maskResolutionPerChunkAxis - 1,
     Math.floor((relativeY - chunkGridY * grid.chunkSize) / cellSize),
   );
-  const cellIndex = cellY * layer.maskResolution + cellX;
+  const cellIndex = cellY * layer.maskResolutionPerChunkAxis + cellX;
   const wordIndex = storedChunkIndex * layer.maskWordsPerChunk
     + Math.floor(cellIndex / 32);
   return ((layer.maskData[wordIndex]! >>> (cellIndex % 32)) & 1) === 1;

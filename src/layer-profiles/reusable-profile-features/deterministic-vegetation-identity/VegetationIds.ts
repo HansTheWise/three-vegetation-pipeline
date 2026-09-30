@@ -14,12 +14,12 @@ export const VEGETATION_HASH_SALTS = {
 /** Hashes the complete stable cell identity with one final avalanche mix. */
 export function hashVegetationCell(seed: number, id: VegetationCellId): number {
   validateUint32(seed, 'seed');
-  validateUint32(id.layerId, 'layerId');
+  validateUint32(id.vegetationLayerId, 'vegetationLayerId');
   validateUint32(id.globalCellX, 'globalCellX');
   validateUint32(id.globalCellY, 'globalCellY');
 
   const combined = seed
-    ^ Math.imul(id.layerId + 1, VEGETATION_HASH_SALTS.layer)
+    ^ Math.imul(id.vegetationLayerId + 1, VEGETATION_HASH_SALTS.layer)
     ^ Math.imul(id.globalCellX + 1, VEGETATION_HASH_SALTS.cellX)
     ^ Math.imul(id.globalCellY + 1, VEGETATION_HASH_SALTS.cellY);
   return mixVegetationHash(combined);

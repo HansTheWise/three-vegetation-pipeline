@@ -1,5 +1,5 @@
 import { vegetationRuntimeConfig } from './vegetationRuntimeConfig.js';
-import type { GrassRuntimeLayerConfig, VegetationRuntimeConfig } from '../../src/index.js';
+import type { GrassRuntimeLayerConfig, VegetationRuntimeConfig } from '../../src/package-entrypoints/InternalDevelopmentApi.js';
 
 const layer = vegetationRuntimeConfig.layers[0]!;
 export const groundColorConfig = {

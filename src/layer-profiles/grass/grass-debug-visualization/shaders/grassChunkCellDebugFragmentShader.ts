@@ -7,9 +7,9 @@ export const grassChunkCellDebugFragmentShader = /* glsl */ `
   uniform highp usampler2D layerMask;
   uniform highp sampler2D patternPositions;
   uniform uint seed;
-  uniform uint layerId;
+  uniform uint vegetationLayerId;
   uniform uint patternCount;
-  uniform int maskResolution;
+  uniform int maskResolutionPerChunkAxis;
   uniform int visibleAnchorCount;
   uniform bool rotatePerCell;
   uniform bool reflectPerCell;
@@ -43,11 +43,11 @@ export const grassChunkCellDebugFragmentShader = /* glsl */ `
   }
 
   bool isActiveCell(ivec2 cell) {
-    int cellIndex = cell.y * maskResolution + cell.x;
+    int cellIndex = cell.y * maskResolutionPerChunkAxis + cell.x;
     int wordIndex = cellIndex / MASK_BITS_PER_WORD;
     int bitIndex = cellIndex - wordIndex * MASK_BITS_PER_WORD;
     int maskWordsPerChunk = (
-      maskResolution * maskResolution + MASK_WORD_ROUNDING_OFFSET
+      maskResolutionPerChunkAxis * maskResolutionPerChunkAxis + MASK_WORD_ROUNDING_OFFSET
     ) / MASK_BITS_PER_WORD;
     int linearWordIndex = int(storedChunkIndex) * maskWordsPerChunk + wordIndex;
     uint word = texelFetch(
@@ -75,11 +75,11 @@ export const grassChunkCellDebugFragmentShader = /* glsl */ `
   }
 
   void main() {
-    vec2 scaledUv = min(chunkUv, vec2(MAXIMUM_CHUNK_UV)) * float(maskResolution);
+    vec2 scaledUv = min(chunkUv, vec2(MAXIMUM_CHUNK_UV)) * float(maskResolutionPerChunkAxis);
     ivec2 cell = ivec2(floor(scaledUv));
     vec2 cellUv = fract(scaledUv);
-    uvec2 globalCell = chunkGridCoordinates * uint(maskResolution) + uvec2(cell);
-    uint hash = vegetationCellHash(seed, layerId, globalCell);
+    uvec2 globalCell = chunkGridCoordinates * uint(maskResolutionPerChunkAxis) + uvec2(cell);
+    uint hash = vegetationCellHash(seed, vegetationLayerId, globalCell);
     uint patternIndex = cellPatternValue(hash) % patternCount;
     bool cellIsActive = isActiveCell(cell);
 

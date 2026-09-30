@@ -11,19 +11,20 @@ import {
   createThreeVegetationSceneBinding,
   createWebGLGrassLayerModule,
   grassPreset,
+  WorkerVegFileDatasetCreationAdapter,
   writeVegFile,
   type ThreeVegetationSceneBinding,
   type VegetationDataset,
   type VegetationDensityCurvePoint,
   type VegetationRuntimeConfig,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 import {
   grassLayerPreparation,
   requireGrassRuntimeLayer,
 } from '../src/layer-profiles/grass/grass-layer-preparation/GrassLayerPreparation.js';
 import { WebGLGrassLayerRenderer } from '../src/layer-profiles/grass/grass-webgl-rendering/WebGLGrassLayerRenderer.js';
-import { createThreeWebGLVegetationLightingMaterialFactory } from '../src/runtime/threejs-runtime-integration/ThreeWebGLVegetationLightingMaterialFactory.js';
-import type { WebGLVegetationLayerModule } from '../src/runtime/vegetation-layer-rendering-contracts/WebGLVegetationLayerModule.js';
+import { createThreeWebGLGrassLightingMaterialFactory } from '../src/runtime/project-integration/layer-profile-integration/grass/lighting-material/ThreeWebGLGrassLightingMaterialFactory.js';
+import type { WebGLVegetationLayerModule } from '../src/runtime/vegetation-layer-management/WebGLVegetationLayerManager.js';
 
 const RENDER_WIDTH = 1280;
 const RENDER_HEIGHT = 720;
@@ -80,6 +81,10 @@ camera.lookAt(0, 0, 0);
 camera.updateMatrixWorld(true);
 
 const source = createBenchmarkVegetationBytes();
+const datasetCreationAdapter = new WorkerVegFileDatasetCreationAdapter(() => new Worker(
+  new URL('./vegetationDatasetCreation.worker.ts', import.meta.url),
+  { type: 'module' },
+));
 const fineBucketModule = createFineBucketGrassModule();
 const strategies: readonly BenchmarkStrategy[] = [
   { name: 'Current power-of-two buckets', layerModules: [createWebGLGrassLayerModule()] },
@@ -127,8 +132,9 @@ async function measureStrategy(
     renderer,
     scene,
     camera,
-    source,
-    config: createBenchmarkConfig(renderTileSizeCells),
+    vegFileBytes: source,
+    vegetationRuntimeConfig: createBenchmarkConfig(renderTileSizeCells),
+    datasetCreationAdapter,
     layerModules: strategy.layerModules,
   });
   try {
@@ -177,13 +183,13 @@ async function measureStrategy(
       gpuP95Milliseconds: gpuMilliseconds ? percentile(gpuMilliseconds, 0.95) : undefined,
     };
   } finally {
-    vegetation.dispose();
+    vegetation.destroy();
     renderer.render(scene, camera);
   }
 }
 
 function createFineBucketGrassModule(): WebGLVegetationLayerModule {
-  const lightingMaterialFactory = createThreeWebGLVegetationLightingMaterialFactory();
+  const grassLightingMaterialFactory = createThreeWebGLGrassLightingMaterialFactory();
   return {
     ...grassLayerPreparation,
     validateLayer: (layer) => requireGrassRuntimeLayer(layer),
@@ -191,15 +197,18 @@ function createFineBucketGrassModule(): WebGLVegetationLayerModule {
       const layer = requireGrassRuntimeLayer(context.layer);
       const renderTileSizeCells = Math.min(
         layer.config.density.renderTileSizeCells,
-        layer.fileLayer.maskResolution,
+        layer.fileLayer.maskResolutionPerChunkAxis,
       );
       const maximumCandidatesPerTile = renderTileSizeCells ** 2
         * layer.config.distribution.anchorsPerCell
         * layer.config.distribution.elementsPerAnchor;
       return new WebGLGrassLayerRenderer({
-        sharedResources: context.sharedResources,
+        renderer: context.renderer,
+        vegetationDataset: context.vegetationDataset,
+        vegetationDatasetTextures: context.vegetationDatasetTextures,
+        visibleStoredChunkTexture: context.visibleStoredChunkTexture,
         layer,
-        lightingMaterialFactory,
+        grassLightingMaterialFactory,
         candidateCapacityBuckets: createQuarterStepCapacities(maximumCandidatesPerTile),
       });
     },
@@ -229,8 +238,8 @@ function createBenchmarkConfig(renderTileSizeCells: number): VegetationRuntimeCo
   return {
     configVersion: 3,
     layers: [grassPreset({
-      layerId: 0,
-      key: 'benchmark-grass',
+      vegetationLayerId: 0,
+      vegetationLayerKey: 'benchmark-grass',
       distribution: { anchorsPerCell: 4, elementsPerAnchor: 1 },
       visibility: { maximumDistanceMeters: 280 },
       density: {
@@ -248,9 +257,9 @@ function createBenchmarkVegetationBytes(): Uint8Array {
   const gridWidth = 8;
   const gridHeight = 8;
   const chunkSize = 32;
-  const maskResolution = 128;
+  const maskResolutionPerChunkAxis = 128;
   const storedChunkCount = gridWidth * gridHeight;
-  const cellsPerChunk = maskResolution ** 2;
+  const cellsPerChunk = maskResolutionPerChunkAxis ** 2;
   const dataset: VegetationDataset = {
     sourceBounds: {
       minX: -128, minY: 0, minZ: -128,
@@ -259,7 +268,7 @@ function createBenchmarkVegetationBytes(): Uint8Array {
     coordinateSystem: {
       upAxis: 'y', horizontalAxes: ['x', 'z'], unitsPerMeter: 1,
     },
-    seed: 42,
+    vegetationSeed: 42,
     grid: {
       width: gridWidth,
       height: gridHeight,
@@ -267,7 +276,7 @@ function createBenchmarkVegetationBytes(): Uint8Array {
       originX: -128,
       originY: -128,
     },
-    heightMap: { resolution: 2 },
+    heightMap: { resolutionPerChunkAxis: 2 },
     chunkLookup: Int32Array.from(
       { length: storedChunkCount },
       (_, storedChunkIndex) => storedChunkIndex,
@@ -278,9 +287,9 @@ function createBenchmarkVegetationBytes(): Uint8Array {
     ),
     heightData: new Float64Array(storedChunkCount * 4),
     layers: [{
-      id: 0,
-      key: 'benchmark-grass',
-      maskResolution,
+      vegetationLayerId: 0,
+      vegetationLayerKey: 'benchmark-grass',
+      maskResolutionPerChunkAxis,
       maskData: new Uint8Array(storedChunkCount * cellsPerChunk).fill(1),
     }],
   };

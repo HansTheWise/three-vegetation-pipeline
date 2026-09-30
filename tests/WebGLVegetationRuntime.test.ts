@@ -11,21 +11,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createThreeVegetationSceneBinding,
-  createThreeWebGLVegetationLightingMaterialFactory,
-  createVegetationRuntimeDataset,
-  createWebGLVegetationRuntime,
+  createThreeWebGLGrassLightingMaterialFactory,
+  createVegetationRuntimeManager,
+  createPreparedVegetationDataset,
   createWebGLGrassLayerModule,
+  VegFileDatasetCreationManager,
   grassLayerPreparation,
   requireGrassRuntimeLayer,
   writeVegFile,
   type ParsedVegFile,
-  type PreparedVegetationRuntime,
-  type VegetationPreparationAdapter,
+  type VegetationDatasetCreationResult,
+  type VegFileDatasetCreationAdapter,
   type VegetationRuntimeLayerConfig,
-  type WebGLVegetationLayerModule,
-  type WebGLVegetationLightingMaterialFactory,
+  type VegetationLayerPreparation,
   type VegetationDataset,
-} from '../src/index.js';
+  type WebGLVegetationLayerModule,
+  type WebGLGrassLightingMaterialFactory,
+  type PreparedVegetationDataset,
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 
 const identityMatrix = new Float64Array([
@@ -39,18 +42,21 @@ const grassLayerModule = createWebGLGrassLayerModule();
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('WebGLVegetationRuntime', () => {
-  it('uses explicitly registered layer modules for synchronous preparation', async () => {
-    const runtime = await createWebGLVegetationRuntime({
+describe('VegetationRuntimeManager', () => {
+  it('uses the explicitly supplied dataset creation adapter and layer modules', async () => {
+    const runtime = await createVegetationRuntimeManager({
       renderer: createRenderer(),
-      source: createVegetationFileBytes(),
-      config: vegetationRuntimeConfig,
+      vegFileBytes: createVegetationFileBytes(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createMainThreadTestDatasetCreationAdapter([
+        grassLayerPreparation,
+      ]),
       layerModules: [grassLayerModule],
     });
 
     expect(runtime.object3d.children).toHaveLength(1);
-    expect(runtime.diagnostics.preparationMilliseconds).toBeGreaterThanOrEqual(0);
-    runtime.dispose();
+    expect(runtime.diagnostics.datasetCreationMilliseconds).toBeGreaterThanOrEqual(0);
+    runtime.destroy();
   });
 
   it('allocates no WebGL resources when every configured layer is disabled', async () => {
@@ -62,27 +68,28 @@ describe('WebGLVegetationRuntime', () => {
         enabled: false,
       })),
     };
-    const runtime = await createWebGLVegetationRuntime({
+    const runtime = await createVegetationRuntimeManager({
       renderer,
-      source: createVegetationFileBytes(),
-      config: disabledConfig,
+      vegFileBytes: createVegetationFileBytes(),
+      vegetationRuntimeConfig: disabledConfig,
+      datasetCreationAdapter: createMainThreadTestDatasetCreationAdapter([]),
       layerModules: [],
     });
 
     expect(runtime.object3d.children).toHaveLength(0);
     expect(runtime.diagnostics.layers).toEqual([]);
     expect(renderer.initTexture).not.toHaveBeenCalled();
-    runtime.dispose();
+    runtime.destroy();
   });
 
-  it('owns frame updates, diagnostics, layer toggling, and idempotent cleanup', async () => {
+  it('owns frame updates, diagnostics, and idempotent cleanup', async () => {
     const renderer = createRenderer();
-    const prepared = createPreparedRuntime();
-    const runtime = await createWebGLVegetationRuntime({
+    const prepared = createDatasetCreationResult();
+    const runtime = await createVegetationRuntimeManager({
       renderer,
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation: createPreparation(prepared),
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createDatasetCreationAdapter(prepared),
       layerModules: [grassLayerModule],
     });
     const textures = renderer.initTexture.mock.calls.map(([texture]) => texture as Texture);
@@ -94,7 +101,7 @@ describe('WebGLVegetationRuntime', () => {
 
     expect(runtime.object3d.name).toBe('vegetation/runtime');
     expect(runtime.object3d.children).toHaveLength(1);
-    expect(runtime.diagnostics.preparationMilliseconds).toBe(12.5);
+    expect(runtime.diagnostics.datasetCreationMilliseconds).toBe(12.5);
     runtime.updateFrame({
       cameraPositionModel: { x: 0, y: 0, z: 0 },
       clipFromModelMatrix: identityMatrix,
@@ -102,44 +109,26 @@ describe('WebGLVegetationRuntime', () => {
     });
     expect(runtime.diagnostics.visibleStoredChunkCount).toBe(1);
     expect(runtime.diagnostics.layers[0]).toMatchObject({
-      layerId: 0,
-      key: 'meadow-grass',
-      enabled: true,
+      vegetationLayerId: 0,
+      vegetationLayerKey: 'meadow-grass',
       visibleTileCount: 1,
     });
     expect(runtime.diagnostics.layers[0]!.visibleCandidateCount).toBeGreaterThan(0);
-
-    runtime.setLayerEnabled('meadow-grass', false);
-    expect(runtime.object3d.children[0]!.visible).toBe(false);
-    runtime.updateFrame({
-      cameraPositionModel: { x: 0, y: 0, z: 0 },
-      clipFromModelMatrix: identityMatrix,
-      clipSpaceDepthRange: 'negative-one-to-one',
-    });
-    expect(runtime.diagnostics.visibleStoredChunkCount).toBe(0);
-    expect(runtime.diagnostics.layers[0]).toMatchObject({
-      enabled: false,
-      visibleTileCount: 0,
-      visibleCandidateCount: 0,
-    });
-
-    runtime.setLayerEnabled(0, true);
-    expect(runtime.object3d.children[0]!.visible).toBe(true);
-    runtime.dispose();
-    runtime.dispose();
-    expect(runtime.disposed).toBe(true);
+    runtime.destroy();
+    runtime.destroy();
+    expect(runtime.destroyed).toBe(true);
     expect(runtime.object3d.children).toHaveLength(0);
     textureDisposals.forEach((listener) => expect(listener).toHaveBeenCalledOnce());
     expect(() => runtime.updateFrame({
       cameraPositionModel: { x: 0, y: 0, z: 0 },
       clipFromModelMatrix: identityMatrix,
       clipSpaceDepthRange: 'negative-one-to-one',
-    })).toThrow('already disposed');
+    })).toThrow('already destroyed');
   });
 
   it('rejects incomplete prepared layer data before allocating GPU resources', async () => {
     const renderer = createRenderer();
-    const source = createPreparedRuntime();
+    const source = createDatasetCreationResult();
     const layer = {
       ...source.dataset.preparedLayers[0]!,
       preparedProfileData: undefined,
@@ -147,13 +136,13 @@ describe('WebGLVegetationRuntime', () => {
     const prepared = {
       ...source,
       dataset: { ...source.dataset, preparedLayers: [layer] },
-    } as PreparedVegetationRuntime;
+    } as VegetationDatasetCreationResult;
 
-    await expect(createWebGLVegetationRuntime({
+    await expect(createVegetationRuntimeManager({
       renderer,
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation: createPreparation(prepared),
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createDatasetCreationAdapter(prepared),
       layerModules: [grassLayerModule],
     })).rejects.toThrow('incomplete prepared data');
     expect(renderer.initTexture).not.toHaveBeenCalled();
@@ -161,15 +150,17 @@ describe('WebGLVegetationRuntime', () => {
 
   it('routes a custom profile through shared preparation and chunk culling without Grass resources', async () => {
     const renderer = createRenderer();
-    const prepared = createPreparedRuntimeWithProfile('test-canopy');
+    const prepared = createDatasetCreationResultWithProfile('test-canopy');
     const object3d = new Group();
     const updateFrame = vi.fn();
     const dispose = vi.fn();
     const module: WebGLVegetationLayerModule = {
       profileType: 'test-canopy',
-      prepare: () => { throw new Error('Injected preparation should be used.'); },
+      createPreparedVegetationLayerProfile: () => {
+        throw new Error('Injected preparation should be used.');
+      },
       create: vi.fn((context) => {
-        expect(context.sharedResources.dataset).toBe(prepared.dataset);
+        expect(context.vegetationDataset).toBe(prepared.dataset);
         expect(context.layer).toBe(prepared.dataset.preparedLayers[0]);
         expect(context.layer.preparedProfileData).toEqual({ canopySeed: 42 });
         return {
@@ -187,11 +178,11 @@ describe('WebGLVegetationRuntime', () => {
       }),
     };
 
-    const runtime = await createWebGLVegetationRuntime({
+    const runtime = await createVegetationRuntimeManager({
       renderer,
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation: createPreparation(prepared),
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createDatasetCreationAdapter(prepared),
       layerModules: [module],
     });
     const textureNames = renderer.initTexture.mock.calls.map(([texture]) => texture.name);
@@ -216,18 +207,20 @@ describe('WebGLVegetationRuntime', () => {
       frustumCulledTileCount: 1,
     });
 
-    runtime.dispose();
+    runtime.destroy();
     expect(dispose).toHaveBeenCalledOnce();
   });
 
   it('rejects an unregistered profile before allocating shared GPU resources', async () => {
     const renderer = createRenderer();
 
-    await expect(createWebGLVegetationRuntime({
+    await expect(createVegetationRuntimeManager({
       renderer,
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation: createPreparation(createPreparedRuntimeWithProfile('tree')),
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createDatasetCreationAdapter(
+        createDatasetCreationResultWithProfile('tree'),
+      ),
       layerModules: [],
     })).rejects.toThrow('No WebGL vegetation layer renderer is registered for profile "tree".');
     expect(renderer.initTexture).not.toHaveBeenCalled();
@@ -236,11 +229,11 @@ describe('WebGLVegetationRuntime', () => {
   it('does not register the Grass module implicitly', async () => {
     const renderer = createRenderer();
 
-    await expect(createWebGLVegetationRuntime({
+    await expect(createVegetationRuntimeManager({
       renderer,
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation: createPreparation(createPreparedRuntime()),
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createDatasetCreationAdapter(createDatasetCreationResult()),
       layerModules: [],
     })).rejects.toThrow('No WebGL vegetation layer renderer is registered for profile "grass".');
     expect(renderer.initTexture).not.toHaveBeenCalled();
@@ -265,39 +258,39 @@ describe('WebGLVegetationRuntime', () => {
       })),
     };
 
-    const runtime = await createWebGLVegetationRuntime({
+    const runtime = await createVegetationRuntimeManager({
       renderer,
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation: createPreparation(createPreparedRuntime()),
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createDatasetCreationAdapter(createDatasetCreationResult()),
       layerModules: [module],
     });
 
     expect(module.create).toHaveBeenCalledOnce();
     expect(renderer.initTexture.mock.calls.map(([texture]) => texture.name))
       .not.toContain('vegetation/layer-0-patterns');
-    runtime.dispose();
+    runtime.destroy();
     expect(dispose).toHaveBeenCalledOnce();
   });
 
   it('connects a replacement lighting material factory through the Grass module', async () => {
-    const threeLightingMaterialFactory = createThreeWebGLVegetationLightingMaterialFactory();
-    const createVegetationLightingMaterial = vi.fn((options) => (
-      threeLightingMaterialFactory.createVegetationLightingMaterial(options)
+    const threeGrassLightingMaterialFactory = createThreeWebGLGrassLightingMaterialFactory();
+    const createGrassLightingMaterial = vi.fn((options) => (
+      threeGrassLightingMaterialFactory.createGrassLightingMaterial(options)
     ));
-    const lightingMaterialFactory: WebGLVegetationLightingMaterialFactory = {
-      createVegetationLightingMaterial,
+    const grassLightingMaterialFactory: WebGLGrassLightingMaterialFactory = {
+      createGrassLightingMaterial,
     };
-    const runtime = await createWebGLVegetationRuntime({
+    const runtime = await createVegetationRuntimeManager({
       renderer: createRenderer(),
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation: createPreparation(createPreparedRuntime()),
-      layerModules: [createWebGLGrassLayerModule({ lightingMaterialFactory })],
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createDatasetCreationAdapter(createDatasetCreationResult()),
+      layerModules: [createWebGLGrassLayerModule({ grassLightingMaterialFactory })],
     });
 
-    expect(createVegetationLightingMaterial).toHaveBeenCalledTimes(5);
-    runtime.dispose();
+    expect(createGrassLightingMaterial).toHaveBeenCalledTimes(5);
+    runtime.destroy();
   });
 
   it.each([
@@ -311,11 +304,11 @@ describe('WebGLVegetationRuntime', () => {
     const dispose = vi.spyOn(DataTexture.prototype, 'dispose');
     const renderer = createRenderer(failureName);
 
-    await expect(createWebGLVegetationRuntime({
+    await expect(createVegetationRuntimeManager({
       renderer,
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation: createPreparation(createPreparedRuntime()),
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createDatasetCreationAdapter(createDatasetCreationResult()),
       layerModules: [grassLayerModule],
     })).rejects.toThrow(`Failed ${failureName}`);
     expect(dispose).toHaveBeenCalledTimes(renderer.initTexture.mock.calls.length);
@@ -325,7 +318,7 @@ describe('WebGLVegetationRuntime', () => {
     const textureDispose = vi.spyOn(DataTexture.prototype, 'dispose');
     const geometryDispose = vi.spyOn(BufferGeometry.prototype, 'dispose');
     const renderer = createRenderer();
-    const prepared = createPreparedRuntime();
+    const prepared = createDatasetCreationResult();
     const layer = prepared.dataset.preparedLayers[0]!;
     const grassData = requireGrassRuntimeLayer(layer).preparedProfileData;
     const profile = vegetationRuntimeConfig.layers[0]!.renderProfile;
@@ -349,32 +342,55 @@ describe('WebGLVegetationRuntime', () => {
         ...prepared.dataset,
         preparedLayers: [invalidLayer],
       },
-    } as PreparedVegetationRuntime;
+    } as VegetationDatasetCreationResult;
 
-    await expect(createWebGLVegetationRuntime({
+    await expect(createVegetationRuntimeManager({
       renderer,
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation: createPreparation(invalidPrepared),
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createDatasetCreationAdapter(invalidPrepared),
       layerModules: [grassLayerModule],
     })).rejects.toThrow('needs a ground patch field');
     expect(geometryDispose).toHaveBeenCalledOnce();
     expect(textureDispose).toHaveBeenCalledTimes(renderer.initTexture.mock.calls.length);
   });
 
-  it('propagates preparation failures without touching WebGL', async () => {
+  it('propagates dataset creation failures without touching WebGL', async () => {
     const renderer = createRenderer();
-    const preparation: VegetationPreparationAdapter = {
-      prepare: vi.fn(() => { throw new Error('Preparation failed'); }),
+    const datasetCreationAdapter: VegFileDatasetCreationAdapter = {
+      createVegetationDataset: vi.fn(() => {
+        throw new Error('Dataset creation failed');
+      }),
     };
 
-    await expect(createWebGLVegetationRuntime({
+    await expect(createVegetationRuntimeManager({
       renderer,
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation,
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter,
       layerModules: [grassLayerModule],
-    })).rejects.toThrow('Preparation failed');
+    })).rejects.toThrow('Dataset creation failed');
+    expect(renderer.initTexture).not.toHaveBeenCalled();
+  });
+
+  it('stops before WebGL setup when runtime creation is canceled during dataset creation', async () => {
+    const renderer = createRenderer();
+    const cancellationController = new AbortController();
+    const datasetCreationAdapter: VegFileDatasetCreationAdapter = {
+      createVegetationDataset: () => {
+        cancellationController.abort();
+        return createDatasetCreationResult();
+      },
+    };
+
+    await expect(createVegetationRuntimeManager({
+      renderer,
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter,
+      layerModules: [grassLayerModule],
+      cancellationSignal: cancellationController.signal,
+    })).rejects.toMatchObject({ name: 'AbortError' });
     expect(renderer.initTexture).not.toHaveBeenCalled();
   });
 });
@@ -385,7 +401,7 @@ describe('ThreeVegetationSceneBinding', () => {
     const scene = new Scene();
     const camera = new PerspectiveCamera();
     const object3d = new Group();
-    const prepare = vi.fn(() => ({
+    const createPreparedVegetationLayerProfile = vi.fn(() => ({
       cullingBounds: {
         horizontalPaddingMeters: 2,
         belowSurfaceMeters: 0,
@@ -410,12 +426,12 @@ describe('ThreeVegetationSceneBinding', () => {
     });
     const module: WebGLVegetationLayerModule = {
       profileType: 'test-canopy',
-      prepare,
+      createPreparedVegetationLayerProfile,
       create,
     };
     const layer: VegetationRuntimeLayerConfig = {
-      layerId: 0,
-      key: 'canopy',
+      vegetationLayerId: 0,
+      vegetationLayerKey: 'canopy',
       enabled: true,
       renderProfile: { type: 'test-canopy' },
     };
@@ -423,16 +439,17 @@ describe('ThreeVegetationSceneBinding', () => {
       renderer,
       scene,
       camera,
-      source: createVegetationFileBytes(),
-      config: { configVersion: 3, layers: [layer] },
+      vegFileBytes: createVegetationFileBytes(),
+      vegetationRuntimeConfig: { configVersion: 3, layers: [layer] },
+      datasetCreationAdapter: createMainThreadTestDatasetCreationAdapter([module]),
       layerModules: [module],
     });
 
-    expect(prepare).toHaveBeenCalledOnce();
+    expect(createPreparedVegetationLayerProfile).toHaveBeenCalledOnce();
     expect(create).toHaveBeenCalledOnce();
     expect(vegetation.object3d.parent).toBe(scene);
     expect(vegetation.object3d.children).toEqual([object3d]);
-    vegetation.dispose();
+    vegetation.destroy();
   });
 
   it('binds the runtime to the vegetation parent and owns frame updates and cleanup', async () => {
@@ -448,23 +465,21 @@ describe('ThreeVegetationSceneBinding', () => {
       scene,
       camera,
       vegetationParent,
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation: createPreparation(createPreparedRuntime()),
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createDatasetCreationAdapter(createDatasetCreationResult()),
       layerModules: [grassLayerModule],
     });
 
     expect(binding.object3d.parent).toBe(vegetationParent);
     binding.updateFrame();
     expect(binding.diagnostics.visibleStoredChunkCount).toBe(1);
-    binding.setLayerEnabled(0, false);
-    expect(binding.diagnostics.layers[0]!.enabled).toBe(false);
 
-    binding.dispose();
-    binding.dispose();
+    binding.destroy();
+    binding.destroy();
     expect(binding.object3d.parent).toBeNull();
-    expect(binding.runtime.disposed).toBe(true);
-    expect(() => binding.updateFrame()).toThrow('already disposed');
+    expect(binding.runtime.destroyed).toBe(true);
+    expect(() => binding.updateFrame()).toThrow('already destroyed');
   });
 
   it('accepts a replacement frame-state provider without changing dataset or layer config', async () => {
@@ -481,16 +496,16 @@ describe('ThreeVegetationSceneBinding', () => {
       scene,
       camera: new PerspectiveCamera(),
       frameStateProvider,
-      source: new Uint8Array(),
-      config: vegetationRuntimeConfig,
-      preparation: createPreparation(createPreparedRuntime()),
+      vegFileBytes: new Uint8Array(),
+      vegetationRuntimeConfig,
+      datasetCreationAdapter: createDatasetCreationAdapter(createDatasetCreationResult()),
       layerModules: [grassLayerModule],
     });
 
     binding.updateFrame();
     expect(frameStateProvider.updateFrameState).toHaveBeenCalledOnce();
     expect(binding.diagnostics.visibleStoredChunkCount).toBe(1);
-    binding.dispose();
+    binding.destroy();
   });
 });
 
@@ -504,26 +519,42 @@ function createRenderer(failureName?: string) {
   } as unknown as WebGLRenderer & { initTexture: typeof initTexture };
 }
 
-function createPreparation(
-  prepared: PreparedVegetationRuntime,
-): VegetationPreparationAdapter {
-  return { prepare: vi.fn(() => prepared) };
+function createDatasetCreationAdapter(
+  datasetCreationResult: VegetationDatasetCreationResult,
+): VegFileDatasetCreationAdapter {
+  return { createVegetationDataset: vi.fn(() => datasetCreationResult) };
 }
 
-function createPreparedRuntime(): PreparedVegetationRuntime {
-  const dataset = createVegetationRuntimeDataset(
+function createMainThreadTestDatasetCreationAdapter(
+  layerPreparations: readonly VegetationLayerPreparation[],
+): VegFileDatasetCreationAdapter {
+  const datasetCreationManager = new VegFileDatasetCreationManager(layerPreparations);
+  return {
+    createVegetationDataset: (vegFileBytes, vegetationRuntimeConfig) => (
+      datasetCreationManager.createVegetationDataset(
+        vegFileBytes,
+        vegetationRuntimeConfig,
+      )
+    ),
+  };
+}
+
+function createDatasetCreationResult(): VegetationDatasetCreationResult {
+  const dataset = createPreparedVegetationDataset(
     createParsedFile(),
     vegetationRuntimeConfig,
     [grassLayerPreparation],
   );
   return {
     dataset,
-    preparationMilliseconds: 12.5,
+    datasetCreationMilliseconds: 12.5,
   };
 }
 
-function createPreparedRuntimeWithProfile(profileType: string): PreparedVegetationRuntime {
-  const prepared = createPreparedRuntime();
+function createDatasetCreationResultWithProfile(
+  profileType: string,
+): VegetationDatasetCreationResult {
+  const prepared = createDatasetCreationResult();
   const sourceLayer = prepared.dataset.preparedLayers[0]!;
   const layer = {
     ...sourceLayer,
@@ -547,7 +578,7 @@ function createParsedFile(): ParsedVegFile {
     bytes: new Uint8Array(),
     header: {
       version: 2,
-      seed: 42,
+      vegetationSeed: 42,
       buildFingerprint: new Uint8Array(16),
       fileChecksum: 0,
       sourceBounds: {
@@ -559,14 +590,14 @@ function createParsedFile(): ParsedVegFile {
       },
       grid: { width: 1, height: 1, chunkSize: 1, originX: -0.5, originY: -0.5 },
       storedChunkCount: 1,
-      heightMap: { resolution: 2, valueBits: 16, valuesPerChunk: 4 },
+      heightMap: { resolutionPerChunkAxis: 2, valueBits: 16, valuesPerChunk: 4 },
     },
     chunkLookup: Int32Array.of(0),
     chunkHeightRanges: Float32Array.of(0, 0),
     heightData: Uint16Array.of(0, 0, 0, 0),
     layers: [{
-      id: 0,
-      maskResolution: 2,
+      vegetationLayerId: 0,
+      maskResolutionPerChunkAxis: 2,
       maskWordsPerChunk: 1,
       maskData: Uint32Array.of(0b1111),
     }],
@@ -582,16 +613,16 @@ function createVegetationFileBytes(): Uint8Array {
     coordinateSystem: {
       upAxis: 'y', horizontalAxes: ['x', 'z'], unitsPerMeter: 1,
     },
-    seed: 42,
+    vegetationSeed: 42,
     grid: { width: 1, height: 1, chunkSize: 1, originX: -0.5, originY: -0.5 },
-    heightMap: { resolution: 2 },
+    heightMap: { resolutionPerChunkAxis: 2 },
     chunkLookup: Int32Array.of(0),
     storedChunkHeightRanges: [{ minimumHeight: 0, maximumHeight: 0 }],
     heightData: Float64Array.of(0, 0, 0, 0),
     layers: [{
-      id: 0,
-      key: 'meadow-grass',
-      maskResolution: 2,
+      vegetationLayerId: 0,
+      vegetationLayerKey: 'meadow-grass',
+      maskResolutionPerChunkAxis: 2,
       maskData: Uint8Array.of(1, 1, 1, 1),
     }],
   };

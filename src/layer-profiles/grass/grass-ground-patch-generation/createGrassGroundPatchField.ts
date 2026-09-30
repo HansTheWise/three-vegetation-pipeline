@@ -1,5 +1,5 @@
 import { mixVegetationHash } from '../../../layer-profiles/reusable-profile-features/deterministic-vegetation-identity/VegetationIds.js';
-import type { ParsedVegFile } from '../../../runtime/vegfile-v2-parsing/ParsedVegetationFile.js';
+import type { ParsedVegFile } from '../../../shared/vegfile-parsing/ParsedVegFileTypes.js';
 import {
   collectEligiblePatchPixels,
   createPatchFieldGeometry,
@@ -37,14 +37,16 @@ type PatchSpatialIndex = Readonly<{
  */
 export function createGrassGroundPatchField(
   file: ParsedVegFile,
-  layerId: number,
+  vegetationLayerId: number,
   config: GrassGroundPatchConfig,
 ): GrassGroundPatchField | undefined {
   validateGrassGroundPatchConfig(config);
   if (!config.enabled) return undefined;
 
-  const layer = file.layers.find((candidate) => candidate.id === layerId);
-  if (!layer) throw new Error(`VEGFILE layer ${layerId} does not exist.`);
+  const layer = file.layers.find(
+    (candidate) => candidate.vegetationLayerId === vegetationLayerId,
+  );
+  if (!layer) throw new Error(`VEGFILE layer ${vegetationLayerId} does not exist.`);
 
   const geometry = createPatchFieldGeometry(file, config);
   const pixelCount = geometry.width * geometry.height;
@@ -58,7 +60,7 @@ export function createGrassGroundPatchField(
   if (eligiblePixelIndices.length === 0 || config.targetCoverage === 0) {
     return createFieldResult(
       file,
-      layerId,
+      vegetationLayerId,
       config,
       geometry,
       data,
@@ -69,9 +71,9 @@ export function createGrassGroundPatchField(
   }
 
   const seed = mixVegetationHash(
-    file.header.seed
+    file.header.vegetationSeed
       ^ config.seed
-      ^ Math.imul(layerId + 1, PATCH_LAYER_SEED_SALT),
+      ^ Math.imul(vegetationLayerId + 1, PATCH_LAYER_SEED_SALT),
   );
   const sources = createPatchSources(
     file,
@@ -92,7 +94,7 @@ export function createGrassGroundPatchField(
 
   return createFieldResult(
     file,
-    layerId,
+    vegetationLayerId,
     config,
     geometry,
     data,
@@ -274,7 +276,7 @@ function sampleFieldChannel(
 
 function createFieldResult(
   file: ParsedVegFile,
-  layerId: number,
+  vegetationLayerId: number,
   config: EnabledGrassGroundPatchConfig,
   geometry: PatchFieldGeometry,
   data: Uint8Array,
@@ -284,7 +286,7 @@ function createFieldResult(
 ): GrassGroundPatchField {
   const { unitsPerMeter } = file.header.coordinateSystem;
   return {
-    layerId,
+    vegetationLayerId,
     data,
     width: geometry.width,
     height: geometry.height,

@@ -16,9 +16,9 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/public.d.ts",
-      "import": "./dist/public.js",
-      "default": "./dist/public.js"
+      "types": "./dist/package-entrypoints/PublicApi.d.ts",
+      "import": "./dist/package-entrypoints/PublicApi.js",
+      "default": "./dist/package-entrypoints/PublicApi.js"
     },
     "./runtime": {
       "types": "./dist/runtime/index.d.ts",
@@ -26,9 +26,9 @@
       "default": "./dist/runtime/index.js"
     },
     "./webgl": {
-      "types": "./dist/webgl.d.ts",
-      "import": "./dist/webgl.js",
-      "default": "./dist/webgl.js"
+      "types": "./dist/package-entrypoints/WebGLApi.d.ts",
+      "import": "./dist/package-entrypoints/WebGLApi.js",
+      "default": "./dist/package-entrypoints/WebGLApi.js"
     },
     "./profiles/grass": {
       "types": "./dist/layer-profiles/grass/index.d.ts",
@@ -36,14 +36,19 @@
       "default": "./dist/layer-profiles/grass/index.js"
     },
     "./debug": {
-      "types": "./dist/debug.d.ts",
-      "import": "./dist/debug.js",
-      "default": "./dist/debug.js"
+      "types": "./dist/package-entrypoints/DebugApi.d.ts",
+      "import": "./dist/package-entrypoints/DebugApi.js",
+      "default": "./dist/package-entrypoints/DebugApi.js"
     },
-    "./node": {
-      "types": "./dist/offline/offline-compilation-orchestration/NodeVegCompiler.d.ts",
-      "import": "./dist/offline/offline-compilation-orchestration/NodeVegCompiler.js",
-      "default": "./dist/offline/offline-compilation-orchestration/NodeVegCompiler.js"
+    "./pre-runtime-compiler-core": {
+      "types": "./dist/pre-runtime-compiler-core/index.d.ts",
+      "import": "./dist/pre-runtime-compiler-core/index.js",
+      "default": "./dist/pre-runtime-compiler-core/index.js"
+    },
+    "./node-pre-runtime-compiler-integration": {
+      "types": "./dist/node-pre-runtime-compiler-integration/index.d.ts",
+      "import": "./dist/node-pre-runtime-compiler-integration/index.js",
+      "default": "./dist/node-pre-runtime-compiler-integration/index.js"
     }
   },
   "scripts": {

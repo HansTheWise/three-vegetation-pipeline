@@ -6,24 +6,23 @@ import {
   UnsignedByteType,
   UnsignedIntType,
   UnsignedShortType,
-  type DataTexture,
   type WebGLRenderer,
 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 
 import {
-  createStoredChunkGridCoordinates,
-  createVegetationRuntimeDataset,
+  ChunkVisibilityManager,
+  createStoredChunkGridCoordinateLookup,
+  createPreparedVegetationDataset,
   grassLayerPreparation,
-  WebGLSharedVegFileTextures,
-  WebGLSharedVegetationResources,
+  WebGLVegetationDatasetTextures,
   WebGLVisibleRenderTileTexture,
   WebGLVisibleStoredChunkTexture,
   type ParsedVegFile,
   type QuantizedHeightData,
   type VegetationRuntimeConfig,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 type FakeRenderer = Readonly<{
   renderer: WebGLRenderer;
@@ -54,7 +53,7 @@ function createParsedFile(
     bytes: new Uint8Array(),
     header: {
       version: 2,
-      seed: 42,
+      vegetationSeed: 42,
       buildFingerprint: new Uint8Array(16),
       fileChecksum: 0,
       sourceBounds: {
@@ -79,7 +78,7 @@ function createParsedFile(
       },
       storedChunkCount: 2,
       heightMap: {
-        resolution: 2,
+        resolutionPerChunkAxis: 2,
         valueBits: heightValueBits,
         valuesPerChunk: 4,
       },
@@ -89,14 +88,14 @@ function createParsedFile(
     heightData,
     layers: [
       {
-        id: 7,
-        maskResolution: 2,
+        vegetationLayerId: 7,
+        maskResolutionPerChunkAxis: 2,
         maskWordsPerChunk: 1,
         maskData: Uint32Array.from([0b1101, 0b0010]),
       },
       {
-        id: 9,
-        maskResolution: 8,
+        vegetationLayerId: 9,
+        maskResolutionPerChunkAxis: 8,
         maskWordsPerChunk: 2,
         maskData: Uint32Array.from([1, 2, 3, 4]),
       },
@@ -109,8 +108,8 @@ function createRuntimeConfig(): VegetationRuntimeConfig {
   return {
     ...vegetationRuntimeConfig,
     layers: [
-      { ...layer, layerId: 7, key: 'layer-7' },
-      { ...layer, layerId: 9, key: 'layer-9', enabled: false },
+      { ...layer, vegetationLayerId: 7, vegetationLayerKey: 'layer-7' },
+      { ...layer, vegetationLayerId: 9, vegetationLayerKey: 'layer-9', enabled: false },
     ],
   };
 }
@@ -118,39 +117,39 @@ function createRuntimeConfig(): VegetationRuntimeConfig {
 function createRuntimeDataset(
   heightData?: QuantizedHeightData,
 ) {
-  return createVegetationRuntimeDataset(
+  return createPreparedVegetationDataset(
     createParsedFile(heightData),
     createRuntimeConfig(),
     [grassLayerPreparation],
   );
 }
 
-describe('createStoredChunkGridCoordinates', () => {
+describe('createStoredChunkGridCoordinateLookup', () => {
   it('inverts logical chunk lookup entries into stored chunk grid coordinates', () => {
-    const coordinates = createStoredChunkGridCoordinates(createParsedFile());
+    const coordinateLookup = createStoredChunkGridCoordinateLookup(createParsedFile());
 
-    expect([...coordinates]).toEqual([0, 1, 1, 0]);
+    expect([...coordinateLookup]).toEqual([0, 1, 1, 0]);
   });
 });
 
-describe('WebGLSharedVegFileTextures', () => {
+describe('WebGLVegetationDatasetTextures', () => {
   it('uploads only immutable VEGFILE data shared by initialized layers', () => {
     const { renderer, initTexture } = createRenderer(4);
     const file = createParsedFile();
-    const resources = new WebGLSharedVegFileTextures(
+    const resources = new WebGLVegetationDatasetTextures(
       renderer,
-      createVegetationRuntimeDataset(file, createRuntimeConfig(), [grassLayerPreparation]),
+      createPreparedVegetationDataset(file, createRuntimeConfig(), [grassLayerPreparation]),
     );
 
-    expect(resources.storedChunkGridCoordinatesTexture.image).toMatchObject({
+    expect(resources.storedChunkGridCoordinateLookupTexture.image).toMatchObject({
       width: 2,
       height: 1,
     });
-    expect(resources.storedChunkGridCoordinatesTexture.image.data).toEqual(
+    expect(resources.storedChunkGridCoordinateLookupTexture.image.data).toEqual(
       Uint32Array.from([0, 1, 1, 0]),
     );
-    expect(resources.storedChunkGridCoordinatesTexture.format).toBe(RGIntegerFormat);
-    expect(resources.storedChunkGridCoordinatesTexture.type).toBe(UnsignedIntType);
+    expect(resources.storedChunkGridCoordinateLookupTexture.format).toBe(RGIntegerFormat);
+    expect(resources.storedChunkGridCoordinateLookupTexture.type).toBe(UnsignedIntType);
 
     expect(resources.chunkHeightRangesTexture.image.data).toBe(file.chunkHeightRanges);
     expect(resources.chunkHeightRangesTexture.format).toBe(RGFormat);
@@ -171,7 +170,7 @@ describe('WebGLSharedVegFileTextures', () => {
     [Uint32Array.from([0, 1, 2, 3, 4, 5, 6, 7]), UnsignedIntType],
   ] as const)('maps quantized height arrays to their WebGL integer type', (heightData, type) => {
     const { renderer } = createRenderer();
-    const resources = new WebGLSharedVegFileTextures(
+    const resources = new WebGLVegetationDatasetTextures(
       renderer,
       createRuntimeDataset(heightData),
     );
@@ -182,7 +181,7 @@ describe('WebGLSharedVegFileTextures', () => {
   it('rejects static textures larger than the renderer supports', () => {
     const { renderer } = createRenderer(1);
 
-    expect(() => new WebGLSharedVegFileTextures(
+    expect(() => new WebGLVegetationDatasetTextures(
       renderer,
       createRuntimeDataset(),
     )).toThrow('requires 2 texels, exceeding the WebGL capacity of 1x1');
@@ -226,6 +225,25 @@ describe('WebGLVisibleStoredChunkTexture', () => {
   });
 });
 
+describe('ChunkVisibilityManager', () => {
+  it('creates and disposes its visible stored-chunk texture', () => {
+    const { renderer } = createRenderer();
+    const chunkVisibilityManager = new ChunkVisibilityManager({
+      renderer,
+      vegetationDataset: createRuntimeDataset(),
+    });
+    const textureDisposed = vi.fn();
+    chunkVisibilityManager.visibleStoredChunkTexture.texture.addEventListener(
+      'dispose',
+      textureDisposed,
+    );
+
+    chunkVisibilityManager.dispose();
+
+    expect(textureDisposed).toHaveBeenCalledOnce();
+  });
+});
+
 describe('WebGLVisibleRenderTileTexture', () => {
   it('uploads reusable RGBA density records only when the used prefix changes', () => {
     const { renderer, initTexture } = createRenderer(2);
@@ -254,32 +272,5 @@ describe('WebGLVisibleRenderTileTexture', () => {
 
     visibleRenderTileTexture.update(Uint32Array.from([8, 11, 13, 17]), 1);
     expect(initTexture).toHaveBeenCalledTimes(3);
-  });
-});
-
-describe('WebGLSharedVegetationResources', () => {
-  it('updates visibility and disposes every owned texture', () => {
-    const { renderer } = createRenderer();
-    const sharedResources = new WebGLSharedVegetationResources(
-      renderer,
-      createRuntimeDataset(),
-    );
-    const textures: DataTexture[] = [
-      sharedResources.vegFileTextures.storedChunkGridCoordinatesTexture,
-      sharedResources.vegFileTextures.chunkHeightRangesTexture,
-      sharedResources.vegFileTextures.heightDataTexture,
-      sharedResources.visibleStoredChunkTexture.texture,
-    ];
-    const disposeListeners = textures.map(() => vi.fn());
-    textures.forEach((texture, index) => {
-      texture.addEventListener('dispose', disposeListeners[index]!);
-    });
-
-    sharedResources.visibleStoredChunkTexture.update(Uint32Array.from([1, 0]), 1);
-    expect(sharedResources.visibleStoredChunkTexture.visibleStoredChunkCount).toBe(1);
-    expect(sharedResources.visibleStoredChunkTexture.storedChunkIndexData[0]).toBe(1);
-
-    sharedResources.dispose();
-    for (const listener of disposeListeners) expect(listener).toHaveBeenCalledOnce();
   });
 });

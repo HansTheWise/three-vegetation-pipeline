@@ -6,9 +6,10 @@ import {
   type ShaderMaterial,
 } from 'three';
 
-import type { Axis } from '../../../offline/offline-compilation-orchestration/VegetationCompilerConfig.js';
-import type { WebGLVegetationLightingMaterialFactory } from '../../../runtime/vegetation-layer-rendering-contracts/WebGLVegetationLightingMaterialFactory.js';
-import type { WebGLSharedVegetationResources } from '../../../runtime/webgl-vegetation-resource-management/WebGLSharedVegetationResources.js';
+import type { ModelAxis } from '../../../shared/vegfile-format/VegetationFileTypes.js';
+import type { PreparedVegetationDataset } from '../../../runtime/dataset-preparation/dataset-construction/PreparedVegetationDataset.js';
+import type { WebGLGrassLightingMaterialFactory } from '../../../runtime/project-integration/layer-profile-integration/grass/lighting-material/WebGLGrassLightingMaterialFactory.js';
+import type { WebGLVegetationDatasetTextures } from '../../../runtime/vegetation-layer-management/WebGLVegetationDatasetTextures.js';
 import type { WebGLActiveCellIndexTexture } from '../../reusable-profile-features/render-tile-density-selection/webgl/WebGLActiveCellIndexTexture.js';
 import type { WebGLVisibleRenderTileTexture } from '../../reusable-profile-features/render-tile-density-selection/webgl/WebGLVisibleRenderTileTexture.js';
 import type { GrassRuntimeLayer } from '../grass-layer-preparation/GrassLayerPreparation.js';
@@ -17,24 +18,25 @@ import { grassFragmentShader } from './shaders/grassFragmentShader.js';
 import { grassVertexShader } from './shaders/grassVertexShader.js';
 
 type CreateGrassShaderMaterialOptions = Readonly<{
-  sharedResources: WebGLSharedVegetationResources;
+  vegetationDataset: PreparedVegetationDataset;
+  vegetationDatasetTextures: WebGLVegetationDatasetTextures;
   layer: GrassRuntimeLayer;
   candidateCapacity: number;
   visibleRenderTileTexture: WebGLVisibleRenderTileTexture;
   activeCellIndexTexture: WebGLActiveCellIndexTexture;
   cameraPositionModel: Vector3;
   layerResources: WebGLGrassLayerResources;
-  lightingMaterialFactory: WebGLVegetationLightingMaterialFactory;
+  grassLightingMaterialFactory: WebGLGrassLightingMaterialFactory;
 }>;
 
 /** Binds prepared Grass data and shared VEGFILE textures to one bucket material. */
 export function createGrassShaderMaterial(
   options: CreateGrassShaderMaterialOptions,
 ): ShaderMaterial {
-  const { sharedResources, layer } = options;
-  const layerId = layer.layerId;
+  const { vegetationDataset, vegetationDatasetTextures, layer } = options;
+  const vegetationLayerId = layer.vegetationLayerId;
   const patternResource = options.layerResources.pattern;
-  const { header } = sharedResources.dataset.file;
+  const { header } = vegetationDataset.file;
   const [horizontalAxisA, horizontalAxisB] = header.coordinateSystem.horizontalAxes;
   const unitsPerMeter = header.coordinateSystem.unitsPerMeter;
   const grassLayerConfig = layer.config;
@@ -51,20 +53,20 @@ export function createGrassShaderMaterial(
   const groundPatchField = layer.preparedProfileData.groundPatchField;
   const groundPatchTexture = options.layerResources.groundPatchField?.texture;
   if (usesGroundColor && (!groundPatchField || !groundPatchTexture)) {
-    throw new Error(`Grass layer ${layerId} needs a ground patch field for its color processing.`);
+    throw new Error(`Grass layer ${vegetationLayerId} needs a ground patch field for its color processing.`);
   }
   const cloverConfig = grassRenderProfile.clover?.enabled
     ? grassRenderProfile.clover
     : undefined;
   if (cloverConfig && !groundColorAdaptation) {
-    throw new Error(`Grass layer ${layerId} needs ground color adaptation for Clover.`);
+    throw new Error(`Grass layer ${vegetationLayerId} needs ground color adaptation for Clover.`);
   }
   const bladeThicknessScaling = grassRenderProfile.bladeThicknessDistanceScaling;
   const lightDistanceTransition = grassLayerConfig.lighting.distanceTransition;
   const lightingNormal = grassLayerConfig.lighting.normal;
 
-  return options.lightingMaterialFactory.createVegetationLightingMaterial({
-    name: `vegetation/grass-layer-${layerId}-density-${options.candidateCapacity}`,
+  return options.grassLightingMaterialFactory.createGrassLightingMaterial({
+    name: `vegetation/grass-layer-${vegetationLayerId}-density-${options.candidateCapacity}`,
     vertexShader: grassVertexShader,
     fragmentShader: grassFragmentShader,
     side: DoubleSide,
@@ -83,27 +85,29 @@ export function createGrassShaderMaterial(
       activeCellTextureWidth: { value: options.activeCellIndexTexture.textureWidth },
       tileRecordOffset: { value: 0 },
       bucketCandidateCapacity: { value: options.candidateCapacity },
-      storedChunkGridCoordinates: {
-        value: sharedResources.vegFileTextures.storedChunkGridCoordinatesTexture,
+      storedChunkGridCoordinateLookup: {
+        value: vegetationDatasetTextures.storedChunkGridCoordinateLookupTexture,
       },
       chunkHeightRanges: {
-        value: sharedResources.vegFileTextures.chunkHeightRangesTexture,
+        value: vegetationDatasetTextures.chunkHeightRangesTexture,
       },
-      heightData: { value: sharedResources.vegFileTextures.heightDataTexture },
+      heightData: { value: vegetationDatasetTextures.heightDataTexture },
       patternPositions: { value: patternResource.texture },
       bottomColors: { value: patternResource.bottomColors.texture },
       topColors: { value: patternResource.topColors.texture },
-      seed: { value: header.seed },
-      layerId: { value: layerId },
+      seed: { value: header.vegetationSeed },
+      vegetationLayerId: { value: vegetationLayerId },
       patternCount: { value: patternResource.patternSet.patternCount },
-      maskResolution: { value: layer.fileLayer.maskResolution },
+      maskResolutionPerChunkAxis: { value: layer.fileLayer.maskResolutionPerChunkAxis },
       bottomColorCount: { value: patternResource.bottomColors.colorCount },
       topColorCount: { value: patternResource.topColors.colorCount },
       rotatePerCell: { value: patternResource.rotatePerCell },
       reflectPerCell: { value: patternResource.reflectPerCell },
       gridOrigin: { value: new Vector2(header.grid.originX, header.grid.originY) },
       chunkSize: { value: header.grid.chunkSize },
-      heightResolution: { value: header.heightMap.resolution },
+      heightMapResolutionPerChunkAxis: {
+        value: header.heightMap.resolutionPerChunkAxis,
+      },
       maximumQuantizedHeight: { value: (2 ** header.heightMap.valueBits) - 1 },
       unitsPerMeter: { value: unitsPerMeter },
       cameraPositionModel: { value: options.cameraPositionModel },
@@ -236,7 +240,7 @@ export function createGrassShaderMaterial(
   });
 }
 
-function createAxisVector(axis: Axis): Vector3 {
+function createAxisVector(axis: ModelAxis): Vector3 {
   if (axis === 'x') return new Vector3(1, 0, 0);
   if (axis === 'y') return new Vector3(0, 1, 0);
   return new Vector3(0, 0, 1);

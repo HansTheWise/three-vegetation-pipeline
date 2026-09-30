@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { VegetationExtractionConfig } from '../src/offline/offline-compilation-orchestration/VegetationCompilerConfig.js';
-import { extractVegetation } from '../src/offline/vegetation-dataset-extraction/VegetationExtractor.js';
-import type { ModelData, ModelPrimitive } from '../src/offline/three-glb-model-reading/ModelInputTypes.js';
+import type {
+  ResolvedVegetationExtractionConfig,
+  VegetationExtractionConfig,
+} from '../src/pre-runtime-compiler-core/configuration/VegetationCompilerConfig.js';
+import { resolveVegetationExtractionConfig } from '../src/pre-runtime-compiler-core/configuration/validateVegetationCompilerConfig.js';
+import { extractVegetation } from '../src/pre-runtime-compiler-core/vegetation-dataset-extraction/VegetationExtractorManager.js';
+import type { ModelData, ModelPrimitive } from '../src/pre-runtime-compiler-core/glb-model-reading/ModelInputTypes.js';
 
 describe('extractVegetation', () => {
   it('extracts a flat Z-up surface into one chunk', () => {
@@ -10,7 +14,7 @@ describe('extractVegetation', () => {
       createConfig(),
     );
 
-    expect(dataset.seed).toBe(42);
+    expect(dataset.vegetationSeed).toBe(42);
     expect(dataset.grid).toEqual({
       originX: 0,
       originY: 0,
@@ -66,17 +70,20 @@ describe('extractVegetation', () => {
         createLayer(3, 'grass', 'shared', 'surface', 4),
         createLayer(9, 'flowers', 'shared', 'surface', 2),
       ],
-      allowLayerOverlap: true,
+      allowVegetationLayerOverlap: true,
     });
     const dataset = extractVegetation(modelWithPrimitives([primitive]), config);
 
-    expect(dataset.layers.map(({ id, key }) => ({ id, key }))).toEqual([
-      { id: 3, key: 'grass' },
-      { id: 9, key: 'flowers' },
+    expect(dataset.layers.map(({ vegetationLayerId, vegetationLayerKey }) => ({
+      vegetationLayerId,
+      vegetationLayerKey,
+    }))).toEqual([
+      { vegetationLayerId: 3, vegetationLayerKey: 'grass' },
+      { vegetationLayerId: 9, vegetationLayerKey: 'flowers' },
     ]);
     expect([...dataset.layers[0]!.maskData]).toEqual(new Array(16).fill(1));
     expect([...dataset.layers[1]!.maskData]).toEqual(new Array(4).fill(1));
-    expect(dataset.layers.map((layer) => layer.maskResolution)).toEqual([4, 2]);
+    expect(dataset.layers.map((layer) => layer.maskResolutionPerChunkAxis)).toEqual([4, 2]);
   });
 
   it('rejects overlapping layers when overlap is disabled', () => {
@@ -86,7 +93,7 @@ describe('extractVegetation', () => {
         createLayer(3, 'grass', 'shared'),
         createLayer(9, 'flowers', 'shared'),
       ],
-      allowLayerOverlap: false,
+      allowVegetationLayerOverlap: false,
     });
 
     expect(() => extractVegetation(modelWithPrimitives([primitive]), config))
@@ -134,17 +141,13 @@ describe('extractVegetation', () => {
     expect([...dataset.heightData]).toEqual(new Array(9).fill(5));
   });
 
-  it('uses generated and manual seeds exactly as configured', () => {
+  it('uses seed 0 when no vegetation seed is configured', () => {
     const model = modelWithPrimitives([squarePrimitive('surface', 'grass', 0, 0, 4, 4, 0)]);
-    const manual = extractVegetation(model, createConfig());
-    const generated = extractVegetation(
-      model,
-      createConfig({ seedMode: 'generated' }),
-      { generateSeed: () => 0xdead_beef },
-    );
+    const configured = extractVegetation(model, createConfig());
+    const defaulted = extractVegetation(model, createConfig({ omitVegetationSeed: true }));
 
-    expect(manual.seed).toBe(42);
-    expect(generated.seed).toBe(0xdead_beef);
+    expect(configured.vegetationSeed).toBe(42);
+    expect(defaulted.vegetationSeed).toBe(0);
   });
 
   it('matches names across the complete node hierarchy', () => {
@@ -172,10 +175,10 @@ describe('extractVegetation', () => {
     };
     const layer = {
       ...createLayer(0, 'grass', 'grass'),
-      exclusionSurfaceSelector: {
-        any: [{
-          type: 'hierarchy-node-name-prefix' as const,
-          values: ['haus_'],
+      excludedSurfaceSelection: {
+        matchAny: [{
+          property: 'hierarchyNodeNamePrefix' as const,
+          acceptedPrefixes: ['haus_'],
           caseSensitive: false,
         }],
       },
@@ -195,7 +198,6 @@ describe('extractVegetation', () => {
   });
 
   it('rejects invalid coordinate axes and duplicate layer IDs', () => {
-    const model = modelWithPrimitives([squarePrimitive('surface', 'grass', 0, 0, 4, 4, 0)]);
     const invalidAxes = {
       ...createConfig(),
       coordinateSystem: {
@@ -204,93 +206,87 @@ describe('extractVegetation', () => {
         unitsPerMeter: 1,
       },
     } as unknown as VegetationExtractionConfig;
-    const duplicateLayers = createConfig({
+    const duplicateLayers = createUnresolvedConfig({
       layers: [
         createLayer(0, 'grass', 'grass'),
         createLayer(0, 'flowers', 'flowers'),
       ],
     });
 
-    expect(() => extractVegetation(model, invalidAxes)).toThrow('Coordinate axes must be unique.');
-    expect(() => extractVegetation(model, duplicateLayers)).toThrow('Vegetation layer IDs must be unique.');
+    expect(() => resolveVegetationExtractionConfig(invalidAxes))
+      .toThrow('Coordinate axes must be unique.');
+    expect(() => resolveVegetationExtractionConfig(duplicateLayers))
+      .toThrow('Vegetation layer IDs must be unique.');
   });
 
   it('requires every vegetation layer to define its mask resolution', () => {
-    const model = modelWithPrimitives([squarePrimitive('surface', 'grass', 0, 0, 4, 4, 0)]);
-    const { maskResolution: _removed, ...layerWithoutResolution } = createLayer(0, 'grass', 'grass');
-    const config = createConfig({
+    const { maskResolutionPerChunkAxis: _removed, ...layerWithoutResolution } = createLayer(0, 'grass', 'grass');
+    expect(() => createConfig({
       layers: [layerWithoutResolution as unknown as ReturnType<typeof createLayer>],
-    });
-
-    expect(() => extractVegetation(model, config))
-      .toThrow('maskResolution for "grass" must be an integer');
+    })).toThrow(
+      'Vegetation extraction config.vegetationLayers[0].maskResolutionPerChunkAxis must be a finite number.',
+    );
   });
 });
 
 type ConfigOverrides = Readonly<{
   layers?: readonly ReturnType<typeof createLayer>[];
-  allowLayerOverlap?: boolean;
-  seedMode?: 'generated' | 'manual';
+  allowVegetationLayerOverlap?: boolean;
+  omitVegetationSeed?: boolean;
   heightMesh?: string;
 }>;
 
-function createConfig(overrides: ConfigOverrides = {}): VegetationExtractionConfig {
+function createConfig(overrides: ConfigOverrides = {}): ResolvedVegetationExtractionConfig {
+  return resolveVegetationExtractionConfig(createUnresolvedConfig(overrides));
+}
+
+function createUnresolvedConfig(overrides: ConfigOverrides = {}): VegetationExtractionConfig {
   return {
     coordinateSystem: {
       upAxis: 'z',
       horizontalAxes: ['x', 'y'],
       unitsPerMeter: 1,
     },
-    source: {
-      includeInvisibleObjects: false,
-      heightSurfaceSelector: {
-        any: [{
-          type: 'hierarchy-node-name',
-          values: [overrides.heightMesh ?? 'surface'],
+    ...(overrides.omitVegetationSeed ? {} : { vegetationSeed: 42 }),
+    grid: {
+      chunkSize: 4,
+    },
+    heightMap: {
+      resolutionPerChunkAxis: 3,
+      sourceSurfaceSelection: {
+        matchAny: [{
+          property: 'hierarchyNodeName',
+          acceptedNames: [overrides.heightMesh ?? 'surface'],
           caseSensitive: false,
         }],
       },
     },
-    extraction: {
-      seed: {
-        mode: overrides.seedMode ?? 'manual',
-        manualValue: 42,
-      },
-      grid: {
-        chunkSize: 4,
-      },
-      heightMap: {
-        resolution: 3,
-      },
-      vegetationMask: {
-        allowLayerOverlap: overrides.allowLayerOverlap ?? true,
-      },
-      vegetationLayers: overrides.layers ?? [createLayer(0, 'grass', 'grass')],
-    },
+    allowVegetationLayerOverlap: overrides.allowVegetationLayerOverlap ?? true,
+    vegetationLayers: overrides.layers ?? [createLayer(0, 'grass', 'grass')],
   };
 }
 
 function createLayer(
-  id: number,
-  key: string,
+  vegetationLayerId: number,
+  vegetationLayerKey: string,
   materialName: string,
   hierarchyNodeName = 'surface',
-  maskResolution = 4,
+  maskResolutionPerChunkAxis = 4,
 ) {
   return {
-    id,
-    key,
-    maskResolution,
-    surfaceSelector: {
-      all: [
+    vegetationLayerId,
+    vegetationLayerKey,
+    maskResolutionPerChunkAxis,
+    includedSurfaceSelection: {
+      matchAll: [
         {
-          type: 'hierarchy-node-name' as const,
-          values: [hierarchyNodeName],
+          property: 'hierarchyNodeName' as const,
+          acceptedNames: [hierarchyNodeName],
           caseSensitive: false,
         },
         {
-          type: 'material-name' as const,
-          values: [materialName],
+          property: 'materialName' as const,
+          acceptedNames: [materialName],
           caseSensitive: false,
         },
       ],
@@ -370,10 +366,5 @@ function modelWithPrimitives(primitives: readonly ModelPrimitive[]): ModelData {
       maxY: 100,
       maxZ: 100,
     },
-    includedMeshCount: primitives.length,
-    includedTriangleCount: primitives.reduce(
-      (sum, primitive) => sum + primitive.triangleVertexIndices.length / 3,
-      0,
-    ),
   };
 }

@@ -8,7 +8,7 @@ import {
 import {
   calculateWebGLDataTextureLayout,
   padWebGLDataTextureArray,
-} from '../../../../runtime/webgl-vegetation-resource-management/data-texture-layout/WebGLDataTextureLayout.js';
+} from '../../../../runtime/webgl-data-texture-layout/WebGLDataTextureLayout.js';
 
 /** Owns the immutable texture of mask-active local Cell indices. */
 export class WebGLActiveCellIndexTexture {

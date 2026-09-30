@@ -18,8 +18,8 @@ import {
 } from 'three-vegetation-pipeline/webgl';
 
 const grass = grassPreset({
-  layerId: 0,
-  key: 'grass',
+  vegetationLayerId: 0,
+  vegetationLayerKey: 'grass',
   density: { renderTileSizeCells: 16 },
 });
 
@@ -30,7 +30,7 @@ const layerRenderer = null as WebGLVegetationLayerRenderer | null;
 
 document.querySelector('#app')!.textContent = [
   createThreeVegetationSceneBinding,
-  grass.key,
+  grass.vegetationLayerKey,
   customModule,
   frame,
   preparedGrass,

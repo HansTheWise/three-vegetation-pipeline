@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createVegetationRuntimeDataset, grassLayerPreparation, requireGrassRuntimeLayer, WebGLSharedVegetationResources, WebGLGrassLayerRenderer } from '../../src/index.ts';
+import { createPreparedVegetationDataset, grassLayerPreparation, requireGrassRuntimeLayer, WebGLVegetationDatasetTextures, WebGLVisibleStoredChunkTexture, WebGLGrassLayerRenderer } from '../../src/package-entrypoints/InternalDevelopmentApi.ts';
 import { groundColorConfig } from '../fixtures/groundColorConfig.ts';
 
 // Run through Vite: /tests/browser/ground-color.html. Pixel reads are numerical
@@ -30,15 +30,15 @@ try {
   };
   const file = {
     header: {
-      seed: 42, storedChunkCount: 1,
+      vegetationSeed: 42, storedChunkCount: 1,
       coordinateSystem: { upAxis: 'y', horizontalAxes: ['x', 'z'], unitsPerMeter: 2 },
       grid: { width: 1, height: 1, chunkSize: 2, originX: 0, originY: 0 },
-      heightMap: { resolution: 2, valueBits: 16, valuesPerChunk: 4 },
+      heightMap: { resolutionPerChunkAxis: 2, valueBits: 16, valuesPerChunk: 4 },
     },
     chunkLookup: new Int32Array([0]),
     chunkHeightRanges: new Float32Array([0, 0]),
     heightData: new Uint16Array(4),
-    layers: [{ id: 0, maskResolution: 1, maskWordsPerChunk: 1, maskData: new Uint32Array([1]) }],
+    layers: [{ vegetationLayerId: 0, maskResolutionPerChunkAxis: 1, maskWordsPerChunk: 1, maskData: new Uint32Array([1]) }],
   };
   const renderer = new THREE.WebGLRenderer();
   renderer.shadowMap.enabled = true;
@@ -57,13 +57,20 @@ try {
   const camera = new THREE.OrthographicCamera(-3, 3, 3, -3, 0.1, 100);
   camera.position.set(1, 1, 10);
   camera.lookAt(1, 1, 0);
-  const dataset = createVegetationRuntimeDataset(file, config, [grassLayerPreparation]);
-  const sharedResources = new WebGLSharedVegetationResources(renderer, dataset);
+  const dataset = createPreparedVegetationDataset(file, config, [grassLayerPreparation]);
+  const vegetationDatasetTextures = new WebGLVegetationDatasetTextures(renderer, dataset);
+  const visibleStoredChunkTexture = new WebGLVisibleStoredChunkTexture(
+    renderer,
+    dataset.file.header.storedChunkCount,
+  );
   const view = new WebGLGrassLayerRenderer({
-    sharedResources,
+    renderer,
+    vegetationDataset: dataset,
+    vegetationDatasetTextures,
+    visibleStoredChunkTexture,
     layer: requireGrassRuntimeLayer(dataset.preparedLayers[0]),
   });
-  sharedResources.visibleStoredChunkTexture.update(new Uint32Array([0]), 1);
+  visibleStoredChunkTexture.update(new Uint32Array([0]), 1);
   view.updateRenderTileSelection({ x: 1, y: 1, z: 10 });
   scene.add(view.object3d);
   renderer.setSize(128, 128, false);
@@ -88,17 +95,24 @@ try {
     baseColor: '#ff2400',
     highlightColor: '#00ff3c',
   };
-  const cloverDataset = createVegetationRuntimeDataset(
+  const cloverDataset = createPreparedVegetationDataset(
     file,
     cloverConfig,
     [grassLayerPreparation],
   );
-  const cloverSharedResources = new WebGLSharedVegetationResources(renderer, cloverDataset);
+  const cloverDatasetTextures = new WebGLVegetationDatasetTextures(renderer, cloverDataset);
+  const cloverVisibleStoredChunkTexture = new WebGLVisibleStoredChunkTexture(
+    renderer,
+    cloverDataset.file.header.storedChunkCount,
+  );
   const cloverView = new WebGLGrassLayerRenderer({
-    sharedResources: cloverSharedResources,
+    renderer,
+    vegetationDataset: cloverDataset,
+    vegetationDatasetTextures: cloverDatasetTextures,
+    visibleStoredChunkTexture: cloverVisibleStoredChunkTexture,
     layer: requireGrassRuntimeLayer(cloverDataset.preparedLayers[0]),
   });
-  cloverSharedResources.visibleStoredChunkTexture.update(new Uint32Array([0]), 1);
+  cloverVisibleStoredChunkTexture.update(new Uint32Array([0]), 1);
   cloverView.updateRenderTileSelection({ x: 1, y: 10, z: 1 });
   const cloverScene = new THREE.Scene();
   cloverScene.add(new THREE.AmbientLight(0xffffff, 2), cloverView.object3d);
@@ -150,7 +164,8 @@ try {
     })}`);
   }
   cloverView.dispose();
-  cloverSharedResources.dispose();
+  cloverVisibleStoredChunkTexture.dispose();
+  cloverDatasetTextures.dispose();
   cloverTarget.dispose();
   renderer.setRenderTarget(null);
   const averageRenderedLight = () => {
@@ -392,7 +407,11 @@ testGroundModelPosition = horizontalPosition;`,
     checks: checks.length,
     maximumError: Math.max(...checks.map((check) => check.maximumError)),
   }, null, 2);
-  view.dispose(); sharedResources.dispose(); target.dispose(); renderer.dispose();
+  view.dispose();
+  visibleStoredChunkTexture.dispose();
+  vegetationDatasetTextures.dispose();
+  target.dispose();
+  renderer.dispose();
 } catch (error) {
   result.textContent = `FAIL: ${error.stack}`;
   console.error(error);

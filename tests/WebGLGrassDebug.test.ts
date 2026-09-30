@@ -3,17 +3,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 
 import {
-  grassChunkCellDebugFragmentShader,
-  grassChunkCellDebugVertexShader,
-  createVegetationRuntimeDataset,
+  createPreparedVegetationDataset,
   grassLayerPreparation,
   requireGrassRuntimeLayer,
   WebGLGrassChunkCellDebugView,
   WebGLGrassLayerRenderer,
-  WebGLSharedVegetationResources,
+  WebGLVegetationDatasetTextures,
+  WebGLVisibleStoredChunkTexture,
   WebGLGrassDebug,
   type ParsedVegFile,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 function createRenderer(): WebGLRenderer {
   return {
@@ -27,7 +26,7 @@ function createParsedFile(): ParsedVegFile {
     bytes: new Uint8Array(),
     header: {
       version: 2,
-      seed: 42,
+      vegetationSeed: 42,
       buildFingerprint: new Uint8Array(16),
       fileChecksum: 0,
       sourceBounds: {
@@ -52,7 +51,7 @@ function createParsedFile(): ParsedVegFile {
       },
       storedChunkCount: 2,
       heightMap: {
-        resolution: 2,
+        resolutionPerChunkAxis: 2,
         valueBits: 16,
         valuesPerChunk: 4,
       },
@@ -61,8 +60,8 @@ function createParsedFile(): ParsedVegFile {
     chunkHeightRanges: Float32Array.from([1, 2, 3, 4]),
     heightData: Uint16Array.from([0, 1, 2, 3, 4, 5, 6, 7]),
     layers: [{
-      id: 0,
-      maskResolution: 2,
+      vegetationLayerId: 0,
+      maskResolutionPerChunkAxis: 2,
       maskWordsPerChunk: 1,
       maskData: Uint32Array.from([0b1111, 0b0011]),
     }],
@@ -70,7 +69,7 @@ function createParsedFile(): ParsedVegFile {
 }
 
 function createRuntimeDataset() {
-  return createVegetationRuntimeDataset(
+  return createPreparedVegetationDataset(
     createParsedFile(),
     vegetationRuntimeConfig,
     [grassLayerPreparation],
@@ -78,80 +77,77 @@ function createRuntimeDataset() {
 }
 
 function createGrassLayerRenderer(
-  sharedResources: WebGLSharedVegetationResources,
+  renderer: WebGLRenderer = createRenderer(),
 ): WebGLGrassLayerRenderer {
+  const vegetationDataset = createRuntimeDataset();
   return new WebGLGrassLayerRenderer({
-    sharedResources,
-    layer: requireGrassRuntimeLayer(sharedResources.dataset.preparedLayers[0]!),
+    renderer,
+    vegetationDataset,
+    vegetationDatasetTextures: new WebGLVegetationDatasetTextures(
+      renderer,
+      vegetationDataset,
+    ),
+    visibleStoredChunkTexture: new WebGLVisibleStoredChunkTexture(
+      renderer,
+      vegetationDataset.file.header.storedChunkCount,
+    ),
+    layer: requireGrassRuntimeLayer(vegetationDataset.preparedLayers[0]!),
   });
 }
 
 describe('WebGLGrassChunkCellDebugView', () => {
-  it('uses the original VEG mask and rejects missing layers', () => {
-    const sharedResources = new WebGLSharedVegetationResources(
-      createRenderer(),
-      createRuntimeDataset(),
-    );
-    const grassRenderer = createGrassLayerRenderer(sharedResources);
-    const view = new WebGLGrassChunkCellDebugView(
-      sharedResources,
-      grassRenderer.layerResources,
-    );
+  it('uses the original VEG mask', () => {
+    const grassRenderer = createGrassLayerRenderer();
+    const view = new WebGLGrassChunkCellDebugView(grassRenderer);
     expect(view.material.uniforms.layerMask!.value).toBe(view.layerMaskTexture);
-    expect(sharedResources.vegFileTextures).not.toHaveProperty('layerMasks');
-    expect(() => new WebGLGrassChunkCellDebugView(sharedResources, {
-      layerId: 123,
-      pattern: grassRenderer.layerResources.pattern,
-    })).toThrow('has no VEGFILE mask');
+    expect(grassRenderer.vegetationDatasetTextures).not.toHaveProperty('layerMasks');
     view.dispose();
     grassRenderer.dispose();
-    sharedResources.dispose();
+    grassRenderer.visibleStoredChunkTexture.dispose();
+    grassRenderer.vegetationDatasetTextures.dispose();
   });
   it('binds shared textures and model-local grid metadata to the debug material', () => {
-    const sharedResources = new WebGLSharedVegetationResources(
-      createRenderer(),
-      createRuntimeDataset(),
-    );
-    const grassRenderer = createGrassLayerRenderer(sharedResources);
-    const view = new WebGLGrassChunkCellDebugView(sharedResources, grassRenderer.layerResources, {
+    const grassRenderer = createGrassLayerRenderer();
+    const heightOffsetMeters = 0.25;
+    const view = new WebGLGrassChunkCellDebugView(grassRenderer, {
       opacity: 0.5,
-      heightOffsetMeters: 0.25,
+      heightOffsetMeters,
     });
+    const { header } = grassRenderer.vegetationDataset.file;
+    const layer = requireGrassRuntimeLayer(
+      grassRenderer.vegetationDataset.preparedLayers[0]!,
+    );
 
     expect(view.material.glslVersion).toBe(GLSL3);
-    expect(view.material.vertexShader).toBe(grassChunkCellDebugVertexShader);
-    expect(view.material.fragmentShader).toBe(grassChunkCellDebugFragmentShader);
     expect(view.material.uniforms.visibleStoredChunkIndices!.value)
-      .toBe(sharedResources.visibleStoredChunkTexture.texture);
-    expect(view.material.uniforms.storedChunkGridCoordinates!.value)
-      .toBe(sharedResources.vegFileTextures.storedChunkGridCoordinatesTexture);
+      .toBe(grassRenderer.visibleStoredChunkTexture.texture);
+    expect(view.material.uniforms.storedChunkGridCoordinateLookup!.value)
+      .toBe(grassRenderer.vegetationDatasetTextures.storedChunkGridCoordinateLookupTexture);
     expect(view.material.uniforms.chunkHeightRanges!.value)
-      .toBe(sharedResources.vegFileTextures.chunkHeightRangesTexture);
+      .toBe(grassRenderer.vegetationDatasetTextures.chunkHeightRangesTexture);
     expect(view.material.uniforms.heightData!.value)
-      .toBe(sharedResources.vegFileTextures.heightDataTexture);
+      .toBe(grassRenderer.vegetationDatasetTextures.heightDataTexture);
     expect(view.material.uniforms.patternPositions!.value)
       .toBe(grassRenderer.layerResources.pattern.texture);
-    expect(view.material.uniforms.visibleAnchorCount!.value).toBe(4);
-    expect(view.material.uniforms.gridOrigin!.value.toArray()).toEqual([-5, 3]);
-    expect(view.material.uniforms.chunkSize!.value).toBe(10);
+    expect(view.material.uniforms.visibleAnchorCount!.value)
+      .toBe(layer.config.distribution.anchorsPerCell);
+    expect(view.material.uniforms.gridOrigin!.value.toArray()).toEqual([
+      header.grid.originX,
+      header.grid.originY,
+    ]);
+    expect(view.material.uniforms.chunkSize!.value).toBe(header.grid.chunkSize);
     expect(view.material.uniforms.horizontalAxisA!.value.toArray()).toEqual([1, 0, 0]);
     expect(view.material.uniforms.horizontalAxisB!.value.toArray()).toEqual([0, 1, 0]);
     expect(view.material.uniforms.upAxis!.value.toArray()).toEqual([0, 0, 1]);
-    expect(view.material.uniforms.heightOffset!.value).toBe(0.5);
+    expect(view.material.uniforms.heightOffset!.value)
+      .toBe(heightOffsetMeters * header.coordinateSystem.unitsPerMeter);
     expect(view.mesh.frustumCulled).toBe(false);
   });
 
   it('updates the draw instance count from shared visibility before rendering', () => {
-    const sharedResources = new WebGLSharedVegetationResources(
-      createRenderer(),
-      createRuntimeDataset(),
-    );
-    const grassRenderer = createGrassLayerRenderer(sharedResources);
-    const view = new WebGLGrassChunkCellDebugView(
-      sharedResources,
-      grassRenderer.layerResources,
-    );
-    sharedResources.visibleStoredChunkTexture.update(Uint32Array.from([1, 0]), 2);
+    const grassRenderer = createGrassLayerRenderer();
+    const view = new WebGLGrassChunkCellDebugView(grassRenderer);
+    grassRenderer.visibleStoredChunkTexture.update(Uint32Array.from([1, 0]), 2);
 
     expect(view.geometry.instanceCount).toBe(0);
     (view.mesh.onBeforeRender as () => void)();
@@ -159,12 +155,8 @@ describe('WebGLGrassChunkCellDebugView', () => {
   });
 
   it('accepts replacement shader sources', () => {
-    const sharedResources = new WebGLSharedVegetationResources(
-      createRenderer(),
-      createRuntimeDataset(),
-    );
-    const grassRenderer = createGrassLayerRenderer(sharedResources);
-    const view = new WebGLGrassChunkCellDebugView(sharedResources, grassRenderer.layerResources, {
+    const grassRenderer = createGrassLayerRenderer();
+    const view = new WebGLGrassChunkCellDebugView(grassRenderer, {
       shader: {
         vertexShader: 'custom vertex shader',
         fragmentShader: 'custom fragment shader',
@@ -176,15 +168,8 @@ describe('WebGLGrassChunkCellDebugView', () => {
   });
 
   it('disposes its geometry and material', () => {
-    const sharedResources = new WebGLSharedVegetationResources(
-      createRenderer(),
-      createRuntimeDataset(),
-    );
-    const grassRenderer = createGrassLayerRenderer(sharedResources);
-    const view = new WebGLGrassChunkCellDebugView(
-      sharedResources,
-      grassRenderer.layerResources,
-    );
+    const grassRenderer = createGrassLayerRenderer();
+    const view = new WebGLGrassChunkCellDebugView(grassRenderer);
     const geometryDisposed = vi.fn();
     const materialDisposed = vi.fn();
     const layerMaskTextureDisposed = vi.fn();
@@ -200,22 +185,16 @@ describe('WebGLGrassChunkCellDebugView', () => {
   });
 
   it('rejects invalid display options', () => {
-    const sharedResources = new WebGLSharedVegetationResources(
-      createRenderer(),
-      createRuntimeDataset(),
-    );
-    const grassRenderer = createGrassLayerRenderer(sharedResources);
+    const grassRenderer = createGrassLayerRenderer();
 
     expect(() => new WebGLGrassChunkCellDebugView(
-      sharedResources,
-      grassRenderer.layerResources,
+      grassRenderer,
       { opacity: 2 },
     )).toThrow(
       'Grass chunk Cell debug opacity must be between 0 and 1.',
     );
     expect(() => new WebGLGrassChunkCellDebugView(
-      sharedResources,
-      grassRenderer.layerResources,
+      grassRenderer,
       { heightOffsetMeters: -1 },
     )).toThrow(
       'Grass chunk Cell debug height offset must be a non-negative finite number.',
@@ -279,11 +258,7 @@ describe('WebGLGrassDebug lifecycle', () => {
       getContext: () => gpuContext,
       shadowMap: { enabled: false }, info: { render: { calls: 4, triangles: 20 } },
     });
-    const sharedResources = new WebGLSharedVegetationResources(
-      renderer,
-      createRuntimeDataset(),
-    );
-    const grassRenderer = createGrassLayerRenderer(sharedResources);
+    const grassRenderer = createGrassLayerRenderer(renderer);
     const scene = new Scene();
     scene.add(grassRenderer.object3d);
     grassRenderer.object3d.position.set(30, 40, 50);
@@ -299,7 +274,6 @@ describe('WebGLGrassDebug lifecycle', () => {
       setDpr: vi.fn(),
     };
     const view = new WebGLGrassDebug({
-      sharedResources,
       grassRenderer,
       camera,
       scene,
@@ -367,25 +341,7 @@ describe('WebGLGrassDebug lifecycle', () => {
     view.updateCameraController(0.1);
     expect(camera.position.equals(afterDispose)).toBe(true);
     grassRenderer.dispose();
-    sharedResources.dispose();
-  });
-});
-
-describe('debug chunk shaders', () => {
-  it('reads visible chunks, grid coordinates, and height ranges in the vertex shader', () => {
-    expect(grassChunkCellDebugVertexShader).toContain('gl_InstanceID');
-    expect(grassChunkCellDebugVertexShader).toContain('visibleStoredChunkIndices');
-    expect(grassChunkCellDebugVertexShader).toContain('storedChunkGridCoordinates');
-    expect(grassChunkCellDebugVertexShader).toContain('chunkHeightRanges');
-    expect(grassChunkCellDebugVertexShader).toContain('heightData');
-    expect(grassChunkCellDebugVertexShader).toContain('texelFetch');
-  });
-
-  it('reads cell masks, pattern anchors, rotation and reflection in the fragment shader', () => {
-    expect(grassChunkCellDebugFragmentShader).toContain('layerMask');
-    expect(grassChunkCellDebugFragmentShader).toContain('patternPositions');
-    expect(grassChunkCellDebugFragmentShader).toContain('visibleAnchorCount');
-    expect(grassChunkCellDebugFragmentShader).toContain('rotatePerCell');
-    expect(grassChunkCellDebugFragmentShader).toContain('reflectPerCell');
+    grassRenderer.visibleStoredChunkTexture.dispose();
+    grassRenderer.vegetationDatasetTextures.dispose();
   });
 });

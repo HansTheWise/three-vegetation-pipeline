@@ -5,7 +5,7 @@ import {
   readVegetationElementVariation,
   readVegetationInstanceAddress,
   transformVegetationAnchor,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 describe('vegetation placement reference', () => {
   it('decomposes dense instance indices into chunk, Cell, Anchor and Element', () => {

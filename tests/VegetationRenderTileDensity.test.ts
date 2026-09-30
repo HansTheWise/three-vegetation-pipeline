@@ -2,17 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import {
-  createVegetationRuntimeDataset,
+  createPreparedVegetationDataset,
   createVegetationActiveCellData,
   grassLayerPreparation,
   MAXIMUM_WEBGL_INSTANCE_COUNT,
+  requireGrassRuntimeLayer,
   validateWebGLInstanceCount,
   VegetationRenderTileDensity,
   type GrassRuntimeLayerConfig,
   type ParsedVegFile,
   type VegetationRuntimeConfig,
-  type VegetationRuntimeDataset,
-} from '../src/index.js';
+  type PreparedVegetationDataset,
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 type GrassRuntimeConfig = VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
 
@@ -21,21 +22,21 @@ function createDataset(configure?: (config: GrassRuntimeConfig) => GrassRuntimeC
     bytes: new Uint8Array(),
     header: {
       version: 2,
-      seed: 42,
+      vegetationSeed: 42,
       buildFingerprint: new Uint8Array(16),
       fileChecksum: 0,
       sourceBounds: { minX: 0, minY: 0, minZ: 0, maxX: 128, maxY: 0, maxZ: 128 },
       coordinateSystem: { upAxis: 'y', horizontalAxes: ['x', 'z'], unitsPerMeter: 1 },
       grid: { width: 1, height: 1, chunkSize: 128, originX: 0, originY: 0 },
       storedChunkCount: 1,
-      heightMap: { resolution: 2, valueBits: 16, valuesPerChunk: 4 },
+      heightMap: { resolutionPerChunkAxis: 2, valueBits: 16, valuesPerChunk: 4 },
     },
     chunkLookup: Int32Array.from([0]),
     chunkHeightRanges: Float32Array.from([0, 0]),
     heightData: new Uint16Array(4),
     layers: [{
-      id: 0,
-      maskResolution: 8,
+      vegetationLayerId: 0,
+      maskResolutionPerChunkAxis: 8,
       maskWordsPerChunk: 2,
       maskData: Uint32Array.from([0b11_0000_0011, 0x8000_0000]),
     }],
@@ -48,7 +49,7 @@ function createDataset(configure?: (config: GrassRuntimeConfig) => GrassRuntimeC
       density: { ...sourceLayer.density, renderTileSizeCells: 2 },
     }],
   };
-  return createVegetationRuntimeDataset(
+  return createPreparedVegetationDataset(
     file,
     configure ? configure(config) : config,
     [grassLayerPreparation],
@@ -56,10 +57,12 @@ function createDataset(configure?: (config: GrassRuntimeConfig) => GrassRuntimeC
 }
 
 function constantCurve(ratio: number) {
+  const maximumDistanceMeters = vegetationRuntimeConfig.layers[0]!
+    .visibility.maximumDistanceMeters;
   return [
     { distanceMeters: 0, ratio },
-    { distanceMeters: 499, ratio },
-    { distanceMeters: 500, ratio: 0 },
+    { distanceMeters: maximumDistanceMeters - 1, ratio },
+    { distanceMeters: maximumDistanceMeters, ratio: 0 },
   ] as const;
 }
 
@@ -110,7 +113,9 @@ describe('VegetationRenderTileDensity', () => {
     }));
     const withGroundPatches = new VegetationRenderTileDensity(dataset, 0);
     expect(withGroundPatches.activeCellIndices).toEqual(baseline.activeCellIndices);
-    for (const distance of [0, 50, 220, 500]) {
+    const distances = vegetationRuntimeConfig.layers[0]!.density.activeCells
+      .map(({ distanceMeters }) => distanceMeters);
+    for (const distance of distances) {
       const camera = { x: 1, y: distance, z: 1 };
       baseline.update(Uint32Array.of(0), 1, camera);
       withGroundPatches.update(Uint32Array.of(0), 1, camera);
@@ -124,7 +129,13 @@ describe('VegetationRenderTileDensity', () => {
     const original = new VegetationRenderTileDensity(dataset, 0);
     const patched = new VegetationRenderTileDensity(withMask(dataset, () => true), 0);
     expect(patched.activeCellIndices).toEqual(original.activeCellIndices);
-    for (const distance of [0, 50, 127, 220, 500, 0]) {
+    const config = requireGrassRuntimeLayer(dataset.preparedLayers[0]!).config;
+    const distances = new Set([
+      ...config.density.activeCells.map(({ distanceMeters }) => distanceMeters),
+      ...config.density.activeAnchors.map(({ distanceMeters }) => distanceMeters),
+      ...config.density.activeElements.map(({ distanceMeters }) => distanceMeters),
+    ]);
+    for (const distance of distances) {
       const camera = { x: 1, y: distance, z: 1 };
       original.update(Uint32Array.of(0), 1, camera);
       patched.update(Uint32Array.of(0), 1, camera);
@@ -328,11 +339,13 @@ function unpackRecord(record: Uint32Array) {
 }
 
 function withMask(
-  dataset: VegetationRuntimeDataset,
+  dataset: PreparedVegetationDataset,
   admitted: (index: number) => boolean,
-): VegetationRuntimeDataset {
-  const maskData = dataset.preparedLayers[0]!.fileLayer.maskData.slice();
-  for (let index = 0; index < 64; index += 1) {
+): PreparedVegetationDataset {
+  const fileLayer = dataset.preparedLayers[0]!.fileLayer;
+  const maskData = fileLayer.maskData.slice();
+  const cellCount = fileLayer.maskResolutionPerChunkAxis ** 2;
+  for (let index = 0; index < cellCount; index += 1) {
     if (!admitted(index)) maskData[Math.floor(index / 32)]! &= ~(1 << (index % 32));
   }
   const layer = { ...dataset.preparedLayers[0]!, fileLayer: {

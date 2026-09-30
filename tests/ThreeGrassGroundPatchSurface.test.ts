@@ -15,11 +15,11 @@ import {
   createThreeGrassGroundPatchSurface,
   type GrassGroundPatchField,
   type GrassRuntimeLayer,
-  type VegetationRuntimeDataset,
-} from '../src/index.js';
+  type PreparedVegetationDataset,
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 const field: GrassGroundPatchField = {
-  layerId: 0,
+  vegetationLayerId: 0,
   data: Uint8Array.of(0, 128, 255, 200, 255, 64, 128, 128),
   width: 2,
   height: 2,
@@ -94,7 +94,7 @@ function createContext(texture: DataTexture) {
   return {
     dataset: {
       file: { header: { coordinateSystem: { horizontalAxes: ['z', 'x'] } } },
-    } as unknown as VegetationRuntimeDataset,
+    } as unknown as PreparedVegetationDataset,
     layer: {
       preparedProfileData: { groundPatchField: field },
     } as GrassRuntimeLayer,

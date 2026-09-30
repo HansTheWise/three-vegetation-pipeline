@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createStoredChunkCullingBounds,
-  createStoredChunkGridCoordinates,
+  createStoredChunkGridCoordinateLookup,
   FrustumStoredChunkVisibility,
   type ParsedVegFile,
   type VegetationLayerCullingBounds,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 const identityMatrix = new Float64Array([
   1, 0, 0, 0,
@@ -41,7 +41,7 @@ function createParsedFile(options: ParsedFileOptions): ParsedVegFile {
     bytes: new Uint8Array(),
     header: {
       version: 2,
-      seed: 0,
+      vegetationSeed: 0,
       buildFingerprint: new Uint8Array(16),
       fileChecksum: 0,
       sourceBounds: {
@@ -66,7 +66,7 @@ function createParsedFile(options: ParsedFileOptions): ParsedVegFile {
       },
       storedChunkCount,
       heightMap: {
-        resolution: 2,
+        resolutionPerChunkAxis: 2,
         valueBits: 16,
         valuesPerChunk: 4,
       },
@@ -84,7 +84,7 @@ function createCullingBounds(
 ) {
   return createStoredChunkCullingBounds(
     file,
-    createStoredChunkGridCoordinates(file),
+    createStoredChunkGridCoordinateLookup(file),
     bounds,
   );
 }

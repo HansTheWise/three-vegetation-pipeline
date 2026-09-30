@@ -2,14 +2,14 @@ import {
   createGrassLayerConfig,
   type GrassRuntimeLayerConfig,
   type VegetationRuntimeConfig,
-} from '../../src/index.js';
+} from '../../src/package-entrypoints/InternalDevelopmentApi.js';
 
 /** Neutral runtime fixture shared by pipeline unit tests and examples. */
 export const vegetationRuntimeConfig = {
   configVersion: 3,
   layers: [createGrassLayerConfig({
-    layerId: 0,
-    key: 'meadow-grass',
+    vegetationLayerId: 0,
+    vegetationLayerKey: 'meadow-grass',
     enabled: true,
     patches: {
       ground: { enabled: false },

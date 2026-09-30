@@ -1,12 +1,12 @@
-import type { VegetationRuntimeLayerConfig } from '../../../runtime/runtime-dataset-preparation/configuration/VegetationRuntimeConfig.js';
+import type { VegetationRuntimeLayerConfig } from '../../../runtime/dataset-preparation/configuration/VegetationRuntimeConfig.js';
 import { createVegetationActiveCellDataForLayer } from '../../reusable-profile-features/render-tile-density-selection/VegetationRenderTileDensity.js';
 import type { VegetationActiveCellData } from '../../reusable-profile-features/render-tile-density-selection/DensitySelectionTypes.js';
-import type { VegetationRuntimeLayer } from '../../../runtime/runtime-dataset-preparation/dataset-construction/VegetationRuntimeDataset.js';
-import type { ParsedVegFile, ParsedVegLayer } from '../../../runtime/vegfile-v2-parsing/ParsedVegetationFile.js';
+import type { VegetationLayer } from '../../../runtime/dataset-preparation/dataset-construction/PreparedVegetationDataset.js';
+import type { ParsedVegFile, ParsedVegLayer } from '../../../shared/vegfile-parsing/ParsedVegFileTypes.js';
 import type {
   PreparedVegetationLayerProfile,
   VegetationLayerCullingBounds,
-} from '../../../runtime/runtime-dataset-preparation/layer-profile-preparation/VegetationLayerPreparation.js';
+} from '../../../runtime/dataset-preparation/layer-profile-preparation/VegetationLayerPreparation.js';
 import { createVegetationPatterns } from '../../reusable-profile-features/deterministic-pattern-generation/VegetationPatterns.js';
 import type { VegetationPatternSet } from '../../reusable-profile-features/deterministic-pattern-generation/VegetationPatternTypes.js';
 import {
@@ -23,7 +23,7 @@ export type GrassLayerPreparedData = Readonly<{
   groundPatchField: GrassGroundPatchField | undefined;
 }>;
 
-export type GrassRuntimeLayer = VegetationRuntimeLayer<
+export type GrassRuntimeLayer = VegetationLayer<
   GrassRuntimeLayerConfig,
   GrassLayerPreparedData
 >;
@@ -31,24 +31,24 @@ export type GrassRuntimeLayer = VegetationRuntimeLayer<
 export function prepareGrassLayerData(
   file: ParsedVegFile,
   fileLayer: ParsedVegLayer,
-  storedChunkGridCoordinates: Uint32Array,
+  storedChunkGridCoordinateLookup: Uint32Array,
   config: GrassRuntimeLayerConfig,
 ): GrassLayerPreparedData {
   const groundPatchField = createGrassGroundPatchField(
     file,
-    fileLayer.id,
+    fileLayer.vegetationLayerId,
     config.patches.ground,
   );
   const activeCells = createVegetationActiveCellDataForLayer(
     file,
     fileLayer,
-    storedChunkGridCoordinates,
-    fileLayer.id,
+    storedChunkGridCoordinateLookup,
+    fileLayer.vegetationLayerId,
     config.density.renderTileSizeCells,
   );
   return {
     patterns: createVegetationPatterns(
-      file.header.seed,
+      file.header.vegetationSeed,
       { ...config.pattern, anchorsPerCell: config.distribution.anchorsPerCell },
     ),
     activeCells,
@@ -84,16 +84,16 @@ export function calculateGrassLayerCullingBounds(
 }
 
 export function requireGrassRuntimeLayer(
-  layer: VegetationRuntimeLayer,
+  layer: VegetationLayer,
 ): GrassRuntimeLayer {
   if (layer.config.renderProfile.type !== 'grass') {
     throw new Error(
-      `Runtime layer "${layer.key}" uses render profile "${layer.config.renderProfile.type}", not "grass".`,
+      `Runtime layer "${layer.vegetationLayerKey}" uses render profile "${layer.config.renderProfile.type}", not "grass".`,
     );
   }
   const data = layer.preparedProfileData as Partial<GrassLayerPreparedData> | undefined;
   if (!data?.patterns || !data.activeCells) {
-    throw new Error(`Runtime grass layer "${layer.key}" has incomplete prepared data.`);
+    throw new Error(`Runtime grass layer "${layer.vegetationLayerKey}" has incomplete prepared data.`);
   }
   return layer as GrassRuntimeLayer;
 }
@@ -102,10 +102,10 @@ export function requireGrassRuntimeLayer(
 export const grassLayerPreparation = {
   profileType: 'grass',
   validateConfig: validateGrassRuntimeLayerConfig,
-  prepare(
+  createPreparedVegetationLayerProfile(
     file: ParsedVegFile,
     fileLayer: ParsedVegLayer,
-    storedChunkGridCoordinates: Uint32Array,
+    storedChunkGridCoordinateLookup: Uint32Array,
     config: VegetationRuntimeLayerConfig,
   ): PreparedVegetationLayerProfile<GrassLayerPreparedData> {
     const grassConfig = requireGrassRuntimeLayerConfig(config);
@@ -115,7 +115,7 @@ export const grassLayerPreparation = {
       preparedProfileData: prepareGrassLayerData(
         file,
         fileLayer,
-        storedChunkGridCoordinates,
+        storedChunkGridCoordinateLookup,
         grassConfig,
       ),
     };

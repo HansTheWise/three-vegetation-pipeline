@@ -35,7 +35,7 @@ export const grassFragmentShader = /* glsl */ `
 
   out vec4 outputColor;
 
-  #include <vegetation_lighting_pars_fragment>
+  #include <grass_lighting_pars_fragment>
 
   float exponentialProgress(float distanceMeters, vec2 distanceRange, float strength) {
     float ratio = clamp(
@@ -146,8 +146,8 @@ export const grassFragmentShader = /* glsl */ `
     #endif
     vec3 vegetationDiffuseColor = grassColor;
 
-    #include <vegetation_lighting_fragment>
-    #include <vegetation_tonemapping_fragment>
-    #include <vegetation_colorspace_fragment>
+    #include <grass_lighting_fragment>
+    #include <grass_tonemapping_fragment>
+    #include <grass_colorspace_fragment>
   }
 `;

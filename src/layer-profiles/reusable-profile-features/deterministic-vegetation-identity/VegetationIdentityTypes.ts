@@ -1,5 +1,7 @@
+import type { VegetationLayerId } from '../../../shared/vegfile-format/VegetationFileTypes.js';
+
 export type VegetationCellId = Readonly<{
-  layerId: number;
+  vegetationLayerId: VegetationLayerId;
   globalCellX: number;
   globalCellY: number;
 }>;

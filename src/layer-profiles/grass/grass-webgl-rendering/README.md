@@ -30,10 +30,12 @@ owns immutable profile textures. These helpers contain no frame orchestration.
 
 ## Options
 
-- `lightingMaterialFactory` replaces material creation while leaving Grass
-  placement and density unchanged.
+- `grassLightingMaterialFactory` replaces material creation while leaving
+  Grass placement and density unchanged. Its contract is documented under
+  [Grass project integration](../../../runtime/project-integration/layer-profile-integration/grass/lighting-material/README.md).
 - `groundPatchSurface` optionally projects the prepared patch field onto
-  consumer-selected Three.js ground materials.
+  consumer-selected Three.js ground materials through the
+  [ground-patch integration](../../../runtime/project-integration/layer-profile-integration/grass/ground-patch-material/README.md).
 
 The default Three.js material factory preserves scene lights, incoming shadows,
 tone mapping and renderer output color processing.

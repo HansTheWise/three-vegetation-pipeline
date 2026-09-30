@@ -7,7 +7,7 @@ import {
 
 import {
   calculateWebGLDataTextureLayout,
-} from '../../../../runtime/webgl-vegetation-resource-management/data-texture-layout/WebGLDataTextureLayout.js';
+} from '../../../../runtime/webgl-data-texture-layout/WebGLDataTextureLayout.js';
 import { RENDER_TILE_RECORD_UINT32_COUNT } from '../DensitySelectionTypes.js';
 
 /** Owns the mutable RGBA32UI texture containing visible render-tile records. */

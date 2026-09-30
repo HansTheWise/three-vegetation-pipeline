@@ -16,16 +16,16 @@ export const grassVertexShader = /* glsl */ `
 
   uniform highp usampler2D visibleTileRecords;
   uniform highp usampler2D activeCellIndices;
-  uniform highp usampler2D storedChunkGridCoordinates;
+  uniform highp usampler2D storedChunkGridCoordinateLookup;
   uniform highp sampler2D chunkHeightRanges;
   uniform highp usampler2D heightData;
   uniform highp sampler2D patternPositions;
   uniform highp sampler2D bottomColors;
   uniform highp sampler2D topColors;
   uniform uint seed;
-  uniform uint layerId;
+  uniform uint vegetationLayerId;
   uniform uint patternCount;
-  uniform uint maskResolution;
+  uniform uint maskResolutionPerChunkAxis;
   uniform int visibleTileTextureWidth;
   uniform int activeCellTextureWidth;
   uniform uint tileRecordOffset;
@@ -36,7 +36,7 @@ export const grassVertexShader = /* glsl */ `
   uniform bool reflectPerCell;
   uniform vec2 gridOrigin;
   uniform float chunkSize;
-  uniform int heightResolution;
+  uniform int heightMapResolutionPerChunkAxis;
   uniform float maximumQuantizedHeight;
   uniform float unitsPerMeter;
   uniform vec3 cameraPositionModel;
@@ -92,7 +92,7 @@ export const grassVertexShader = /* glsl */ `
     out vec2 cloverUv;
   #endif
 
-  #include <vegetation_lighting_pars_vertex>
+  #include <grass_lighting_pars_vertex>
 
   ${vegetationIdentityShader}
 
@@ -158,8 +158,8 @@ export const grassVertexShader = /* glsl */ `
     ivec2 coordinate,
     vec2 heightRange
   ) {
-    int heightIndex = coordinate.y * heightResolution + coordinate.x;
-    int heightValuesPerChunk = heightResolution * heightResolution;
+    int heightIndex = coordinate.y * heightMapResolutionPerChunkAxis + coordinate.x;
+    int heightValuesPerChunk = heightMapResolutionPerChunkAxis * heightMapResolutionPerChunkAxis;
     int linearHeightIndex = int(storedChunkIndex) * heightValuesPerChunk + heightIndex;
     uint quantizedHeight = texelFetch(
       heightData,
@@ -179,11 +179,11 @@ export const grassVertexShader = /* glsl */ `
     vec2 heightRange
   ) {
     vec2 samplePosition = clamp(chunkUv, 0.0, 1.0)
-      * float(heightResolution - 1);
+      * float(heightMapResolutionPerChunkAxis - 1);
     ivec2 minimumCoordinate = ivec2(floor(samplePosition));
     ivec2 maximumCoordinate = min(
       minimumCoordinate + ivec2(1),
-      ivec2(heightResolution - 1)
+      ivec2(heightMapResolutionPerChunkAxis - 1)
     );
     vec2 sampleRatio = fract(samplePosition);
     float lowerLeft = readDecodedHeight(
@@ -211,7 +211,7 @@ export const grassVertexShader = /* glsl */ `
       mix(upperLeft, upperRight, sampleRatio.x),
       sampleRatio.y
     );
-    float sampleSpacing = chunkSize / float(heightResolution - 1);
+    float sampleSpacing = chunkSize / float(heightMapResolutionPerChunkAxis - 1);
     vec2 gradient = vec2(
       mix(lowerRight - lowerLeft, upperRight - upperLeft, sampleRatio.y),
       mix(upperLeft - lowerLeft, upperRight - lowerRight, sampleRatio.x)
@@ -277,19 +277,19 @@ export const grassVertexShader = /* glsl */ `
     uint anchorIndex = activeAnchorIndex / activeCellCount;
     uint localCellIndex = readActiveCellIndex(activeCellOffset + selectedCellIndex);
     uvec2 localCell = uvec2(
-      localCellIndex % maskResolution,
-      localCellIndex / maskResolution
+      localCellIndex % maskResolutionPerChunkAxis,
+      localCellIndex / maskResolutionPerChunkAxis
     );
     uvec2 chunkGrid = texelFetch(
-      storedChunkGridCoordinates,
+      storedChunkGridCoordinateLookup,
       linearTextureCoordinate(
         int(storedChunkIndex),
-        textureSize(storedChunkGridCoordinates, 0).x
+        textureSize(storedChunkGridCoordinateLookup, 0).x
       ),
       0
     ).rg;
-    uvec2 globalCell = chunkGrid * maskResolution + localCell;
-    uint cellHashValue = vegetationCellHash(seed, layerId, globalCell);
+    uvec2 globalCell = chunkGrid * maskResolutionPerChunkAxis + localCell;
+    uint cellHashValue = vegetationCellHash(seed, vegetationLayerId, globalCell);
     uint patternIndex = cellPatternValue(cellHashValue) % patternCount;
     vec2 normalizedAnchor = texelFetch(
       patternPositions,
@@ -312,7 +312,7 @@ export const grassVertexShader = /* glsl */ `
     vec2 elementOffset = vec2(cos(offsetAngle), sin(offsetAngle))
       * offsetRadius;
 
-    float cellSize = chunkSize / float(maskResolution);
+    float cellSize = chunkSize / float(maskResolutionPerChunkAxis);
     vec2 elementCellPosition = clamp(
       normalizedAnchor + elementOffset / cellSize,
       0.0,
@@ -320,10 +320,10 @@ export const grassVertexShader = /* glsl */ `
     );
     vec2 chunkUv = (
       vec2(localCell) + elementCellPosition
-    ) / float(maskResolution);
+    ) / float(maskResolutionPerChunkAxis);
     vec2 chunkMinimum = gridOrigin + vec2(chunkGrid) * chunkSize;
     vec2 anchorHorizontalPosition = chunkMinimum
-      + (vec2(localCell) + normalizedAnchor) / float(maskResolution) * chunkSize;
+      + (vec2(localCell) + normalizedAnchor) / float(maskResolutionPerChunkAxis) * chunkSize;
     vec2 horizontalPosition = chunkMinimum + chunkUv * chunkSize;
     vec2 heightRange = texelFetch(
       chunkHeightRanges,
@@ -573,7 +573,7 @@ export const grassVertexShader = /* glsl */ `
     // Sample incoming shadows at the root so elevated blade vertices do not
     // shift out of long, low-sun shadows cast onto the terrain.
     vec4 worldPosition = modelMatrix * vec4(basePosition, 1.0);
-    #include <vegetation_shadowmap_vertex>
+    #include <grass_shadowmap_vertex>
     gl_Position = projectionMatrix * viewPosition;
   }
 `;

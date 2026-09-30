@@ -22,24 +22,33 @@ import {
   createThreeVegetationSceneBinding,
   createWebGLGrassLayerModule,
   grassPreset,
+  WorkerVegFileDatasetCreationAdapter,
 } from 'three-vegetation-pipeline'
 
 const config = {
   configVersion: 3,
   layers: [grassPreset({
-    layerId: 0,
-    key: 'meadow-grass',
+    vegetationLayerId: 0,
+    vegetationLayerKey: 'meadow-grass',
     density: { renderTileSizeCells: 16 },
   })],
 } as const
+
+const datasetCreationAdapter = new WorkerVegFileDatasetCreationAdapter(
+  () => new Worker(
+    new URL('./vegetationDatasetCreation.worker.ts', import.meta.url),
+    { type: 'module' },
+  ),
+)
 
 const vegetation = await createThreeVegetationSceneBinding({
   renderer,
   scene,
   camera,
   vegetationParent: modelRoot,
-  source: vegetationBytes,
-  config,
+  vegFileBytes: vegetationBytes,
+  vegetationRuntimeConfig: config,
+  datasetCreationAdapter,
   layerModules: [createWebGLGrassLayerModule()],
 })
 
@@ -64,19 +73,21 @@ its preparation and renderer. Pass every required module through
 The generic runtime knows only layer identity, enablement, culling bounds and
 the module selection key. It does not import Grass or another concrete profile.
 
-## Worker preparation
+## Worker dataset creation
 
-Workers must register the same profile preparations explicitly:
+The runtime requires an explicit dataset-creation adapter. The official adapter
+runs VEGFILE parsing and profile preparation in a Worker. Its Worker entry must
+register the same profile preparations explicitly:
 
 ```ts
 import {
   grassLayerPreparation,
-  installVegetationPreparationWorker,
-  type VegetationPreparationWorkerScope,
+  installVegFileDatasetCreationWorkerEndpoint,
+  type VegFileDatasetCreationWorkerScope,
 } from 'three-vegetation-pipeline'
 
-installVegetationPreparationWorker(
-  self as unknown as VegetationPreparationWorkerScope,
+installVegFileDatasetCreationWorkerEndpoint(
+  self as unknown as VegFileDatasetCreationWorkerScope,
   { layerPreparations: [grassLayerPreparation] },
 )
 ```
@@ -91,14 +102,16 @@ cannot be transferred from the main thread.
 - `three-vegetation-pipeline/webgl`: GPU and rendering contracts
 - `three-vegetation-pipeline/profiles/grass`: Grass-specific APIs
 - `three-vegetation-pipeline/debug`: optional debug tools
-- `three-vegetation-pipeline/node`: Node.js compiler API
+- `three-vegetation-pipeline/pre-runtime-compiler-core`: source-independent compiler core
+- `three-vegetation-pipeline/node-pre-runtime-compiler-integration`: Node.js filesystem integration for the compiler core
 
 ## Architecture
 
-- [Offline pipeline](src/offline/offline-pipeline.md)
-- [Runtime pipeline](src/runtime/runtime-pipeline.md)
+- [Pre-runtime compiler core](src/pre-runtime-compiler-core/README.md)
+- [Node.js compiler integration](src/node-pre-runtime-compiler-integration/README.md)
+- [Runtime](src/runtime/README.md)
 - [Grass profile](src/layer-profiles/grass/grass-webgl-rendering/README.md)
-- [Optional debug tools](src/runtime/runtime-debug-visualization/README.md)
+- [Optional debug tools](src/runtime/debug-visualization/README.md)
 - [WebGL runtime example](examples/webgl-runtime.html)
 - [WebGL tile-submission benchmark](benchmarks/webgl-render-tile-submission.html)
 - [Completed first refactor pass](CLEANUP_REFACTOR_PLAN.md)

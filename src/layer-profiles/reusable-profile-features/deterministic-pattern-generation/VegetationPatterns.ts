@@ -1,4 +1,4 @@
-import type { VegetationPatternConfig } from '../../../runtime/runtime-dataset-preparation/configuration/VegetationRuntimeConfig.js';
+import type { VegetationPatternConfig } from '../../../runtime/dataset-preparation/configuration/VegetationRuntimeConfig.js';
 import {
   CELL_PATTERN_BITS,
   CELL_REFLECTION_BITS,
@@ -45,14 +45,14 @@ export function createVegetationPatterns(
 /** Deterministically assigns pattern, quarter-turn rotation and reflection to a cell. */
 export function selectCellPattern(
   seed: number,
-  layerId: number,
+  vegetationLayerId: number,
   globalCellX: number,
   globalCellY: number,
   patternConfig: VegetationPatternConfig,
 ): CellPatternSelection {
   validatePatternInput(seed, patternConfig.patternCount, patternConfig.anchorsPerCell);
   for (const [name, value] of [
-    ['layerId', layerId],
+    ['vegetationLayerId', vegetationLayerId],
     ['globalCellX', globalCellX],
     ['globalCellY', globalCellY],
   ] as const) {
@@ -62,7 +62,7 @@ export function selectCellPattern(
   }
 
   const selectionHash = hashVegetationCell(seed, {
-    layerId,
+    vegetationLayerId,
     globalCellX,
     globalCellY,
   });

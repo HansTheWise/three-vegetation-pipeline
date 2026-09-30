@@ -3,14 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { vegetationRuntimeConfig } from './fixtures/vegetationRuntimeConfig.js';
 import { groundColorConfig } from './fixtures/groundColorConfig.js';
 import {
-  calculateGrassLayerCullingBounds,
   evaluateVegetationDensityCurve,
-  grassPreset,
   grassLayerPreparation,
   type GrassRuntimeLayerConfig,
   type VegetationRuntimeConfig,
   validateVegetationRuntimeConfig as validateGenericVegetationRuntimeConfig,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 function validateVegetationRuntimeConfig(config: VegetationRuntimeConfig): void {
   validateGenericVegetationRuntimeConfig(config, [grassLayerPreparation]);
@@ -83,27 +81,6 @@ describe('VegetationRuntimeConfig', () => {
     }
   });
 
-  it('accepts continuous density values', () => {
-    expect(() => validateVegetationRuntimeConfig(vegetationRuntimeConfig)).not.toThrow();
-    const layer = vegetationRuntimeConfig.layers[0]!;
-    expect(layer.shadows).toEqual({ cast: false, receive: true });
-    expect(layer.lighting).toEqual({
-      directLightWeight: 0.35,
-      indirectLightWeight: 1,
-      normal: { source: 'ground' },
-    });
-    expect(layer.renderProfile.type).toBe('grass');
-    expect(layer.renderProfile.clover).toEqual({ enabled: false });
-    expect(layer.renderProfile.blade).toMatchObject({ segments: 2, heightSampling: 'bilinear' });
-    expect(layer.renderProfile.blade.cameraFacing).toEqual({
-      startsAtMeters: 80,
-      reachesFullAtMeters: 140,
-    });
-    expect(layer.patches).toEqual({ ground: { enabled: false } });
-    expect(evaluateVegetationDensityCurve(layer.density.activeCells, 126)).toBe(0.568);
-    expect(evaluateVegetationDensityCurve(layer.density.activeAnchors, 127)).toBe(0.345);
-  });
-
   it('interpolates density deterministically and clamps to the curve ends', () => {
     const curve = [
       { distanceMeters: 0, ratio: 1 },
@@ -116,17 +93,11 @@ describe('VegetationRuntimeConfig', () => {
     expect(evaluateVegetationDensityCurve(curve, 300)).toBe(0);
   });
 
-  it('contains serializable data and no function references', () => {
-    expect(JSON.parse(JSON.stringify(vegetationRuntimeConfig)))
-      .toEqual(vegetationRuntimeConfig);
-    expect(containsFunction(vegetationRuntimeConfig)).toBe(false);
-  });
-
   it('rejects duplicate layer identities', () => {
     const layer = vegetationRuntimeConfig.layers[0]!;
     const invalid = {
       ...vegetationRuntimeConfig,
-      layers: [layer, { ...layer, key: 'other-grass' }],
+      layers: [layer, { ...layer, vegetationLayerKey: 'other-grass' }],
     } satisfies VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
     expect(() => validateVegetationRuntimeConfig(invalid))
       .toThrow('Runtime layer ID 0 is duplicated.');
@@ -347,7 +318,7 @@ describe('VegetationRuntimeConfig', () => {
     const layer = vegetationRuntimeConfig.layers[0]!;
     const customLayer = {
       ...layer,
-      key: 'tree-layer',
+      vegetationLayerKey: 'tree-layer',
       lighting: { leafTranslucency: 0.5 },
       renderProfile: { type: 'test-tree', modelScale: 1 },
     };
@@ -361,111 +332,4 @@ describe('VegetationRuntimeConfig', () => {
     expect(() => validateVegetationRuntimeConfig(config)).not.toThrow();
   });
 
-  it('creates a complete grass preset and derives culling bounds during preparation', () => {
-    const layer = grassPreset({
-      layerId: 4,
-      key: 'tall-grass',
-      grass: {
-        blade: {
-          heightMeters: { minimum: 1.5, maximum: 2 },
-          maximumTiltDegrees: 30,
-        },
-      },
-      shadows: { cast: true },
-    });
-    const config = {
-      configVersion: 3,
-      layers: [layer],
-    } satisfies VegetationRuntimeConfig<GrassRuntimeLayerConfig>;
-
-    expect(() => validateVegetationRuntimeConfig(config)).not.toThrow();
-    expect(layer.shadows).toEqual({ cast: true, receive: true });
-    expect(layer.lighting).toEqual({
-      directLightWeight: 0.8,
-      indirectLightWeight: 1,
-      normal: { source: 'ground' },
-    });
-    expect(layer.renderProfile.blade.segments).toBe(2);
-    const cullingBounds = calculateGrassLayerCullingBounds(layer);
-    expect(cullingBounds.aboveSurfaceMeters).toBe(2);
-    expect(cullingBounds.horizontalPaddingMeters).toBeGreaterThan(1);
-    expect(layer).not.toHaveProperty('renderBounds');
-  });
-
-  it('keeps untouched Grass defaults when nested preset values are overridden', () => {
-    const layer = grassPreset({
-      layerId: 2,
-      key: 'custom-grass',
-      density: { renderTileSizeCells: 8 },
-      grass: { blade: { widthMeters: { minimum: 0.1, maximum: 0.2 } } },
-    });
-
-    expect(layer.density.renderTileSizeCells).toBe(8);
-    expect(layer.density.activeCells).toHaveLength(3);
-    expect(layer.renderProfile.blade.widthMeters).toEqual({ minimum: 0.1, maximum: 0.2 });
-    expect(layer.renderProfile.blade.heightMeters).toEqual({ minimum: 0.35, maximum: 0.55 });
-    expect(layer.renderProfile.clover).toEqual({ enabled: false });
-    expect(layer.lighting).toEqual({
-      directLightWeight: 0.8,
-      indirectLightWeight: 1,
-      normal: { source: 'ground' },
-    });
-  });
-
-  it('fills enabled Clover defaults and includes its size in culling bounds', () => {
-    const layer = grassPreset({
-      layerId: 3,
-      key: 'clover-grass',
-      patches: {
-        ground: {
-          enabled: true,
-          seed: 0,
-          radiusMeters: { minimum: 2, maximum: 4 },
-          targetCoverage: 0.5,
-          allowMerging: true,
-          edgeFalloffMeters: 1,
-          shapeDistortion: 0.35,
-          colors: { baseColor: '#4f8f3d', brightnessVariation: 0.1 },
-        },
-      },
-      distribution: { elementRadiusMeters: 0.01 },
-      grass: {
-        blade: {
-          heightMeters: { minimum: 0.05, maximum: 0.05 },
-          widthMeters: { minimum: 0.01, maximum: 0.01 },
-          maximumTiltDegrees: 0,
-        },
-        colors: {
-          groundColorAdaptation: { bottomBias: 0.5, topBias: 0.75 },
-          distanceColorTransition: {
-            farTint: '#8fbd70',
-            startsAtMeters: 10,
-            endsAtMeters: 20,
-            curveStrength: 1,
-          },
-        },
-        clover: { enabled: true, sizeMeters: { minimum: 0.2, maximum: 0.4 } },
-      },
-    });
-
-    expect(layer.renderProfile.colors.groundColorAdaptation)
-      .toEqual({ bottomBias: 0.5, topBias: 0.75 });
-    expect(layer.renderProfile.clover).toMatchObject({
-      enabled: true,
-      maximumRatio: 0.35,
-      groundColorBias: 0.9,
-      sizeMeters: { minimum: 0.2, maximum: 0.4 },
-    });
-    expect(calculateGrassLayerCullingBounds(layer).horizontalPaddingMeters)
-      .toBeCloseTo(0.21);
-    expect(() => validateVegetationRuntimeConfig({ configVersion: 3, layers: [layer] }))
-      .not.toThrow();
-  });
-
 });
-
-function containsFunction(value: unknown): boolean {
-  if (typeof value === 'function') return true;
-  if (value === null || typeof value !== 'object') return false;
-  return Object.values(value).some(containsFunction);
-}

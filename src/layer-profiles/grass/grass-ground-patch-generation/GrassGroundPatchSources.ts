@@ -1,4 +1,4 @@
-import type { ParsedVegFile, ParsedVegLayer } from '../../../runtime/vegfile-v2-parsing/ParsedVegetationFile.js';
+import type { ParsedVegFile, ParsedVegLayer } from '../../../shared/vegfile-parsing/ParsedVegFileTypes.js';
 import type { PatchFieldGeometry } from './GrassGroundPatchFieldGeometry.js';
 import { isVegetationAllowedAtMeters } from './GrassGroundPatchFieldGeometry.js';
 import {

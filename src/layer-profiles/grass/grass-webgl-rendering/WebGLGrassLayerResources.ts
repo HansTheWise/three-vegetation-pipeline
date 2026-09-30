@@ -10,7 +10,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 
-import type { VegetationRuntimeLayer } from '../../../runtime/runtime-dataset-preparation/dataset-construction/VegetationRuntimeDataset.js';
+import type { VegetationLayer } from '../../../runtime/dataset-preparation/dataset-construction/PreparedVegetationDataset.js';
 import type { VegetationPatternSet } from '../../reusable-profile-features/deterministic-pattern-generation/VegetationPatternTypes.js';
 import {
   requireGrassRuntimeLayer,
@@ -41,13 +41,13 @@ export type WebGLGrassCloverTextureResource = Readonly<{
 
 /** Owns immutable GPU resources used only by one Grass layer renderer. */
 export class WebGLGrassLayerResources {
-  readonly layerId: number;
+  readonly vegetationLayerId: number;
   readonly pattern: WebGLGrassPatternResource;
   readonly groundPatchField: WebGLGrassGroundPatchFieldResource | undefined;
   readonly cloverTexture: WebGLGrassCloverTextureResource | undefined;
   readonly #ownedTextures: readonly DataTexture[];
 
-  constructor(renderer: WebGLRenderer, layer: VegetationRuntimeLayer) {
+  constructor(renderer: WebGLRenderer, layer: VegetationLayer) {
     const grassLayer = requireGrassRuntimeLayer(layer);
     const profile = grassLayer.config.renderProfile;
     const field = grassLayer.preparedProfileData.groundPatchField;
@@ -56,30 +56,30 @@ export class WebGLGrassLayerResources {
       renderer,
       patterns.anchorsPerPattern,
       patterns.patternCount,
-      `vegetation/layer-${layer.layerId}-patterns`,
+      `vegetation/layer-${layer.vegetationLayerId}-patterns`,
     );
     validateTextureDimensions(
       renderer,
       profile.colors.bottomColors.length,
       1,
-      `vegetation/layer-${layer.layerId}-bottom-colors`,
+      `vegetation/layer-${layer.vegetationLayerId}-bottom-colors`,
     );
     validateTextureDimensions(
       renderer,
       profile.colors.topColors.length,
       1,
-      `vegetation/layer-${layer.layerId}-top-colors`,
+      `vegetation/layer-${layer.vegetationLayerId}-top-colors`,
     );
     if (field) {
       validateTextureDimensions(
         renderer,
         field.width,
         field.height,
-        `vegetation/layer-${layer.layerId}-patch-field`,
+        `vegetation/layer-${layer.vegetationLayerId}-patch-field`,
       );
     }
 
-    this.layerId = layer.layerId;
+    this.vegetationLayerId = layer.vegetationLayerId;
     const ownedTextures: DataTexture[] = [];
     try {
       this.pattern = {
@@ -93,19 +93,19 @@ export class WebGLGrassLayerResources {
           patterns.patternCount,
           RGFormat,
           FloatType,
-          `vegetation/layer-${layer.layerId}-patterns`,
+          `vegetation/layer-${layer.vegetationLayerId}-patterns`,
           ownedTextures,
         ),
         bottomColors: createColorPaletteResource(
           renderer,
           profile.colors.bottomColors,
-          `vegetation/layer-${layer.layerId}-bottom-colors`,
+          `vegetation/layer-${layer.vegetationLayerId}-bottom-colors`,
           ownedTextures,
         ),
         topColors: createColorPaletteResource(
           renderer,
           profile.colors.topColors,
-          `vegetation/layer-${layer.layerId}-top-colors`,
+          `vegetation/layer-${layer.vegetationLayerId}-top-colors`,
           ownedTextures,
         ),
       };
@@ -113,7 +113,7 @@ export class WebGLGrassLayerResources {
         ? { texture: createGroundPatchFieldTexture(renderer, grassLayer, ownedTextures) }
         : undefined;
       this.cloverTexture = profile.clover?.enabled
-        ? { texture: createCloverTexture(renderer, layer.layerId, ownedTextures) }
+        ? { texture: createCloverTexture(renderer, layer.vegetationLayerId, ownedTextures) }
         : undefined;
     } catch (error) {
       disposeTextures(ownedTextures);
@@ -171,7 +171,7 @@ function createGroundPatchFieldTexture(
     UnsignedByteType,
   );
   ownedTextures.push(texture);
-  texture.name = `vegetation/layer-${layer.layerId}-patch-field`;
+  texture.name = `vegetation/layer-${layer.vegetationLayerId}-patch-field`;
   texture.magFilter = LinearFilter;
   texture.minFilter = LinearMipmapLinearFilter;
   texture.generateMipmaps = true;
@@ -190,7 +190,7 @@ const CLOVER_LEAF_DIRECTIONS = [
 
 function createCloverTexture(
   renderer: WebGLRenderer,
-  layerId: number,
+  vegetationLayerId: number,
   ownedTextures: DataTexture[],
 ): DataTexture {
   const texture = new DataTexture(
@@ -201,7 +201,7 @@ function createCloverTexture(
     UnsignedByteType,
   );
   ownedTextures.push(texture);
-  texture.name = `vegetation/layer-${layerId}-clover`;
+  texture.name = `vegetation/layer-${vegetationLayerId}-clover`;
   texture.magFilter = LinearFilter;
   texture.minFilter = LinearMipmapLinearFilter;
   texture.generateMipmaps = true;

@@ -1,0 +1,133 @@
+import {
+  BufferGeometry,
+  Float32BufferAttribute,
+  Group,
+  InstancedMesh,
+  Mesh,
+  MeshBasicMaterial,
+  Uint16BufferAttribute,
+} from 'three';
+import { describe, expect, it } from 'vitest';
+import { GlbArrayBufferModelReader } from '../src/pre-runtime-compiler-core/glb-model-reading/GlbArrayBufferModelReader.js';
+import { createMinimalGlb } from './fixtures/createMinimalGlb.js';
+
+describe('GlbArrayBufferModelReader', () => {
+  it('returns vertices relative to the GLB root', () => {
+    const root = new Group();
+    root.name = 'world';
+    root.position.set(100, 200, 300);
+
+    const surface = new Group();
+    surface.name = 'surface';
+    surface.position.set(10, 20, 30);
+    root.add(surface);
+
+    const mesh = createTriangleMesh('ground', 'meadow');
+    mesh.position.set(1, 2, 3);
+    surface.add(mesh);
+
+    const result = new GlbArrayBufferModelReader().readModelDataFromRoot(root);
+
+    expect(result.primitives).toHaveLength(1);
+    expect([...result.primitives[0]!.modelLocalVertexPositions]).toEqual([
+      11, 22, 33,
+      12, 22, 33,
+      11, 23, 33,
+    ]);
+    expect(result.primitives[0]!.hierarchyNodeNames).toEqual([
+      'world',
+      'surface',
+      'ground',
+    ]);
+    expect(result.primitives[0]!.materialName).toBe('meadow');
+    expect(result.modelLocalBounds).toEqual({
+      minX: 11,
+      minY: 22,
+      minZ: 33,
+      maxX: 12,
+      maxY: 23,
+      maxZ: 33,
+    });
+  });
+
+  it('keeps material groups as separate primitives', () => {
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new Float32BufferAttribute([
+      0, 0, 0,
+      1, 0, 0,
+      1, 1, 0,
+      0, 1, 0,
+    ], 3));
+    geometry.setIndex(new Uint16BufferAttribute([0, 1, 2, 0, 2, 3], 1));
+    geometry.addGroup(0, 3, 0);
+    geometry.addGroup(3, 3, 1);
+
+    const grass = new MeshBasicMaterial();
+    grass.name = 'meadow';
+    const path = new MeshBasicMaterial();
+    path.name = 'path';
+    const mesh = new Mesh(geometry, [grass, path]);
+    mesh.name = 'surface';
+
+    const result = new GlbArrayBufferModelReader().readModelDataFromRoot(mesh);
+
+    expect(result.primitives.map((primitive) => primitive.materialName)).toEqual([
+      'meadow',
+      'path',
+    ]);
+    expect([...result.primitives[0]!.triangleVertexIndices]).toEqual([0, 1, 2]);
+    expect([...result.primitives[1]!.triangleVertexIndices]).toEqual([0, 2, 3]);
+    expect(result.primitives[0]!.modelLocalVertexPositions)
+      .toBe(result.primitives[1]!.modelLocalVertexPositions);
+  });
+
+  it('skips invisible objects unless explicitly included', () => {
+    const root = new Group();
+    const hidden = createTriangleMesh('hidden', 'meadow');
+    hidden.visible = false;
+    root.add(hidden);
+
+    expect(new GlbArrayBufferModelReader()
+      .readModelDataFromRoot(root).primitives).toHaveLength(0);
+    expect(new GlbArrayBufferModelReader({ includeInvisibleObjects: true })
+      .readModelDataFromRoot(root).primitives).toHaveLength(1);
+  });
+
+  it('parses a GLB ArrayBuffer through GLTFLoader', async () => {
+    const result = await new GlbArrayBufferModelReader()
+      .readModelData(createMinimalGlb());
+
+    expect(result.primitives).toHaveLength(1);
+    expect(result.primitives[0]!.hierarchyNodeNames).toEqual(['terrain']);
+    expect(result.primitives[0]!.materialName).toBe('meadow');
+    expect([...result.primitives[0]!.triangleVertexIndices]).toEqual([0, 1, 2]);
+    expect([...result.primitives[0]!.modelLocalVertexPositions]).toEqual([
+      10, 20, 30,
+      11, 20, 30,
+      10, 21, 30,
+    ]);
+  });
+
+  it('rejects instanced meshes instead of silently ignoring instance transforms', () => {
+    const source = createTriangleMesh('trees', 'leaves');
+    const instanced = new InstancedMesh(source.geometry, source.material, 2);
+    instanced.name = 'trees';
+
+    expect(() => new GlbArrayBufferModelReader().readModelDataFromRoot(instanced))
+      .toThrow('Instanced mesh "trees" is not supported.');
+  });
+});
+
+function createTriangleMesh(meshName: string, materialName: string): Mesh {
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute([
+    0, 0, 0,
+    1, 0, 0,
+    0, 1, 0,
+  ], 3));
+  const material = new MeshBasicMaterial();
+  material.name = materialName;
+  const mesh = new Mesh(geometry, material);
+  mesh.name = meshName;
+  return mesh;
+}

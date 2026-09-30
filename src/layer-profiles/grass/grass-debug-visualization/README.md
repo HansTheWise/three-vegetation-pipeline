@@ -17,7 +17,6 @@ by this debug view; it is not part of shared runtime resources.
 import { WebGLGrassDebug } from 'three-vegetation-pipeline/debug';
 
 const grassDebug = new WebGLGrassDebug({
-  sharedResources,
   grassRenderer,
   camera,
   scene,
@@ -32,6 +31,6 @@ renderer.render(scene, camera);
 grassDebug.endGpuFrameMeasurement();
 ```
 
-The host must call `dispose()` before disposing the Grass renderer or shared
-WebGL resources. The German panel labels are presentation text; module names,
-exports and documentation remain English.
+The host must call `dispose()` before disposing the Grass renderer. The German
+panel labels are presentation text; module names, exports and documentation
+remain English.

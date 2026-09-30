@@ -1,15 +1,15 @@
-import type { Axis } from '../../../offline/offline-compilation-orchestration/VegetationCompilerConfig.js';
-import { FrustumPlanes } from '../../../runtime/stored-chunk-visibility/frustum-visibility-evaluation/FrustumPlanes.js';
-import type { ClipSpaceDepthRange, Matrix4Elements } from '../../../runtime/stored-chunk-visibility/frustum-visibility-evaluation/StoredChunkVisibilityTypes.js';
+import type { ModelAxis } from '../../../shared/vegfile-format/VegetationFileTypes.js';
+import { FrustumPlanes } from '../../../runtime/chunk-visibility-management/frustum-visibility-evaluation/FrustumPlanes.js';
+import type { ClipSpaceDepthRange, Matrix4Elements } from '../../../runtime/chunk-visibility-management/frustum-visibility-evaluation/StoredChunkVisibilityTypes.js';
 import { evaluateVegetationDensityCurve } from './evaluateVegetationDensityCurve.js';
-import type { VegetationRuntimeLayerConfig } from '../../../runtime/runtime-dataset-preparation/configuration/VegetationRuntimeConfig.js';
-import type { VegetationRuntimeDataset, VegetationRuntimeLayer } from '../../../runtime/runtime-dataset-preparation/dataset-construction/VegetationRuntimeDataset.js';
+import type { VegetationRuntimeLayerConfig } from '../../../runtime/dataset-preparation/configuration/VegetationRuntimeConfig.js';
+import type { PreparedVegetationDataset, VegetationLayer } from '../../../runtime/dataset-preparation/dataset-construction/PreparedVegetationDataset.js';
 import {
   MAXIMUM_WEBGL_INSTANCE_COUNT,
   validateWebGLInstanceCount,
-} from '../../../runtime/webgl-vegetation-resource-management/WebGLResourceLimits.js';
+} from './WebGLInstanceCount.js';
 import { hashVegetationCell, mixVegetationHash } from '../deterministic-vegetation-identity/VegetationIds.js';
-import type { ParsedVegFile, ParsedVegLayer } from '../../../runtime/vegfile-v2-parsing/ParsedVegetationFile.js';
+import type { ParsedVegFile, ParsedVegLayer } from '../../../shared/vegfile-parsing/ParsedVegFileTypes.js';
 import type {
   ModelPosition,
   VegetationActiveCellData,
@@ -40,10 +40,10 @@ export class VegetationRenderTileDensity {
   frustumTestedTileCount = 0;
   frustumCulledTileCount = 0;
 
-  readonly #dataset: VegetationRuntimeDataset;
-  readonly #layer: VegetationRuntimeLayer;
+  readonly #dataset: PreparedVegetationDataset;
+  readonly #layer: VegetationLayer;
   readonly #densityConfig: VegetationRenderTileDensityLayerConfig;
-  readonly #storedChunkGridCoordinates: Uint32Array;
+  readonly #storedChunkGridCoordinateLookup: Uint32Array;
   readonly #activeCellOffsets: Uint32Array;
   readonly #activeCellCounts: Uint32Array;
   readonly #pendingRenderTileRecords: Uint32Array;
@@ -53,14 +53,14 @@ export class VegetationRenderTileDensity {
   readonly #tileFrustum = new FrustumPlanes();
 
   constructor(
-    dataset: VegetationRuntimeDataset,
-    layerId: number,
+    dataset: PreparedVegetationDataset,
+    vegetationLayerId: number,
     preparedCells?: VegetationActiveCellData,
     /** Internal comparison seam; normal runtime construction uses power-of-two buckets. */
     candidateBucketCapacities?: Uint32Array,
   ) {
-    const layer = dataset.preparedLayers.find((candidate) => candidate.layerId === layerId);
-    if (!layer) throw new Error(`Prepared runtime vegetation layer ${layerId} does not exist.`);
+    const layer = dataset.preparedLayers.find((candidate) => candidate.vegetationLayerId === vegetationLayerId);
+    if (!layer) throw new Error(`Prepared runtime vegetation layer ${vegetationLayerId} does not exist.`);
     const densityConfig = requireRenderTileDensityLayerConfig(layer.config);
 
     this.#dataset = dataset;
@@ -68,14 +68,14 @@ export class VegetationRenderTileDensity {
     this.#densityConfig = densityConfig;
     this.renderTileSizeCells = Math.min(
       densityConfig.density.renderTileSizeCells,
-      layer.fileLayer.maskResolution,
+      layer.fileLayer.maskResolutionPerChunkAxis,
     );
     this.tilesPerChunkAxis = Math.ceil(
-      layer.fileLayer.maskResolution / this.renderTileSizeCells,
+      layer.fileLayer.maskResolutionPerChunkAxis / this.renderTileSizeCells,
     );
     const tilesPerChunk = this.tilesPerChunkAxis ** 2;
     this.tileCapacity = dataset.file.header.storedChunkCount * tilesPerChunk;
-    this.#storedChunkGridCoordinates = dataset.storedChunkGridCoordinates;
+    this.#storedChunkGridCoordinateLookup = dataset.storedChunkGridCoordinateLookup;
 
     const maximumCellsPerTile = this.renderTileSizeCells ** 2;
     const maximumAnchorsPerTile = maximumCellsPerTile
@@ -89,8 +89,8 @@ export class VegetationRenderTileDensity {
     validateWebGLInstanceCount(this.maximumCandidatesPerTile, 'Render-tile Element budget');
 
     const activeCells = preparedCells
-      ?? createVegetationActiveCellData(dataset, layerId);
-    if (activeCells.layerId !== layerId
+      ?? createVegetationActiveCellData(dataset, vegetationLayerId);
+    if (activeCells.vegetationLayerId !== vegetationLayerId
       || activeCells.renderTileSizeCells !== this.renderTileSizeCells
       || activeCells.counts.length !== this.tileCapacity
       || activeCells.offsets.length !== this.tileCapacity) {
@@ -168,7 +168,7 @@ export class VegetationRenderTileDensity {
             tileX,
             tileY,
             this.renderTileSizeCells,
-            this.#storedChunkGridCoordinates,
+            this.#storedChunkGridCoordinateLookup,
           )) {
             this.frustumCulledTileCount += 1;
             continue;
@@ -182,7 +182,7 @@ export class VegetationRenderTileDensity {
             tileY,
             this.renderTileSizeCells,
             cameraPositionModel,
-            this.#storedChunkGridCoordinates,
+            this.#storedChunkGridCoordinateLookup,
           );
           if (distanceMeters >= maximumDistance) continue;
 
@@ -258,17 +258,17 @@ export class VegetationRenderTileDensity {
 
 /** Builds static admission once; may run in a worker before WebGL initialization. */
 export function createVegetationActiveCellData(
-  dataset: VegetationRuntimeDataset,
-  layerId: number,
+  dataset: PreparedVegetationDataset,
+  vegetationLayerId: number,
 ): VegetationActiveCellData {
-  const layer = dataset.preparedLayers.find((candidate) => candidate.layerId === layerId);
-  if (!layer) throw new Error(`Prepared runtime vegetation layer ${layerId} does not exist.`);
+  const layer = dataset.preparedLayers.find((candidate) => candidate.vegetationLayerId === vegetationLayerId);
+  if (!layer) throw new Error(`Prepared runtime vegetation layer ${vegetationLayerId} does not exist.`);
   const config = requireRenderTileDensityLayerConfig(layer.config);
   return createVegetationActiveCellDataForLayer(
     dataset.file,
     layer.fileLayer,
-    dataset.storedChunkGridCoordinates,
-    layerId,
+    dataset.storedChunkGridCoordinateLookup,
+    vegetationLayerId,
     config.density.renderTileSizeCells,
   );
 }
@@ -280,7 +280,7 @@ function requireRenderTileDensityLayerConfig(
     & Partial<VegetationRenderTileDensityLayerConfig>;
   if (!candidate.density || !candidate.distribution || !candidate.visibility) {
     throw new Error(
-      `Runtime layer "${config.key}" does not provide render-tile density configuration.`,
+      `Runtime layer "${config.vegetationLayerKey}" does not provide render-tile density configuration.`,
     );
   }
   return candidate as VegetationRuntimeLayerConfig & VegetationRenderTileDensityLayerConfig;
@@ -289,27 +289,27 @@ function requireRenderTileDensityLayerConfig(
 export function createVegetationActiveCellDataForLayer(
   file: ParsedVegFile,
   fileLayer: ParsedVegLayer,
-  storedChunkGridCoordinates: Uint32Array,
-  layerId: number,
+  storedChunkGridCoordinateLookup: Uint32Array,
+  vegetationLayerId: number,
   configuredTileSizeCells: number,
 ): VegetationActiveCellData {
-  const tileSizeCells = Math.min(configuredTileSizeCells, fileLayer.maskResolution);
-  const tilesPerChunkAxis = Math.ceil(fileLayer.maskResolution / tileSizeCells);
+  const tileSizeCells = Math.min(configuredTileSizeCells, fileLayer.maskResolutionPerChunkAxis);
+  const tilesPerChunkAxis = Math.ceil(fileLayer.maskResolutionPerChunkAxis / tileSizeCells);
   const storedChunkCount = file.header.storedChunkCount;
   const tilesPerChunk = tilesPerChunkAxis ** 2;
   const tileCapacity = storedChunkCount * tilesPerChunk;
   const counts = new Uint32Array(tileCapacity);
-  const { maskResolution, maskWordsPerChunk } = fileLayer;
+  const { maskResolutionPerChunkAxis, maskWordsPerChunk } = fileLayer;
   const activeMaskData = fileLayer.maskData;
 
   for (let storedChunkIndex = 0; storedChunkIndex < storedChunkCount; storedChunkIndex += 1) {
     const chunkMaskOffset = storedChunkIndex * maskWordsPerChunk;
-    for (let cellY = 0; cellY < maskResolution; cellY += 1) {
-      for (let cellX = 0; cellX < maskResolution; cellX += 1) {
+    for (let cellY = 0; cellY < maskResolutionPerChunkAxis; cellY += 1) {
+      for (let cellX = 0; cellX < maskResolutionPerChunkAxis; cellX += 1) {
         if (!isMaskCellActive(
           activeMaskData,
           chunkMaskOffset,
-          maskResolution,
+          maskResolutionPerChunkAxis,
           cellX,
           cellY,
         )) continue;
@@ -333,8 +333,8 @@ export function createVegetationActiveCellDataForLayer(
   const writeOffsets = offsets.slice();
   for (let storedChunkIndex = 0; storedChunkIndex < storedChunkCount; storedChunkIndex += 1) {
     const chunkCoordinateOffset = storedChunkIndex * 2;
-    const chunkGridX = storedChunkGridCoordinates[chunkCoordinateOffset]!;
-    const chunkGridY = storedChunkGridCoordinates[chunkCoordinateOffset + 1]!;
+    const chunkGridX = storedChunkGridCoordinateLookup[chunkCoordinateOffset]!;
+    const chunkGridY = storedChunkGridCoordinateLookup[chunkCoordinateOffset + 1]!;
     const chunkMaskOffset = storedChunkIndex * maskWordsPerChunk;
     for (let tileY = 0; tileY < tilesPerChunkAxis; tileY += 1) {
       for (let tileX = 0; tileX < tilesPerChunkAxis; tileX += 1) {
@@ -342,10 +342,10 @@ export function createVegetationActiveCellDataForLayer(
           + tileY * tilesPerChunkAxis
           + tileX;
         if (counts[tileIndex] === 0) continue;
-        const globalTileCellX = chunkGridX * maskResolution + tileX * tileSizeCells;
-        const globalTileCellY = chunkGridY * maskResolution + tileY * tileSizeCells;
-        let randomState = hashVegetationCell(file.header.seed, {
-          layerId,
+        const globalTileCellX = chunkGridX * maskResolutionPerChunkAxis + tileX * tileSizeCells;
+        const globalTileCellY = chunkGridY * maskResolutionPerChunkAxis + tileY * tileSizeCells;
+        let randomState = hashVegetationCell(file.header.vegetationSeed, {
+          vegetationLayerId,
           globalCellX: globalTileCellX,
           globalCellY: globalTileCellY,
         });
@@ -354,15 +354,15 @@ export function createVegetationActiveCellDataForLayer(
           selectedCellIndex += 1) {
           const cellX = tileX * tileSizeCells + selectedCellIndex % tileSizeCells;
           const cellY = tileY * tileSizeCells + Math.floor(selectedCellIndex / tileSizeCells);
-          if (cellX >= maskResolution || cellY >= maskResolution) continue;
+          if (cellX >= maskResolutionPerChunkAxis || cellY >= maskResolutionPerChunkAxis) continue;
           if (!isMaskCellActive(
             activeMaskData,
             chunkMaskOffset,
-            maskResolution,
+            maskResolutionPerChunkAxis,
             cellX,
             cellY,
           )) continue;
-          indices[writeOffsets[tileIndex]!] = cellY * maskResolution + cellX;
+          indices[writeOffsets[tileIndex]!] = cellY * maskResolutionPerChunkAxis + cellX;
           writeOffsets[tileIndex] = writeOffsets[tileIndex]! + 1;
         }
         // Fisher-Yates once during preparation; runtime coverage uses a stable prefix.
@@ -379,17 +379,17 @@ export function createVegetationActiveCellDataForLayer(
       }
     }
   }
-  return { layerId, renderTileSizeCells: tileSizeCells, indices, offsets, counts };
+  return { vegetationLayerId, renderTileSizeCells: tileSizeCells, indices, offsets, counts };
 }
 
 function isMaskCellActive(
   maskData: Uint32Array,
   chunkMaskOffset: number,
-  maskResolution: number,
+  maskResolutionPerChunkAxis: number,
   cellX: number,
   cellY: number,
 ): boolean {
-  const cellIndex = cellY * maskResolution + cellX;
+  const cellIndex = cellY * maskResolutionPerChunkAxis + cellX;
   const word = maskData[chunkMaskOffset + Math.floor(cellIndex / 32)]!;
   return ((word >>> (cellIndex % 32)) & 1) === 1;
 }
@@ -454,19 +454,19 @@ function findCandidateCapacityBucketIndex(
 }
 
 function minimumDistanceToTileMeters(
-  dataset: VegetationRuntimeDataset,
-  layer: VegetationRuntimeLayer,
+  dataset: PreparedVegetationDataset,
+  layer: VegetationLayer,
   storedChunkIndex: number,
   tileX: number,
   tileY: number,
   tileSizeCells: number,
   camera: ModelPosition,
-  storedChunkGridCoordinates: Uint32Array,
+  storedChunkGridCoordinateLookup: Uint32Array,
 ): number {
   const { header, chunkHeightRanges } = dataset.file;
   const chunkCoordinateOffset = storedChunkIndex * 2;
-  const chunkGridX = storedChunkGridCoordinates[chunkCoordinateOffset]!;
-  const chunkGridY = storedChunkGridCoordinates[chunkCoordinateOffset + 1]!;
+  const chunkGridX = storedChunkGridCoordinateLookup[chunkCoordinateOffset]!;
+  const chunkGridY = storedChunkGridCoordinateLookup[chunkCoordinateOffset + 1]!;
   const tileSizeUnits = tileSizeCells * layer.cellSizeModelUnits;
   const minimumHorizontalA = header.grid.originX
     + chunkGridX * header.grid.chunkSize
@@ -501,18 +501,18 @@ function minimumDistanceToTileMeters(
 
 function isRenderTileInFrustum(
   frustum: FrustumPlanes,
-  dataset: VegetationRuntimeDataset,
-  layer: VegetationRuntimeLayer,
+  dataset: PreparedVegetationDataset,
+  layer: VegetationLayer,
   storedChunkIndex: number,
   tileX: number,
   tileY: number,
   tileSizeCells: number,
-  storedChunkGridCoordinates: Uint32Array,
+  storedChunkGridCoordinateLookup: Uint32Array,
 ): boolean {
   const { header, chunkHeightRanges } = dataset.file;
   const chunkCoordinateOffset = storedChunkIndex * 2;
-  const chunkGridX = storedChunkGridCoordinates[chunkCoordinateOffset]!;
-  const chunkGridY = storedChunkGridCoordinates[chunkCoordinateOffset + 1]!;
+  const chunkGridX = storedChunkGridCoordinateLookup[chunkCoordinateOffset]!;
+  const chunkGridY = storedChunkGridCoordinateLookup[chunkCoordinateOffset + 1]!;
   const tileSizeUnits = tileSizeCells * layer.cellSizeModelUnits;
   const horizontalPaddingUnits = layer.cullingBounds.horizontalPaddingMeters
     * header.coordinateSystem.unitsPerMeter;
@@ -553,7 +553,7 @@ function isRenderTileInFrustum(
   return frustum.intersects(minimumX, minimumY, minimumZ, maximumX, maximumY, maximumZ);
 }
 
-function axisIndex(axis: Axis): number {
+function axisIndex(axis: ModelAxis): number {
   if (axis === 'x') return 0;
   if (axis === 'y') return 1;
   return 2;

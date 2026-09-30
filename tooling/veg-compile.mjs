@@ -2,7 +2,12 @@
 
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
-import { createVegFile } from '../dist/offline/offline-compilation-orchestration/NodeVegCompiler.js';
+import {
+  generateNodeVegFile,
+} from '../dist/node-pre-runtime-compiler-integration/index.js';
+import {
+  formatVegFileBuildFingerprint,
+} from '../dist/pre-runtime-compiler-core/VegFileBuildFingerprint.js';
 
 const HELP = `Usage:
   veg-compile --input <model.glb> --config <config.js|config.ts> --output <asset.veg>
@@ -24,10 +29,10 @@ try {
     if (!configModule.default || typeof configModule.default !== 'object') {
       throw new Error('Config module must provide the pipeline config as its default export.');
     }
-    const result = await createVegFile({
-      inputPath: requiredArgument(argumentsByName, 'input'),
-      outputPath: requiredArgument(argumentsByName, 'output'),
-      config: configModule.default,
+    const result = await generateNodeVegFile({
+      sourceGlbFilePath: requiredArgument(argumentsByName, 'input'),
+      outputVegFilePath: requiredArgument(argumentsByName, 'output'),
+      vegetationCompilerConfig: configModule.default,
     });
     printReport(result);
   }
@@ -71,20 +76,12 @@ function requiredArgument(argumentsByName, name) {
 }
 
 function printReport(result) {
-  const report = result.report;
   const lines = [
     'VEGFILE created successfully',
-    `Input: ${result.inputPath}`,
-    `Output: ${result.outputPath}`,
-    `Included meshes / triangles: ${report.includedMeshCount} / ${report.includedTriangleCount}`,
-    `Chunks: ${report.storedChunkCount} stored of ${report.possibleChunkCount}`,
-    `Heightmap: ${report.heightResolution} x ${report.heightResolution}, ${report.heightValueBits} bit`,
-    `Seed: ${report.seed}`,
-    `Build fingerprint: ${report.buildFingerprint}`,
-    `File size: ${report.fileByteLength} bytes`,
-    ...report.layers.map((layer) => (
-      `Layer ${layer.id} (${layer.key}): ${layer.maskResolution} x ${layer.maskResolution}, ${layer.activeCellCount} active cells`
-    )),
+    `Input: ${result.sourceGlbFilePath}`,
+    `Output: ${result.outputVegFilePath}`,
+    `Build fingerprint: ${formatVegFileBuildFingerprint(result.buildFingerprint)}`,
+    `File size: ${result.vegFileBytes.byteLength} bytes`,
   ];
   process.stdout.write(`${lines.join('\n')}\n`);
 }

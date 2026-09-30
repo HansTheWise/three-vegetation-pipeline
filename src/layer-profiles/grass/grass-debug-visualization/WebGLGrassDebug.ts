@@ -1,11 +1,10 @@
 import { PerspectiveCamera, Vector2, Vector3, type Object3D } from 'three';
 
-import { CameraFrustumVisualization } from '../../../runtime/runtime-debug-visualization/CameraFrustumVisualization.js';
-import { createStoredChunkCullingBoundsOutlines } from '../../../runtime/runtime-debug-visualization/createStoredChunkCullingBoundsOutlines.js';
-import { FirstPersonCameraController } from '../../../runtime/runtime-debug-visualization/FirstPersonCameraController.js';
-import { WebGLGpuFrameTimer } from '../../../runtime/runtime-debug-visualization/WebGLGpuFrameTimer.js';
-import { createRuntimeStoredChunkCullingBounds } from '../../../runtime/stored-chunk-visibility/stored-chunk-culling-bounds/StoredChunkCullingBounds.js';
-import type { WebGLSharedVegetationResources } from '../../../runtime/webgl-vegetation-resource-management/WebGLSharedVegetationResources.js';
+import { CameraFrustumVisualization } from '../../../runtime/debug-visualization/CameraFrustumVisualization.js';
+import { createStoredChunkCullingBoundsOutlines } from '../../../runtime/debug-visualization/createStoredChunkCullingBoundsOutlines.js';
+import { FirstPersonCameraController } from '../../../runtime/debug-visualization/FirstPersonCameraController.js';
+import { WebGLGpuFrameTimer } from '../../../runtime/debug-visualization/WebGLGpuFrameTimer.js';
+import { createDatasetStoredChunkCullingBounds } from '../../../runtime/chunk-visibility-management/chunk-culling-bounds/StoredChunkCullingBounds.js';
 import type { WebGLGrassLayerRenderer } from '../grass-webgl-rendering/WebGLGrassLayerRenderer.js';
 import { WebGLGrassChunkCellDebugView } from './WebGLGrassChunkCellDebugView.js';
 
@@ -42,7 +41,6 @@ export type WebGLGrassDebugRenderControls = Readonly<{
 }>;
 
 export type WebGLGrassDebugOptions = Readonly<{
-  sharedResources: WebGLSharedVegetationResources;
   grassRenderer: WebGLGrassLayerRenderer;
   camera: PerspectiveCamera;
   /** World-space parent, outside any transformed model group. */
@@ -75,16 +73,16 @@ export class WebGLGrassDebug {
 
   constructor(options: WebGLGrassDebugOptions) {
     this.#debugOptions = options;
-    const { sharedResources, grassRenderer, camera, scene, panelParent } = options;
-    this.#gpuFrameTimer = new WebGLGpuFrameTimer(sharedResources.renderer.getContext());
+    const { grassRenderer, camera, scene, panelParent } = options;
+    const { renderer, vegetationDataset } = grassRenderer;
+    this.#gpuFrameTimer = new WebGLGpuFrameTimer(renderer.getContext());
 
     this.grassChunkCellView = new WebGLGrassChunkCellDebugView(
-      sharedResources,
-      grassRenderer.layerResources,
+      grassRenderer,
     );
     this.grassChunkCellView.mesh.visible = false;
     this.storedChunkCullingBoundsOutlines = createStoredChunkCullingBoundsOutlines(
-      createRuntimeStoredChunkCullingBounds(sharedResources.dataset),
+      createDatasetStoredChunkCullingBounds(vegetationDataset),
     );
     this.storedChunkCullingBoundsOutlines.visible = false;
     grassRenderer.object3d.add(
@@ -108,12 +106,12 @@ export class WebGLGrassDebug {
       y: new Vector3(0, 1, 0),
       z: new Vector3(0, 0, 1),
     };
-    const { coordinateSystem, grid } = sharedResources.dataset.file.header;
+    const { coordinateSystem, grid } = vegetationDataset.file.header;
     const grassModelWorldScale = grassRenderer.object3d.getWorldScale(new Vector3()).length()
       / UNIT_CUBE_DIAGONAL_LENGTH;
     this.#cameraController = new FirstPersonCameraController({
       camera,
-      canvas: sharedResources.renderer.domElement,
+      canvas: renderer.domElement,
       upAxis: modelAxes[coordinateSystem.upAxis].clone()
         .transformDirection(grassRenderer.object3d.matrixWorld),
       horizontalForwardAxis: modelAxes[coordinateSystem.horizontalAxes[1]].clone()
@@ -186,8 +184,12 @@ export class WebGLGrassDebug {
     this.#sampleVegetationCpuDurationMilliseconds += vegetationCpuDurationMilliseconds;
     if (this.#sampleDurationSeconds < DIAGNOSTIC_UPDATE_INTERVAL_SECONDS) return;
 
-    const { sharedResources, grassRenderer, camera } = this.#debugOptions;
-    const { renderer, dataset } = sharedResources;
+    const { grassRenderer, camera } = this.#debugOptions;
+    const {
+      renderer,
+      vegetationDataset,
+      visibleStoredChunkTexture,
+    } = grassRenderer;
     renderer.getDrawingBufferSize(this.#drawingBufferSize);
     const submittedCandidateCount = grassRenderer.executedCandidateCount;
     const averageGpuDurationMilliseconds =
@@ -204,7 +206,7 @@ export class WebGLGrassDebug {
       `Vegetation CPU Ø: ${(this.#sampleVegetationCpuDurationMilliseconds / this.#sampleFrameCount).toFixed(2)} ms (keine GPU-Zeit)`,
       `Kamera: ${this.#frozenCullingCamera ? 'Beobachter / Culling und LOD eingefroren' : 'Culling folgt Kamera'}`,
       `Position: ${camera.position.toArray().map((coordinate) => coordinate.toFixed(1)).join(' / ')}`,
-      `Chunks: ${sharedResources.visibleStoredChunkTexture.visibleStoredChunkCount}/${dataset.file.header.storedChunkCount} · Tiles: ${grassRenderer.visibleTileCount}`,
+      `Chunks: ${visibleStoredChunkTexture.visibleStoredChunkCount}/${vegetationDataset.file.header.storedChunkCount} · Tiles: ${grassRenderer.visibleTileCount}`,
       `Tile-Frustum: ${visibleTileCount}/${testedTileCount} maskenaktive Tiles nach Chunk-Culling`,
       `Halme zugelassen: ${grassRenderer.visibleCandidateCount.toLocaleString('de-DE')}`,
       `Instanzen eingereicht: ${submittedCandidateCount.toLocaleString('de-DE')} · Padding: ${submittedCandidateCount - grassRenderer.visibleCandidateCount}`,
@@ -259,7 +261,7 @@ export class WebGLGrassDebug {
 
   readonly #handleDebugKeyDown = (event: KeyboardEvent): void => {
     if (event.repeat || document.pointerLockElement
-      !== this.#debugOptions.sharedResources.renderer.domElement) return;
+      !== this.#debugOptions.grassRenderer.renderer.domElement) return;
     const debugAction = KEYBOARD_DEBUG_ACTIONS[event.code];
     if (debugAction) {
       event.preventDefault();

@@ -33,8 +33,8 @@ Die globalen Cell-Koordinaten werden aus Chunkposition und lokaler Position
 innerhalb des Chunks gebildet:
 
 ```text
-globalCellX = chunkGridX * maskResolution + localCellX
-globalCellY = chunkGridY * maskResolution + localCellY
+globalCellX = chunkGridX * maskResolutionPerChunkAxis + localCellX
+globalCellY = chunkGridY * maskResolutionPerChunkAxis + localCellY
 ```
 
 Der Chunkindex ist kein zusätzlicher Teil der ID. Die globalen Koordinaten
@@ -45,7 +45,7 @@ Der Cell-Hash wird einmal berechnet:
 
 ```text
 combined = seed
-         XOR ((layerId + 1)      * layerSalt)
+         XOR ((vegetationLayerId + 1)      * layerSalt)
          XOR ((globalCellX + 1)  * cellXSalt)
          XOR ((globalCellY + 1)  * cellYSalt)
 
@@ -55,7 +55,7 @@ cellHash = mix(combined)
 | Teil | Aufgabe |
 | --- | --- |
 | `seed` | Erzeugt für dasselbe Raster eine andere, aber reproduzierbare Verteilung. |
-| `layerId` | Trennt Vegetationslayer an derselben Cell voneinander. |
+| `vegetationLayerId` | Trennt Vegetationslayer an derselben Cell voneinander. |
 | `globalCellX/Y` | Identifiziert die Cell unabhängig vom gespeicherten Chunkindex. |
 | unterschiedliche Salts | Trennen gleiche Zahlen in unterschiedlichen Eingabefeldern. |
 | `+ 1` | Verhindert, dass der Wert `0` durch die Multiplikation vollständig verschwindet. |

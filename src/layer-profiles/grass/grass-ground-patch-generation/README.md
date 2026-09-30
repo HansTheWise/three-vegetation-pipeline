@@ -25,11 +25,11 @@ lokale Bodenfarbe; getrennte Top- und Bottom-Biases bestimmen unabhängig von
 Kameraentfernung und Dichte den Anteil an der Vegetationsfarbe. Eine getrennte
 Distanzkurve kann die bereits angepasste Farbe anschließend vollständig zum
 Boden überblenden, während die Dichtekurven Kandidaten einsparen. Optional
-projiziert `ThreeGrassGroundPatchSurface` dieselbe
-Textur auf vom Consumer ausgewählte Three.js-Materialien. Dieses Surface-Modul,
-sein Shaderpatch und sein Cleanup gehören zum Grass-Renderer; die generische
-Layerverwaltung kennt sie nicht. Es darf keinen zweiten unabhängigen
-Ground-Noise-Pfad geben.
+projiziert `ThreeGrassGroundPatchSurface` aus der profilspezifischen
+Projektintegration dieselbe Textur auf vom Consumer ausgewählte
+Three.js-Materialien. Der Grass-Renderer verwendet dafür ausschließlich den
+`WebGLGrassGroundPatchSurface`-Vertrag; die generische Layerverwaltung kennt ihn
+nicht. Es darf keinen zweiten unabhängigen Ground-Noise-Pfad geben.
 
 Dieses prozedural erzeugte Feld bleibt zunächst als Testquelle bestehen. Die
 Produktionsintegration soll dieselbe Abfrage später mit einer statisch im GLB-

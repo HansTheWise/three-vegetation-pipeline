@@ -1,13 +1,13 @@
 import {
   createGrassLayerConfig,
   type VegetationRuntimeConfig,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 /** Small, application-neutral configuration for the standalone WebGL example. */
 export const vegetationExampleConfig = {
   configVersion: 3,
   layers: [createGrassLayerConfig({
-    layerId: 0,
-    key: 'meadow-grass',
+    vegetationLayerId: 0,
+    vegetationLayerKey: 'meadow-grass',
   })],
 } satisfies VegetationRuntimeConfig;

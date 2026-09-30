@@ -31,9 +31,10 @@ export type VegetationRenderTileDensityLayerConfig = Readonly<{
 
 /** Transferable initialization data; distance-dependent budgets are not included. */
 export type VegetationActiveCellData = Readonly<{
-  layerId: number;
+  vegetationLayerId: VegetationLayerId;
   renderTileSizeCells: number;
   indices: Uint32Array;
   offsets: Uint32Array;
   counts: Uint32Array;
 }>;
+import type { VegetationLayerId } from '../../../shared/vegfile-format/VegetationFileTypes.js';

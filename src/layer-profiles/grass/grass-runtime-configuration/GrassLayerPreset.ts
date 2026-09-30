@@ -3,9 +3,10 @@ import type {
   NumericRange,
   VegetationColorDistanceCurve,
   VegetationHeightSampling,
-} from '../../../runtime/runtime-dataset-preparation/configuration/VegetationRuntimeConfig.js';
+} from '../../../runtime/dataset-preparation/configuration/VegetationRuntimeConfig.js';
 import type { VegetationDensityCurvePoint } from '../../reusable-profile-features/render-tile-density-selection/DensitySelectionTypes.js';
 import type { GrassPatchConfig } from '../grass-ground-patch-generation/GrassGroundPatchTypes.js';
+import type { VegetationLayerId } from '../../../shared/vegfile-format/VegetationFileTypes.js';
 import type {
   GrassCloverConfig,
   GrassLightDistanceTransitionConfig,
@@ -68,8 +69,8 @@ type GrassCloverOverrides = Readonly<{
 }> & GrassCloverTuningOverrides;
 
 export type GrassLayerPresetOptions = Readonly<{
-  layerId: number;
-  key: string;
+  vegetationLayerId: VegetationLayerId;
+  vegetationLayerKey: string;
   enabled?: boolean;
   patches?: GrassPatchConfig;
   distribution?: Readonly<{
@@ -219,8 +220,8 @@ export function grassPreset(
   };
 
   return {
-    layerId: options.layerId,
-    key: options.key,
+    vegetationLayerId: options.vegetationLayerId,
+    vegetationLayerKey: options.vegetationLayerKey,
     enabled: options.enabled ?? true,
     patches: options.patches ?? { ground: { enabled: false } },
     distribution,

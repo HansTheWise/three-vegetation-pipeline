@@ -1,15 +1,15 @@
-import { createThreeWebGLVegetationLightingMaterialFactory } from '../../../runtime/threejs-runtime-integration/ThreeWebGLVegetationLightingMaterialFactory.js';
-import type { WebGLVegetationLayerModule } from '../../../runtime/vegetation-layer-rendering-contracts/WebGLVegetationLayerModule.js';
-import type { WebGLVegetationLightingMaterialFactory } from '../../../runtime/vegetation-layer-rendering-contracts/WebGLVegetationLightingMaterialFactory.js';
+import type { WebGLVegetationLayerModule } from '../../../runtime/vegetation-layer-management/WebGLVegetationLayerManager.js';
+import type { WebGLGrassGroundPatchSurface } from '../../../runtime/project-integration/layer-profile-integration/grass/ground-patch-material/WebGLGrassGroundPatchSurface.js';
+import { createThreeWebGLGrassLightingMaterialFactory } from '../../../runtime/project-integration/layer-profile-integration/grass/lighting-material/ThreeWebGLGrassLightingMaterialFactory.js';
+import type { WebGLGrassLightingMaterialFactory } from '../../../runtime/project-integration/layer-profile-integration/grass/lighting-material/WebGLGrassLightingMaterialFactory.js';
 import {
   grassLayerPreparation,
   requireGrassRuntimeLayer,
 } from '../grass-layer-preparation/GrassLayerPreparation.js';
-import type { WebGLGrassGroundPatchSurface } from './WebGLGrassGroundPatchSurface.js';
 import { WebGLGrassLayerRenderer } from './WebGLGrassLayerRenderer.js';
 
 export type WebGLGrassLayerModuleOptions = Readonly<{
-  lightingMaterialFactory?: WebGLVegetationLightingMaterialFactory;
+  grassLightingMaterialFactory?: WebGLGrassLightingMaterialFactory;
   groundPatchSurface?: WebGLGrassGroundPatchSurface;
 }>;
 
@@ -17,15 +17,24 @@ export type WebGLGrassLayerModuleOptions = Readonly<{
 export function createWebGLGrassLayerModule(
   options: WebGLGrassLayerModuleOptions = {},
 ): WebGLVegetationLayerModule {
-  const lightingMaterialFactory = options.lightingMaterialFactory
-    ?? createThreeWebGLVegetationLightingMaterialFactory();
+  const grassLightingMaterialFactory = options.grassLightingMaterialFactory
+    ?? createThreeWebGLGrassLightingMaterialFactory();
   return {
     ...grassLayerPreparation,
     validateLayer: requireGrassRuntimeLayer,
-    create: ({ sharedResources, layer }) => new WebGLGrassLayerRenderer({
-      sharedResources,
+    create: ({
+      renderer,
+      vegetationDataset,
+      vegetationDatasetTextures,
+      visibleStoredChunkTexture,
+      layer,
+    }) => new WebGLGrassLayerRenderer({
+      renderer,
+      vegetationDataset,
+      vegetationDatasetTextures,
+      visibleStoredChunkTexture,
       layer: requireGrassRuntimeLayer(layer),
-      lightingMaterialFactory,
+      grassLightingMaterialFactory,
       ...(options.groundPatchSurface
         ? { groundPatchSurface: options.groundPatchSurface }
         : {}),

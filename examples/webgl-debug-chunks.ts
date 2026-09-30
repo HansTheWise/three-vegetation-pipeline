@@ -18,16 +18,16 @@ import {
 } from 'three';
 
 import {
-  createRuntimeStoredChunkCullingBounds,
-  createVegetationRuntimeDataset,
-  FrustumStoredChunkVisibility,
+  createDatasetStoredChunkCullingBounds,
+  createPreparedVegetationDataset,
+  ChunkVisibilityManager,
   grassLayerPreparation,
   requireGrassRuntimeLayer,
   WebGLGrassLayerRenderer,
   WebGLGrassDebug,
-  WebGLSharedVegetationResources,
+  WebGLVegetationDatasetTextures,
   type ParsedVegFile,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 import { vegetationExampleConfig } from './vegetationExampleConfig.js';
 
 const status = document.querySelector<HTMLDivElement>('#status');
@@ -56,22 +56,26 @@ renderer.shadowMap.type = PCFShadowMap;
 document.body.append(renderer.domElement);
 
 const parsedVegFile = createExampleVegetationFile();
-const runtimeDataset = createVegetationRuntimeDataset(
+const vegetationDataset = createPreparedVegetationDataset(
   parsedVegFile,
   vegetationExampleConfig,
   [grassLayerPreparation],
 );
-const sharedResources = new WebGLSharedVegetationResources(
+const vegetationDatasetTextures = new WebGLVegetationDatasetTextures(
   renderer,
-  runtimeDataset,
+  vegetationDataset,
 );
-const storedChunkCullingBounds = createRuntimeStoredChunkCullingBounds(runtimeDataset);
-const chunkVisibility = new FrustumStoredChunkVisibility(
-  storedChunkCullingBounds,
-);
+const storedChunkCullingBounds = createDatasetStoredChunkCullingBounds(vegetationDataset);
+const chunkVisibilityManager = new ChunkVisibilityManager({
+  renderer,
+  vegetationDataset,
+});
 const grassRenderer = new WebGLGrassLayerRenderer({
-  sharedResources,
-  layer: requireGrassRuntimeLayer(runtimeDataset.preparedLayers[0]!),
+  renderer,
+  vegetationDataset,
+  vegetationDatasetTextures,
+  visibleStoredChunkTexture: chunkVisibilityManager.visibleStoredChunkTexture,
+  layer: requireGrassRuntimeLayer(vegetationDataset.preparedLayers[0]!),
 });
 
 const scene = new Scene();
@@ -95,8 +99,8 @@ const center = minimum.clone().add(maximum).multiplyScalar(0.5);
 const sceneRadius = Math.max(minimum.distanceTo(maximum) * 0.5, 1);
 const useNearTestView = new URLSearchParams(window.location.search).has('near');
 const nearChunkIndex = findDensestStoredChunk(
-  runtimeDataset.preparedLayers[0]!.fileLayer.maskData,
-  runtimeDataset.preparedLayers[0]!.fileLayer.maskWordsPerChunk,
+  vegetationDataset.preparedLayers[0]!.fileLayer.maskData,
+  vegetationDataset.preparedLayers[0]!.fileLayer.maskWordsPerChunk,
   parsedVegFile.header.storedChunkCount,
 );
 const nearChunkOffset = nearChunkIndex * 6;
@@ -208,7 +212,6 @@ const renderControls = {
   },
 };
 const debug = new WebGLGrassDebug({
-  sharedResources,
   grassRenderer,
   camera: cullingCamera,
   scene,
@@ -232,18 +235,15 @@ function render(frameTime = performance.now()): void {
     .multiplyMatrices(visibilityCamera.projectionMatrix, visibilityCamera.matrixWorldInverse)
     .multiply(grassRenderer.object3d.matrixWorld);
 
-  const visibleStoredChunkCount = chunkVisibility.updateVisibleStoredChunks(
-    clipFromModelMatrix.elements,
-    'negative-one-to-one',
-  );
-  sharedResources.visibleStoredChunkTexture.update(
-    chunkVisibility.visibleStoredChunkIndices,
-    visibleStoredChunkCount,
-  );
   modelFromWorldMatrix.copy(grassRenderer.object3d.matrixWorld).invert();
   cameraPositionModel
     .setFromMatrixPosition(visibilityCamera.matrixWorld)
     .applyMatrix4(modelFromWorldMatrix);
+  chunkVisibilityManager.updateVisibleStoredChunks({
+    cameraPositionModel,
+    clipFromModelMatrix: clipFromModelMatrix.elements,
+    clipSpaceDepthRange: 'negative-one-to-one',
+  });
   grassRenderer.updateRenderTileSelection(
     cameraPositionModel,
     clipFromModelMatrix.elements,
@@ -263,6 +263,14 @@ window.addEventListener('resize', () => {
   cullingCamera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+window.addEventListener('pagehide', () => {
+  debug.dispose();
+  grassRenderer.dispose();
+  vegetationDatasetTextures.dispose();
+  chunkVisibilityManager.dispose();
+  renderer.dispose();
+}, { once: true });
 
 render();
 
@@ -292,13 +300,13 @@ function findDensestStoredChunk(
 }
 
 function createExampleVegetationFile(): ParsedVegFile {
-  const maskResolution = 64;
-  const maskWordsPerChunk = maskResolution ** 2 / 32;
+  const maskResolutionPerChunkAxis = 64;
+  const maskWordsPerChunk = maskResolutionPerChunkAxis ** 2 / 32;
   return {
     bytes: new Uint8Array(),
     header: {
       version: 2,
-      seed: 42,
+      vegetationSeed: 42,
       buildFingerprint: new Uint8Array(16),
       fileChecksum: 0,
       sourceBounds: {
@@ -310,14 +318,14 @@ function createExampleVegetationFile(): ParsedVegFile {
       },
       grid: { width: 1, height: 1, chunkSize: 32, originX: -16, originY: -16 },
       storedChunkCount: 1,
-      heightMap: { resolution: 2, valueBits: 16, valuesPerChunk: 4 },
+      heightMap: { resolutionPerChunkAxis: 2, valueBits: 16, valuesPerChunk: 4 },
     },
     chunkLookup: Int32Array.of(0),
     chunkHeightRanges: Float32Array.of(0, 0),
     heightData: Uint16Array.of(0, 0, 0, 0),
     layers: [{
-      id: 0,
-      maskResolution,
+      vegetationLayerId: 0,
+      maskResolutionPerChunkAxis,
       maskWordsPerChunk,
       maskData: new Uint32Array(maskWordsPerChunk).fill(0xffff_ffff),
     }],

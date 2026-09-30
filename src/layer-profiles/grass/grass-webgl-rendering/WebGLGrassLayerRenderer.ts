@@ -4,26 +4,31 @@ import {
   Vector3,
   type InstancedBufferGeometry,
   type ShaderMaterial,
+  type WebGLRenderer,
 } from 'three';
 
-import { createThreeWebGLVegetationLightingMaterialFactory } from '../../../runtime/threejs-runtime-integration/ThreeWebGLVegetationLightingMaterialFactory.js';
-import type { ClipSpaceDepthRange, Matrix4Elements } from '../../../runtime/stored-chunk-visibility/frustum-visibility-evaluation/StoredChunkVisibilityTypes.js';
-import type { VegetationFrameState } from '../../../runtime/vegetation-runtime-orchestration/VegetationFrameState.js';
+import {
+  createThreeWebGLGrassLightingMaterialFactory,
+} from '../../../runtime/project-integration/layer-profile-integration/grass/lighting-material/ThreeWebGLGrassLightingMaterialFactory.js';
+import type { WebGLGrassLightingMaterialFactory } from '../../../runtime/project-integration/layer-profile-integration/grass/lighting-material/WebGLGrassLightingMaterialFactory.js';
+import type { WebGLGrassGroundPatchSurface } from '../../../runtime/project-integration/layer-profile-integration/grass/ground-patch-material/WebGLGrassGroundPatchSurface.js';
+import type { ClipSpaceDepthRange, Matrix4Elements } from '../../../runtime/chunk-visibility-management/frustum-visibility-evaluation/StoredChunkVisibilityTypes.js';
+import type { VegetationFrameState } from '../../../runtime/VegetationRuntimeManager.js';
 import type {
   WebGLVegetationLayerRenderer,
   WebGLVegetationLayerRendererDiagnostics,
-} from '../../../runtime/vegetation-layer-rendering-contracts/WebGLVegetationLayerRenderer.js';
-import type { WebGLVegetationLightingMaterialFactory } from '../../../runtime/vegetation-layer-rendering-contracts/WebGLVegetationLightingMaterialFactory.js';
-import type { WebGLSharedVegetationResources } from '../../../runtime/webgl-vegetation-resource-management/WebGLSharedVegetationResources.js';
-import { validateWebGLInstanceCount } from '../../../runtime/webgl-vegetation-resource-management/WebGLResourceLimits.js';
+} from '../../../runtime/vegetation-layer-management/WebGLVegetationLayerManager.js';
+import type { PreparedVegetationDataset } from '../../../runtime/dataset-preparation/dataset-construction/PreparedVegetationDataset.js';
+import type { WebGLVisibleStoredChunkTexture } from '../../../runtime/chunk-visibility-management/WebGLVisibleStoredChunkTexture.js';
+import type { WebGLVegetationDatasetTextures } from '../../../runtime/vegetation-layer-management/WebGLVegetationDatasetTextures.js';
 import type { ModelPosition } from '../../reusable-profile-features/render-tile-density-selection/DensitySelectionTypes.js';
 import { VegetationRenderTileDensity } from '../../reusable-profile-features/render-tile-density-selection/VegetationRenderTileDensity.js';
+import { validateWebGLInstanceCount } from '../../reusable-profile-features/render-tile-density-selection/WebGLInstanceCount.js';
 import { WebGLActiveCellIndexTexture } from '../../reusable-profile-features/render-tile-density-selection/webgl/WebGLActiveCellIndexTexture.js';
 import { WebGLVisibleRenderTileTexture } from '../../reusable-profile-features/render-tile-density-selection/webgl/WebGLVisibleRenderTileTexture.js';
 import type { GrassRuntimeLayer } from '../grass-layer-preparation/GrassLayerPreparation.js';
 import { createGrassBladeGeometry } from './GrassBladeGeometry.js';
 import { createGrassShaderMaterial } from './GrassShaderMaterial.js';
-import type { WebGLGrassGroundPatchSurface } from './WebGLGrassGroundPatchSurface.js';
 import { WebGLGrassLayerResources } from './WebGLGrassLayerResources.js';
 
 const MATRIX_4_ELEMENT_COUNT = 16;
@@ -37,9 +42,12 @@ export type WebGLGrassCandidateCapacityDraw = Readonly<{
 }>;
 
 export type WebGLGrassLayerRendererOptions = Readonly<{
-  sharedResources: WebGLSharedVegetationResources;
+  renderer: WebGLRenderer;
+  vegetationDataset: PreparedVegetationDataset;
+  vegetationDatasetTextures: WebGLVegetationDatasetTextures;
+  visibleStoredChunkTexture: WebGLVisibleStoredChunkTexture;
   layer: GrassRuntimeLayer;
-  lightingMaterialFactory?: WebGLVegetationLightingMaterialFactory;
+  grassLightingMaterialFactory?: WebGLGrassLightingMaterialFactory;
   groundPatchSurface?: WebGLGrassGroundPatchSurface;
   /** Low-level comparison seam used by the render-submission benchmark. */
   candidateCapacityBuckets?: Uint32Array;
@@ -50,12 +58,15 @@ export class WebGLGrassLayerRenderer implements WebGLVegetationLayerRenderer {
   readonly object3d = new Group();
   readonly candidateCapacityDraws: readonly WebGLGrassCandidateCapacityDraw[];
   readonly layerResources: WebGLGrassLayerResources;
-  readonly layerId: number;
+  readonly vegetationLayerId: number;
   readonly renderTileDensitySelection: VegetationRenderTileDensity;
   readonly visibleRenderTileTexture: WebGLVisibleRenderTileTexture;
   readonly activeCellIndexTexture: WebGLActiveCellIndexTexture;
+  readonly renderer: WebGLRenderer;
+  readonly vegetationDataset: PreparedVegetationDataset;
+  readonly vegetationDatasetTextures: WebGLVegetationDatasetTextures;
+  readonly visibleStoredChunkTexture: WebGLVisibleStoredChunkTexture;
 
-  readonly #sharedResources: WebGLSharedVegetationResources;
   readonly #cameraPositionModel = new Vector3();
   readonly #previousCameraPositionModel = new Vector3();
   readonly #previousClipFromModelMatrix = new Float64Array(MATRIX_4_ELEMENT_COUNT);
@@ -66,42 +77,48 @@ export class WebGLGrassLayerRenderer implements WebGLVegetationLayerRenderer {
 
   constructor(options: WebGLGrassLayerRendererOptions) {
     const {
-      sharedResources,
+      renderer,
+      vegetationDataset,
+      vegetationDatasetTextures,
+      visibleStoredChunkTexture,
       layer,
       groundPatchSurface,
       candidateCapacityBuckets,
     } = options;
-    const lightingMaterialFactory = options.lightingMaterialFactory
-      ?? createThreeWebGLVegetationLightingMaterialFactory();
+    const grassLightingMaterialFactory = options.grassLightingMaterialFactory
+      ?? createThreeWebGLGrassLightingMaterialFactory();
     const grassRenderProfile = layer.config.renderProfile;
-    this.#sharedResources = sharedResources;
-    this.layerId = layer.layerId;
-    this.object3d.name = `vegetation/grass-layer-${layer.layerId}`;
+    this.renderer = renderer;
+    this.vegetationDataset = vegetationDataset;
+    this.vegetationDatasetTextures = vegetationDatasetTextures;
+    this.visibleStoredChunkTexture = visibleStoredChunkTexture;
+    this.vegetationLayerId = layer.vegetationLayerId;
+    this.object3d.name = `vegetation/grass-layer-${layer.vegetationLayerId}`;
     this.renderTileDensitySelection = new VegetationRenderTileDensity(
-      sharedResources.dataset,
-      layer.layerId,
+      vegetationDataset,
+      layer.vegetationLayerId,
       layer.preparedProfileData.activeCells,
       candidateCapacityBuckets,
     );
     const maximumInstanceCount = this.renderTileDensitySelection.tileCapacity
       * this.renderTileDensitySelection.maximumCandidatesPerTile;
-    validateWebGLInstanceCount(maximumInstanceCount, `Grass layer ${layer.layerId}`);
+    validateWebGLInstanceCount(maximumInstanceCount, `Grass layer ${layer.vegetationLayerId}`);
 
-    const layerResources = new WebGLGrassLayerResources(sharedResources.renderer, layer);
+    const layerResources = new WebGLGrassLayerResources(renderer, layer);
     let visibleRenderTileTexture: WebGLVisibleRenderTileTexture | undefined;
     let activeCellIndexTexture: WebGLActiveCellIndexTexture | undefined;
     let removeGroundPatchSurface: () => void = () => undefined;
     const candidateCapacityDraws: WebGLGrassCandidateCapacityDraw[] = [];
     try {
       visibleRenderTileTexture = new WebGLVisibleRenderTileTexture(
-        sharedResources.renderer,
+        renderer,
         this.renderTileDensitySelection.tileCapacity,
-        `vegetation/layer-${layer.layerId}-density-tiles`,
+        `vegetation/layer-${layer.vegetationLayerId}-density-tiles`,
       );
       activeCellIndexTexture = new WebGLActiveCellIndexTexture(
-        sharedResources.renderer,
+        renderer,
         this.renderTileDensitySelection.activeCellIndices,
-        `vegetation/layer-${layer.layerId}-active-cells`,
+        `vegetation/layer-${layer.vegetationLayerId}-active-cells`,
       );
       for (let bucketIndex = 0;
         bucketIndex < this.renderTileDensitySelection.bucketCapacities.length;
@@ -111,21 +128,22 @@ export class WebGLGrassLayerRenderer implements WebGLVegetationLayerRenderer {
         let material: ShaderMaterial;
         try {
           material = createGrassShaderMaterial({
-            sharedResources,
+            vegetationDataset,
+            vegetationDatasetTextures,
             layer,
             candidateCapacity,
             visibleRenderTileTexture,
             activeCellIndexTexture,
             cameraPositionModel: this.#cameraPositionModel,
             layerResources,
-            lightingMaterialFactory,
+            grassLightingMaterialFactory,
           });
         } catch (error) {
           geometry.dispose();
           throw error;
         }
         const mesh = new Mesh(geometry, material);
-        mesh.name = `vegetation/grass-layer-${layer.layerId}-density-${candidateCapacity}`;
+        mesh.name = `vegetation/grass-layer-${layer.vegetationLayerId}-density-${candidateCapacity}`;
         mesh.frustumCulled = false;
         mesh.castShadow = layer.config.shadows.cast;
         mesh.receiveShadow = layer.config.shadows.receive;
@@ -142,7 +160,7 @@ export class WebGLGrassLayerRenderer implements WebGLVegetationLayerRenderer {
       const groundPatchTexture = layerResources.groundPatchField?.texture;
       if (groundPatchSurface && groundPatchField && groundPatchTexture) {
         removeGroundPatchSurface = groundPatchSurface.install({
-          dataset: sharedResources.dataset,
+          dataset: vegetationDataset,
           layer,
           field: groundPatchField,
           texture: groundPatchTexture,
@@ -200,8 +218,8 @@ export class WebGLGrassLayerRenderer implements WebGLVegetationLayerRenderer {
   }
 
   updateFrame(frameState: VegetationFrameState): void {
-    const visibleStoredChunkSelectionRevision = this.#sharedResources
-      .visibleStoredChunkTexture.selectionRevision;
+    const visibleStoredChunkSelectionRevision = this.visibleStoredChunkTexture
+      .selectionRevision;
     if (this.#frameSelectionIsUnchanged(
       frameState,
       visibleStoredChunkSelectionRevision,
@@ -226,7 +244,7 @@ export class WebGLGrassLayerRenderer implements WebGLVegetationLayerRenderer {
       cameraPositionModel.y,
       cameraPositionModel.z,
     );
-    const visibleStoredChunkTexture = this.#sharedResources.visibleStoredChunkTexture;
+    const visibleStoredChunkTexture = this.visibleStoredChunkTexture;
     this.renderTileDensitySelection.update(
       visibleStoredChunkTexture.storedChunkIndexData,
       visibleStoredChunkTexture.visibleStoredChunkCount,

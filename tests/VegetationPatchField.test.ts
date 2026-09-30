@@ -8,7 +8,7 @@ import {
   type EnabledGrassGroundPatchConfig,
   type ParsedVegFile,
   validateGrassGroundPatchConfig,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 const patchConfig = {
   enabled: true,
@@ -49,7 +49,7 @@ describe('GrassGroundPatchField', () => {
     const second = createGrassGroundPatchField(file, 0, patchConfig)!;
 
     expect(first).toMatchObject({
-      layerId: 0,
+      vegetationLayerId: 0,
       width: 128,
       height: 64,
       texelSizeUnits: 0.25,
@@ -72,7 +72,7 @@ describe('GrassGroundPatchField', () => {
     })!;
     const vegSeedChange = createGrassGroundPatchField({
       ...file,
-      header: { ...file.header, seed: file.header.seed + 1 },
+      header: { ...file.header, vegetationSeed: file.header.vegetationSeed + 1 },
     }, 0, patchConfig)!;
     const baseline = createGrassGroundPatchField(file, 0, patchConfig)!;
 
@@ -222,8 +222,8 @@ function createParsedFile(options: Readonly<{
 }> = {}): ParsedVegFile {
   const gridWidth = 2;
   const gridHeight = 1;
-  const maskResolution = 16;
-  const maskWordsPerChunk = maskResolution * maskResolution / 32;
+  const maskResolutionPerChunkAxis = 16;
+  const maskWordsPerChunk = maskResolutionPerChunkAxis * maskResolutionPerChunkAxis / 32;
   const storedChunkCount = gridWidth * gridHeight;
   const activeStoredChunks = new Set(
     options.activeStoredChunks ?? Array.from({ length: storedChunkCount }, (_, index) => index),
@@ -244,7 +244,7 @@ function createParsedFile(options: Readonly<{
     bytes: new Uint8Array(),
     header: {
       version: 2,
-      seed: 42,
+      vegetationSeed: 42,
       buildFingerprint: new Uint8Array(16),
       fileChecksum: 0,
       sourceBounds: {
@@ -269,7 +269,7 @@ function createParsedFile(options: Readonly<{
       },
       storedChunkCount,
       heightMap: {
-        resolution: 2,
+        resolutionPerChunkAxis: 2,
         valueBits: 16,
         valuesPerChunk: 4,
       },
@@ -278,8 +278,8 @@ function createParsedFile(options: Readonly<{
     chunkHeightRanges: Float32Array.from([0, 1, 0, 1]),
     heightData: Uint16Array.from([0, 0, 0, 0, 0, 0, 0, 0]),
     layers: [{
-      id: 0,
-      maskResolution,
+      vegetationLayerId: 0,
+      maskResolutionPerChunkAxis,
       maskWordsPerChunk,
       maskData,
     }],

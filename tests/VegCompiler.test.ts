@@ -3,84 +3,133 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  compileGlbToVeg,
-  type VegCompilerConfig,
-} from '../src/offline/offline-compilation-orchestration/VegCompiler.js';
+  compileGlbToVegFile,
+  evaluateVegFileBuildStatus,
+  type VegetationCompilerConfig,
+} from '../src/pre-runtime-compiler-core/index.js';
 import {
-  checkVegFile,
-  createVegFile,
-} from '../src/offline/offline-compilation-orchestration/NodeVegCompiler.js';
+  checkVegFileBuildStatus,
+  generateNodeVegFile,
+} from '../src/node-pre-runtime-compiler-integration/index.js';
+import { parseVegFile } from '../src/shared/vegfile-parsing/VegParser.js';
 import { createMinimalGlb } from './fixtures/createMinimalGlb.js';
 
-describe('VegCompiler', () => {
-  it('runs Reader, Extractor and Writer as one deterministic offline pipeline', async () => {
-    const result = await compileGlbToVeg(createMinimalGlb(), createConfig());
+describe('GLB to VEGFILE compiler', () => {
+  it('runs reading, extraction and VEGFILE encoding as one deterministic pipeline', async () => {
+    const result = await compileGlbToVegFile(
+      createMinimalGlb(),
+      createConfig(),
+    );
 
-    expect(String.fromCharCode(...result.file.subarray(0, 8))).toBe('VEGFILE\0');
-    expect(result.dataset.seed).toBe(42);
+    expect(String.fromCharCode(...result.vegFileBytes.subarray(0, 8))).toBe('VEGFILE\0');
+    expect(result).not.toHaveProperty('vegetationDataset');
+    expect(result).not.toHaveProperty('compilationStatistics');
     expect(result.buildFingerprint).toHaveLength(16);
-    expect(result.dataset.layers[0]!.maskResolution).toBe(4);
-    expect(result.report).toEqual({
-      includedMeshCount: 1,
-      includedTriangleCount: 1,
-      possibleChunkCount: 1,
-      storedChunkCount: 1,
-      heightResolution: 3,
-      heightValueBits: 16,
-      seed: 42,
-      buildFingerprint: expect.stringMatching(/^[0-9a-f]{32}$/),
-      fileByteLength: 140,
-      layers: [{
-        id: 5,
-        key: 'test-grass',
-        maskResolution: 4,
-        activeCellCount: 1,
-        packedMaskByteLength: 4,
-      }],
-    });
   });
 
-  it('creates stable fingerprints and changes them with the compiler config', async () => {
-    const source = createMinimalGlb();
+  it('uses seed 0 by default and includes the resolved config in deterministic output', async () => {
+    const glbArrayBuffer = createMinimalGlb();
     const config = createConfig();
-    const first = await compileGlbToVeg(source, config);
-    const second = await compileGlbToVeg(source, config);
-    const reordered = await compileGlbToVeg(source, {
-      output: config.output,
-      extraction: config.extraction,
-      source: config.source,
-      coordinateSystem: config.coordinateSystem,
-    });
-    const changed = await compileGlbToVeg(source, {
+    const first = await compileGlbToVegFile(glbArrayBuffer, config);
+    const second = await compileGlbToVegFile(glbArrayBuffer, config);
+    const { vegetationSeed: _omittedSeed, ...extractionWithoutSeed } = config.extraction;
+    const omittedSeedConfig = { ...config, extraction: extractionWithoutSeed };
+    const explicitZeroConfig = {
+      ...omittedSeedConfig,
+      extraction: { ...extractionWithoutSeed, vegetationSeed: 0 },
+    };
+    const omittedSeed = await compileGlbToVegFile(glbArrayBuffer, omittedSeedConfig);
+    const explicitZeroSeed = await compileGlbToVegFile(glbArrayBuffer, explicitZeroConfig);
+    const changedEncoding = await compileGlbToVegFile(glbArrayBuffer, {
       ...config,
-      output: { ...config.output, heightValueBits: 8 },
+      vegFileEncoding: { heightValueBits: 8 },
     });
 
     expect(second.buildFingerprint).toEqual(first.buildFingerprint);
-    expect(reordered.buildFingerprint).toEqual(first.buildFingerprint);
-    expect(changed.buildFingerprint).not.toEqual(first.buildFingerprint);
-    expect(second.file).toEqual(first.file);
+    expect(second.vegFileBytes).toEqual(first.vegFileBytes);
+    expect(parseVegFile(omittedSeed.vegFileBytes).header.vegetationSeed).toBe(0);
+    expect(omittedSeed.buildFingerprint).toEqual(explicitZeroSeed.buildFingerprint);
+    expect(omittedSeed.vegFileBytes).toEqual(explicitZeroSeed.vegFileBytes);
+    expect(changedEncoding.buildFingerprint).not.toEqual(first.buildFingerprint);
   });
 
-  it('atomically replaces a requested .veg file and leaves no temporary file', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'veg-compiler-'));
-    const inputPath = join(directory, 'model.glb');
-    const outputPath = join(directory, 'model.veg');
+  it('validates the complete compiler config before reading the GLB', async () => {
+    const invalidConfig = {
+      ...createConfig(),
+      extraction: { ...createConfig().extraction, vegetationSeed: -1 },
+    };
+
+    await expect(compileGlbToVegFile(
+      new ArrayBuffer(0),
+      invalidConfig,
+    ))
+      .rejects.toThrow('extraction.vegetationSeed must be an unsigned 32-bit integer.');
+  });
+
+  it('evaluates all build states inside the compiler core from loaded bytes', async () => {
+    const glbArrayBuffer = createMinimalGlb();
+    const vegetationCompilerConfig = createConfig();
+    const compilationResult = await compileGlbToVegFile(
+      glbArrayBuffer,
+      vegetationCompilerConfig,
+    );
+
+    expect(await evaluateVegFileBuildStatus({
+      glbArrayBuffer,
+      vegetationCompilerConfig,
+      existingVegFileBytes: null,
+    })).toMatchObject({ status: 'missing' });
+    expect(await evaluateVegFileBuildStatus({
+      glbArrayBuffer,
+      vegetationCompilerConfig,
+      existingVegFileBytes: compilationResult.vegFileBytes,
+    })).toMatchObject({
+      status: 'up-to-date',
+      actualBuildFingerprint: expect.stringMatching(/^[0-9a-f]{32}$/),
+    });
+    expect(await evaluateVegFileBuildStatus({
+      glbArrayBuffer,
+      vegetationCompilerConfig: {
+        ...vegetationCompilerConfig,
+        extraction: {
+          ...vegetationCompilerConfig.extraction,
+          vegetationSeed: 43,
+        },
+      },
+      existingVegFileBytes: compilationResult.vegFileBytes,
+    })).toMatchObject({ status: 'outdated' });
+    expect(await evaluateVegFileBuildStatus({
+      glbArrayBuffer,
+      vegetationCompilerConfig,
+      existingVegFileBytes: new TextEncoder().encode('not-a-veg-file'),
+    })).toMatchObject({
+      status: 'invalid',
+      validationError: expect.any(String),
+    });
+  });
+
+  it('atomically replaces a requested VEGFILE and leaves no temporary file', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'vegetation-compiler-'));
+    const sourceGlbFilePath = join(directory, 'model.glb');
+    const outputVegFilePath = join(directory, 'model.veg');
     try {
-      await writeFile(inputPath, new Uint8Array(createMinimalGlb()));
-      await writeFile(outputPath, 'old-file');
+      await writeFile(sourceGlbFilePath, new Uint8Array(createMinimalGlb()));
+      await writeFile(outputVegFilePath, 'old-file');
 
-      const result = await createVegFile({
-        inputPath,
-        outputPath,
-        config: createConfig(),
+      const result = await generateNodeVegFile({
+        sourceGlbFilePath,
+        outputVegFilePath,
+        vegetationCompilerConfig: createConfig(),
       });
-      const writtenFile = await readFile(outputPath);
+      const writtenVegFile = await readFile(outputVegFilePath);
 
-      expect(new Uint8Array(writtenFile.buffer, writtenFile.byteOffset, writtenFile.byteLength))
-        .toEqual(result.file);
-      expect(result.inputPath).toBe(inputPath);
-      expect(result.outputPath).toBe(outputPath);
+      expect(new Uint8Array(
+        writtenVegFile.buffer,
+        writtenVegFile.byteOffset,
+        writtenVegFile.byteLength,
+      )).toEqual(result.vegFileBytes);
+      expect(result.sourceGlbFilePath).toBe(sourceGlbFilePath);
+      expect(result.outputVegFilePath).toBe(outputVegFilePath);
       expect((await readdir(directory)).sort()).toEqual(['model.glb', 'model.veg']);
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -88,51 +137,52 @@ describe('VegCompiler', () => {
   });
 
   it('rejects incorrect input and output extensions before writing', async () => {
-    await expect(createVegFile({
-      inputPath: 'model.gltf',
-      outputPath: 'model.veg',
-      config: createConfig(),
-    })).rejects.toThrow('Input file must use the .glb extension.');
-    await expect(createVegFile({
-      inputPath: 'model.glb',
-      outputPath: 'model.bin',
-      config: createConfig(),
-    })).rejects.toThrow('Output file must use the .veg extension.');
+    await expect(generateNodeVegFile({
+      sourceGlbFilePath: 'model.gltf',
+      outputVegFilePath: 'model.veg',
+      vegetationCompilerConfig: createConfig(),
+    })).rejects.toThrow('Source GLB file must use the .glb extension.');
+    await expect(generateNodeVegFile({
+      sourceGlbFilePath: 'model.glb',
+      outputVegFilePath: 'model.bin',
+      vegetationCompilerConfig: createConfig(),
+    })).rejects.toThrow('Output VEGFILE must use the .veg extension.');
   });
 
-  it('checks VEGFILE validity and source/config provenance without recompiling it', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'veg-check-'));
-    const inputPath = join(directory, 'model.glb');
-    const outputPath = join(directory, 'model.veg');
+  it('reports missing, up-to-date, outdated and invalid VEGFILE states', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'vegetation-build-status-'));
+    const sourceGlbFilePath = join(directory, 'model.glb');
+    const outputVegFilePath = join(directory, 'model.veg');
+    const options = {
+      sourceGlbFilePath,
+      outputVegFilePath,
+      vegetationCompilerConfig: createConfig(),
+    };
     try {
-      await writeFile(inputPath, new Uint8Array(createMinimalGlb()));
-      expect(await checkVegFile({
-        inputPath,
-        outputPath,
-        config: createConfig(),
-      })).toMatchObject({ current: false, reason: 'VEGFILE is missing.' });
+      await writeFile(sourceGlbFilePath, new Uint8Array(createMinimalGlb()));
+      expect(await checkVegFileBuildStatus(options)).toMatchObject({ status: 'missing' });
 
-      await createVegFile({ inputPath, outputPath, config: createConfig() });
-      expect(await checkVegFile({
-        inputPath,
-        outputPath,
-        config: createConfig(),
-      })).toMatchObject({ current: true, reason: 'VEGFILE is current.' });
+      await generateNodeVegFile(options);
+      expect(await checkVegFileBuildStatus(options)).toMatchObject({
+        status: 'up-to-date',
+        actualBuildFingerprint: expect.stringMatching(/^[0-9a-f]{32}$/),
+      });
 
-      const changedConfig = createConfig();
-      expect(await checkVegFile({
-        inputPath,
-        outputPath,
-        config: {
-          ...changedConfig,
+      expect(await checkVegFileBuildStatus({
+        ...options,
+        vegetationCompilerConfig: {
+          ...options.vegetationCompilerConfig,
           extraction: {
-            ...changedConfig.extraction,
-            seed: { mode: 'manual', manualValue: 43 },
+            ...options.vegetationCompilerConfig.extraction,
+            vegetationSeed: 43,
           },
         },
-      })).toMatchObject({
-        current: false,
-        reason: 'Source model or compiler config changed.',
+      })).toMatchObject({ status: 'outdated' });
+
+      await writeFile(outputVegFilePath, 'not-a-veg-file');
+      expect(await checkVegFileBuildStatus(options)).toMatchObject({
+        status: 'invalid',
+        validationError: expect.any(String),
       });
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -140,48 +190,46 @@ describe('VegCompiler', () => {
   });
 });
 
-function createConfig(): VegCompilerConfig {
+function createConfig(): VegetationCompilerConfig {
   return {
-    coordinateSystem: {
-      upAxis: 'z',
-      horizontalAxes: ['x', 'y'],
-      unitsPerMeter: 1,
-    },
-    source: {
+    glbModelReading: {
       includeInvisibleObjects: false,
-      heightSurfaceSelector: {
-        any: [{
-          type: 'hierarchy-node-name',
-          values: ['terrain'],
-          caseSensitive: false,
-        }],
-      },
     },
     extraction: {
-      seed: { mode: 'manual', manualValue: 42 },
+      coordinateSystem: {
+        upAxis: 'z',
+        horizontalAxes: ['x', 'y'],
+        unitsPerMeter: 1,
+      },
+      vegetationSeed: 42,
       grid: {
         chunkSize: 4,
       },
       heightMap: {
-        resolution: 3,
+        resolutionPerChunkAxis: 3,
+        sourceSurfaceSelection: {
+          matchAny: [{
+            property: 'hierarchyNodeName',
+            acceptedNames: ['terrain'],
+            caseSensitive: false,
+          }],
+        },
       },
-      vegetationMask: {
-        allowLayerOverlap: true,
-      },
+      allowVegetationLayerOverlap: true,
       vegetationLayers: [{
-        id: 5,
-        key: 'test-grass',
-        maskResolution: 4,
-        surfaceSelector: {
-          all: [
+        vegetationLayerId: 5,
+        vegetationLayerKey: 'test-grass',
+        maskResolutionPerChunkAxis: 4,
+        includedSurfaceSelection: {
+          matchAll: [
             {
-              type: 'hierarchy-node-name',
-              values: ['terrain'],
+              property: 'hierarchyNodeName',
+              acceptedNames: ['terrain'],
               caseSensitive: false,
             },
             {
-              type: 'material-name',
-              values: ['meadow'],
+              property: 'materialName',
+              acceptedNames: ['meadow'],
               caseSensitive: false,
             },
           ],
@@ -189,7 +237,7 @@ function createConfig(): VegCompilerConfig {
         filters: { maximumSlopeDegrees: 90 },
       }],
     },
-    output: {
+    vegFileEncoding: {
       heightValueBits: 16,
     },
   };

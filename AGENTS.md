@@ -159,7 +159,7 @@ After every session where the agent did something wrong:
 - Language and version: TypeScript 7.0.2, targeting ES2022
 - Framework(s): Three.js 0.185.1; Vitest ^4.1.11 for tests
 - Package manager: npm
-- Runtime / deployment target: ES modules; library exports plus a Node.js compiler entry point and CLI
+- Runtime / deployment target: ES modules; library exports plus a Node.js pre-runtime compiler integration and CLI
 
 ### Commands
 
@@ -200,6 +200,29 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 - When the user corrects your approach, append a one-line rule here before ending the session. Write it concretely ("Always use X for Y"), never abstractly ("be careful with Y"). If an existing line already covers the correction, tighten it instead of adding a new one. Remove lines when the underlying issue goes away (model upgrades, refactors, process changes).
 - After integrating a dirty feature branch in a temporary worktree, return the verified result to the user's existing branch and remove the temporary worktree before handing it over.
 - Ask the user whenever requirements are unclear or a critical decision would materially affect architecture, visible behavior, data, or Git history; do not choose silently.
+- Call pre-execution compilation "pre-runtime" and reserve `VegFile` for binary-format concepts; use explicit `Vegetation...` names for domain contracts.
+- Use hierarchical pipeline orchestration: each `Manager` linearly passes named, explicitly typed outputs between at least two responsibility-specific modules, contains no detailed algorithms, and depends only downward on child modules or source/adapter contracts.
+- Keep platform-specific access inside integration modules; pass concrete `ArrayBuffer` and `Uint8Array` values across the core boundary, and keep paths outside `VegetationCompilerConfig`.
+- Outer integration managers must explicitly prepare core inputs, call the core, and consume core outputs; the core must not invoke integration source contracts that hide those boundary handoffs.
+- Build-status integrations load optional files and pass concrete bytes to the core; fingerprint calculation, VEGFILE validation, comparison, and status semantics stay in `pre-runtime-compiler-core`.
+- Keep `pre-runtime-compiler-core` infrastructure-independent; Node.js integration may depend on the core, while the core must never import the Node.js integration.
+- Bundle broad manager inputs in a named parameter object and group broad results by the responsibility that produced each value; do not create one abstraction per scalar field.
+- Do not retain or return diagnostic aggregates without a real consumer; derive presentation-only values from canonical results when needed.
+- Model runtime work as separate linear lifecycle-manager flows: the root runtime manager calls preparation, chunk-visibility, and layer managers with explicit typed state, while per-layer branching remains inside the layer manager.
+- Place each pipeline's primary root manager directly in that pipeline module's root directory; reserve responsibility subdirectories for its child managers and modules.
+- Structure root-manager files around the visible data flow: document stage handoffs and ordering invariants inline, keep orchestration before lifecycle details, and place broad public parameter/result types at the file bottom.
+- Name orchestration methods after their concrete result or transition; avoid bare lifecycle verbs such as `prepare` when the method's output is not obvious from the call site.
+- Keep cross-module package API barrels under `src/package-entrypoints` with responsibility-specific names; reserve `index.ts` for module-local entrypoints.
+- Inside the `runtime` directory, do not repeat `runtime` in internal folder, file, or data-stage names; retain it only where an exported boundary needs to distinguish runtime contracts from compiler contracts.
+- Place modules shared by runtime and pre-runtime directly under `src/shared`, keep their responsibilities in separate sibling directories, and allow dependencies only between the relevant shared modules.
+- Define small TypeScript contracts beside the manager or implementation that owns them; create a separate contract module only when it forms a stable boundary with multiple independent consumers.
+- Require an explicit dataset-creation adapter for every high-level runtime; provide the Worker adapter as the official integration and never hide CPU work behind an implicit main-thread fallback.
+- Place mutable WebGL resources with the manager that creates, updates, and disposes them; pass only explicit read dependencies to consumers.
+- Remove empty directories created by refactors, and document every remaining child module or reusable utility in its parent README.
+- Keep consumer-project hooks under `src/runtime/project-integration`: place profile-independent scene and camera integration in direct responsibility modules, and nest profile-specific lighting and material hooks under `layer-profile-integration/<profile>`.
+- Name manager-owned runtime modules `<responsibility>-management`, and keep dataset-construction helpers with dataset preparation even when later managers consume their results.
+- Treat layer `enabled` as construction-time configuration; do not expose mutable runtime layer toggles without a real consumer.
+- Use `cancellationSignal` for project-facing cancellation and `destroy()` for completed runtime lifecycles; keep native `AbortController.abort()` and resource-level `dispose()` terminology.
 
 ---
 

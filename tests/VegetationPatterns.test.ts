@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createVegetationPatterns,
   selectCellPattern,
-} from '../src/index.js';
+} from '../src/package-entrypoints/InternalDevelopmentApi.js';
 
 const patternConfig = {
   patternCount: 4,

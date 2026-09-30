@@ -31,7 +31,7 @@ export type GrassPatchConfig = Readonly<{
 
 /** Color-only RG8: R blends ground regions, G varies their brightness. */
 export type GrassGroundPatchField = Readonly<{
-  layerId: number;
+  vegetationLayerId: VegetationLayerId;
   data: Uint8Array;
   width: number;
   height: number;
@@ -50,3 +50,4 @@ export type GrassGroundPatchFieldSample = Readonly<{
   coverageByte: number;
   colorVariationByte: number;
 }>;
+import type { VegetationLayerId } from '../../../shared/vegfile-format/VegetationFileTypes.js';

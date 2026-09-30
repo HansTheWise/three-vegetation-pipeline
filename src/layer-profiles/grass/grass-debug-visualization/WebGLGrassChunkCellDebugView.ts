@@ -12,21 +12,20 @@ import {
   Vector2,
   Vector3,
   type ColorRepresentation,
+  type WebGLRenderer,
 } from 'three';
 
-import type { Axis } from '../../../offline/offline-compilation-orchestration/VegetationCompilerConfig.js';
-import type { WebGLSharedVegetationResources } from '../../../runtime/webgl-vegetation-resource-management/WebGLSharedVegetationResources.js';
+import type { ModelAxis } from '../../../shared/vegfile-format/VegetationFileTypes.js';
 import {
   calculateWebGLDataTextureLayout,
   padWebGLDataTextureArray,
-} from '../../../runtime/webgl-vegetation-resource-management/data-texture-layout/WebGLDataTextureLayout.js';
-import type { WebGLGrassLayerResources } from '../grass-webgl-rendering/WebGLGrassLayerResources.js';
+} from '../../../runtime/webgl-data-texture-layout/WebGLDataTextureLayout.js';
+import type { WebGLGrassLayerRenderer } from '../grass-webgl-rendering/WebGLGrassLayerRenderer.js';
 import { grassChunkCellDebugFragmentShader } from './shaders/grassChunkCellDebugFragmentShader.js';
 import { grassChunkCellDebugVertexShader } from './shaders/grassChunkCellDebugVertexShader.js';
-import type { WebGLShaderSource } from '../../../runtime/vegetation-layer-rendering-contracts/WebGLShaderSource.js';
 
 export type WebGLGrassChunkCellDebugViewOptions = Readonly<{
-  shader?: WebGLShaderSource;
+  shader?: GrassChunkCellDebugShaderSource;
   evenChunkColor?: ColorRepresentation;
   oddChunkColor?: ColorRepresentation;
   opacity?: number;
@@ -39,7 +38,7 @@ const DEFAULT_EVEN_PATTERN_COLOR = '#22c55e';
 const DEFAULT_ODD_PATTERN_COLOR = '#0ea5e9';
 const POSITION_COMPONENT_COUNT = 3;
 
-const DEFAULT_GRASS_CHUNK_CELL_DEBUG_SHADER: WebGLShaderSource = {
+const DEFAULT_GRASS_CHUNK_CELL_DEBUG_SHADER: GrassChunkCellDebugShaderSource = {
   vertexShader: grassChunkCellDebugVertexShader,
   fragmentShader: grassChunkCellDebugFragmentShader,
 };
@@ -52,31 +51,39 @@ export class WebGLGrassChunkCellDebugView {
   readonly layerMaskTexture: DataTexture;
 
   constructor(
-    sharedResources: WebGLSharedVegetationResources,
-    grassResources: Pick<WebGLGrassLayerResources, 'layerId' | 'pattern'>,
+    grassRenderer: WebGLGrassLayerRenderer,
     options: WebGLGrassChunkCellDebugViewOptions = {},
   ) {
     const opacity = options.opacity ?? DEFAULT_SURFACE_OPACITY;
     const heightOffsetMeters = options.heightOffsetMeters ?? DEFAULT_HEIGHT_OFFSET_METERS;
     validateOptions(opacity, heightOffsetMeters);
 
-    const { header } = sharedResources.dataset.file;
+    const {
+      renderer,
+      vegetationDataset,
+      vegetationDatasetTextures,
+      visibleStoredChunkTexture,
+      layerResources,
+    } = grassRenderer;
+    const { header } = vegetationDataset.file;
     const [horizontalAxisA, horizontalAxisB] = header.coordinateSystem.horizontalAxes;
     const shader = options.shader ?? DEFAULT_GRASS_CHUNK_CELL_DEBUG_SHADER;
-    const grassPatternResource = grassResources.pattern;
-    const grassFileLayer = sharedResources.dataset.file.layers.find(
-      (layer) => layer.id === grassResources.layerId,
+    const grassPatternResource = layerResources.pattern;
+    const grassFileLayer = vegetationDataset.file.layers.find(
+      (layer) => layer.vegetationLayerId === layerResources.vegetationLayerId,
     );
     if (!grassFileLayer) {
-      throw new Error(`Grass debug layer ${grassResources.layerId} has no VEGFILE mask.`);
+      throw new Error(`Grass debug layer ${layerResources.vegetationLayerId} has no VEGFILE mask.`);
     }
     this.layerMaskTexture = createUploadedGrassLayerMaskTexture(
-      sharedResources,
+      renderer,
       grassFileLayer.maskData,
       grassFileLayer.maskWordsPerChunk * header.storedChunkCount,
-      grassResources.layerId,
+      layerResources.vegetationLayerId,
     );
-    this.geometry = createStoredChunkHeightSurfaceGeometry(header.heightMap.resolution);
+    this.geometry = createStoredChunkHeightSurfaceGeometry(
+      header.heightMap.resolutionPerChunkAxis,
+    );
     this.material = new RawShaderMaterial({
       name: 'vegetation/debug-visible-chunks',
       glslVersion: GLSL3,
@@ -87,21 +94,21 @@ export class WebGLGrassChunkCellDebugView {
       depthWrite: false,
       uniforms: {
         visibleStoredChunkIndices: {
-          value: sharedResources.visibleStoredChunkTexture.texture,
+          value: visibleStoredChunkTexture.texture,
         },
-        storedChunkGridCoordinates: {
-          value: sharedResources.vegFileTextures.storedChunkGridCoordinatesTexture,
+        storedChunkGridCoordinateLookup: {
+          value: vegetationDatasetTextures.storedChunkGridCoordinateLookupTexture,
         },
         chunkHeightRanges: {
-          value: sharedResources.vegFileTextures.chunkHeightRangesTexture,
+          value: vegetationDatasetTextures.chunkHeightRangesTexture,
         },
-        heightData: { value: sharedResources.vegFileTextures.heightDataTexture },
+        heightData: { value: vegetationDatasetTextures.heightDataTexture },
         layerMask: { value: this.layerMaskTexture },
         patternPositions: { value: grassPatternResource.texture },
-        seed: { value: header.seed },
-        layerId: { value: grassResources.layerId },
+        seed: { value: header.vegetationSeed },
+        vegetationLayerId: { value: layerResources.vegetationLayerId },
         patternCount: { value: grassPatternResource.patternSet.patternCount },
-        maskResolution: { value: grassFileLayer.maskResolution },
+        maskResolutionPerChunkAxis: { value: grassFileLayer.maskResolutionPerChunkAxis },
         visibleAnchorCount: { value: grassPatternResource.patternSet.anchorsPerPattern },
         rotatePerCell: { value: grassPatternResource.rotatePerCell },
         reflectPerCell: { value: grassPatternResource.reflectPerCell },
@@ -109,7 +116,9 @@ export class WebGLGrassChunkCellDebugView {
           value: new Vector2(header.grid.originX, header.grid.originY),
         },
         chunkSize: { value: header.grid.chunkSize },
-        heightResolution: { value: header.heightMap.resolution },
+        heightMapResolutionPerChunkAxis: {
+          value: header.heightMap.resolutionPerChunkAxis,
+        },
         maximumQuantizedHeight: { value: (2 ** header.heightMap.valueBits) - 1 },
         horizontalAxisA: { value: createAxisVector(horizontalAxisA) },
         horizontalAxisB: { value: createAxisVector(horizontalAxisB) },
@@ -130,8 +139,7 @@ export class WebGLGrassChunkCellDebugView {
     this.mesh.name = 'vegetation/debug-visible-chunks';
     this.mesh.frustumCulled = false;
     this.mesh.onBeforeRender = () => {
-      this.geometry.instanceCount = sharedResources
-        .visibleStoredChunkTexture.visibleStoredChunkCount;
+      this.geometry.instanceCount = visibleStoredChunkTexture.visibleStoredChunkCount;
     };
   }
 
@@ -144,15 +152,15 @@ export class WebGLGrassChunkCellDebugView {
 }
 
 function createUploadedGrassLayerMaskTexture(
-  sharedResources: WebGLSharedVegetationResources,
+  renderer: WebGLRenderer,
   maskData: Uint32Array,
   maskWordCount: number,
-  layerId: number,
+  vegetationLayerId: number,
 ): DataTexture {
-  const textureName = `vegetation/debug-layer-${layerId}-mask`;
+  const textureName = `vegetation/debug-layer-${vegetationLayerId}-mask`;
   const layout = calculateWebGLDataTextureLayout(
     maskWordCount,
-    sharedResources.renderer.capabilities.maxTextureSize,
+    renderer.capabilities.maxTextureSize,
     textureName,
   );
   const textureData = padWebGLDataTextureArray(maskData, layout.texelCapacity);
@@ -166,7 +174,7 @@ function createUploadedGrassLayerMaskTexture(
   texture.name = textureName;
   texture.needsUpdate = true;
   try {
-    sharedResources.renderer.initTexture(texture);
+    renderer.initTexture(texture);
   } catch (error) {
     texture.dispose();
     throw error;
@@ -206,7 +214,7 @@ function createStoredChunkHeightSurfaceGeometry(resolution: number): InstancedBu
   return geometry;
 }
 
-function createAxisVector(axis: Axis): Vector3 {
+function createAxisVector(axis: ModelAxis): Vector3 {
   if (axis === 'x') return new Vector3(1, 0, 0);
   if (axis === 'y') return new Vector3(0, 1, 0);
   return new Vector3(0, 0, 1);
@@ -222,3 +230,8 @@ function validateOptions(opacity: number, heightOffsetMeters: number): void {
     );
   }
 }
+
+type GrassChunkCellDebugShaderSource = Readonly<{
+  vertexShader: string;
+  fragmentShader: string;
+}>;
