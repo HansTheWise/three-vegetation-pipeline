@@ -2,7 +2,7 @@
 
 A modular vegetation compilation and WebGL rendering pipeline for Three.js.
 The generic runtime owns VEGFILE parsing, shared chunk visibility and GPU data.
-Layer modules own profile-specific validation, preparation and rendering.
+Runtime profiles own profile-specific validation, preparation and rendering.
 
 ## Installation
 
@@ -20,9 +20,9 @@ Grass is an opt-in preset, not a runtime default:
 ```ts
 import {
   createThreeVegetationSceneBinding,
-  createWebGLGrassLayerModule,
+  createVegetationPipelineSetup,
+  createWebGLGrassRuntimeProfile,
   grassPreset,
-  WorkerVegFileDatasetCreationAdapter,
 } from 'three-vegetation-pipeline'
 
 const config = {
@@ -34,12 +34,9 @@ const config = {
   })],
 } as const
 
-const datasetCreationAdapter = new WorkerVegFileDatasetCreationAdapter(
-  () => new Worker(
-    new URL('./vegetationDatasetCreation.worker.ts', import.meta.url),
-    { type: 'module' },
-  ),
-)
+const pipelineSetup = createVegetationPipelineSetup({
+  runtimeProfiles: [createWebGLGrassRuntimeProfile()],
+})
 
 const vegetation = await createThreeVegetationSceneBinding({
   renderer,
@@ -48,8 +45,7 @@ const vegetation = await createThreeVegetationSceneBinding({
   vegetationParent: modelRoot,
   vegFileBytes: vegetationBytes,
   vegetationRuntimeConfig: config,
-  datasetCreationAdapter,
-  layerModules: [createWebGLGrassLayerModule()],
+  pipelineSetup,
 })
 
 function frame() {
@@ -61,39 +57,33 @@ function frame() {
 frame()
 ```
 
-`grassPreset(...)` returns a complete Grass layer config. The Grass module adds
-its validator, CPU preparation and WebGL renderer as one explicit dependency.
+`grassPreset(...)` returns a complete Grass layer config. The Grass runtime
+profile owns its dataset Worker, validation and WebGL renderer. A normal
+consumer does not create a Worker entry or dataset adapter.
 
-## Custom layer modules
+## Runtime profiles
 
-A `WebGLVegetationLayerModule` owns exactly one `renderProfile.type` and supplies
-its preparation and renderer. Pass every required module through
-`layerModules`; duplicate profile types are rejected.
+A `VegetationRuntimeProfile` owns exactly one `renderProfile.type`, its WebGL
+renderer factory and the Worker factory that prepares its runtime data. Built-in
+and external profiles are passed through the same `runtimeProfiles` array.
+Duplicate profile types are rejected.
 
-The generic runtime knows only layer identity, enablement, culling bounds and
-the module selection key. It does not import Grass or another concrete profile.
+Profiles in one setup must share one dataset-creation Worker factory. A profile
+package therefore ships a Worker entry that registers the preparations for the
+profiles it exposes. This keeps profile preparation off the UI thread without
+duplicating VEGFILE parsing for each layer.
 
 ## Worker dataset creation
 
-The runtime requires an explicit dataset-creation adapter. The official adapter
-runs VEGFILE parsing and profile preparation in a Worker. Its Worker entry must
-register the same profile preparations explicitly:
+`createWebGLGrassRuntimeProfile()` references the pipeline-owned built-in Worker.
+The Worker parses VEGFILE data and prepares every enabled Grass layer before the
+runtime allocates WebGL resources. The adapter and transferable-buffer protocol
+remain available from `three-vegetation-pipeline/runtime` for profile-package
+authors, but they are not part of normal project integration.
 
-```ts
-import {
-  grassLayerPreparation,
-  installVegFileDatasetCreationWorkerEndpoint,
-  type VegFileDatasetCreationWorkerScope,
-} from 'three-vegetation-pipeline'
-
-installVegFileDatasetCreationWorkerEndpoint(
-  self as unknown as VegFileDatasetCreationWorkerScope,
-  { layerPreparations: [grassLayerPreparation] },
-)
-```
-
-The worker receives preparation functions from its own entry file; functions
-cannot be transferred from the main thread.
+External profile packages follow the same boundary: their exported runtime
+profiles reference a package-owned Worker entry and consumers only import and
+register those profiles.
 
 ## Package entry points
 
@@ -111,7 +101,7 @@ cannot be transferred from the main thread.
 - [Node.js compiler integration](src/node-pre-runtime-compiler-integration/README.md)
 - [Runtime](src/runtime/README.md)
 - [Grass profile](src/layer-profiles/grass/grass-webgl-rendering/README.md)
-- [Optional debug tools](src/runtime/debug-visualization/README.md)
+- [Optional debug tools](src/debug/README.md)
 - [WebGL runtime example](examples/webgl-runtime.html)
 - [WebGL tile-submission benchmark](benchmarks/webgl-render-tile-submission.html)
 - [Completed first refactor pass](CLEANUP_REFACTOR_PLAN.md)

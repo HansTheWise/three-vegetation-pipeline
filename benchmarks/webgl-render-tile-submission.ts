@@ -9,22 +9,19 @@ import {
 
 import {
   createThreeVegetationSceneBinding,
-  createWebGLGrassLayerModule,
+  createVegetationPipelineSetup,
+  createWebGLGrassRuntimeProfile,
   grassPreset,
-  WorkerVegFileDatasetCreationAdapter,
   writeVegFile,
   type ThreeVegetationSceneBinding,
   type VegetationDataset,
   type VegetationDensityCurvePoint,
   type VegetationRuntimeConfig,
+  type VegetationRuntimeProfile,
 } from '../src/package-entrypoints/InternalDevelopmentApi.js';
-import {
-  grassLayerPreparation,
-  requireGrassRuntimeLayer,
-} from '../src/layer-profiles/grass/grass-layer-preparation/GrassLayerPreparation.js';
+import { requireGrassRuntimeLayer } from '../src/layer-profiles/grass/grass-layer-preparation/GrassLayerPreparation.js';
 import { WebGLGrassLayerRenderer } from '../src/layer-profiles/grass/grass-webgl-rendering/WebGLGrassLayerRenderer.js';
 import { createThreeWebGLGrassLightingMaterialFactory } from '../src/runtime/project-integration/layer-profile-integration/grass/lighting-material/ThreeWebGLGrassLightingMaterialFactory.js';
-import type { WebGLVegetationLayerModule } from '../src/runtime/vegetation-layer-management/WebGLVegetationLayerManager.js';
 
 const RENDER_WIDTH = 1280;
 const RENDER_HEIGHT = 720;
@@ -33,7 +30,7 @@ const MEASURED_FRAME_COUNT = 120;
 
 type BenchmarkStrategy = Readonly<{
   name: string;
-  layerModules: readonly WebGLVegetationLayerModule[];
+  runtimeProfiles: readonly VegetationRuntimeProfile[];
 }>;
 
 type BenchmarkResult = Readonly<{
@@ -81,14 +78,13 @@ camera.lookAt(0, 0, 0);
 camera.updateMatrixWorld(true);
 
 const source = createBenchmarkVegetationBytes();
-const datasetCreationAdapter = new WorkerVegFileDatasetCreationAdapter(() => new Worker(
-  new URL('./vegetationDatasetCreation.worker.ts', import.meta.url),
-  { type: 'module' },
-));
-const fineBucketModule = createFineBucketGrassModule();
+const fineBucketProfile = createFineBucketGrassProfile();
 const strategies: readonly BenchmarkStrategy[] = [
-  { name: 'Current power-of-two buckets', layerModules: [createWebGLGrassLayerModule()] },
-  { name: '25% capacity-step buckets', layerModules: [fineBucketModule] },
+  {
+    name: 'Current power-of-two buckets',
+    runtimeProfiles: [createWebGLGrassRuntimeProfile()],
+  },
+  { name: '25% capacity-step buckets', runtimeProfiles: [fineBucketProfile] },
 ];
 const scenarios = [
   { name: '4 m Render Tiles', renderTileSizeCells: 16 },
@@ -134,8 +130,9 @@ async function measureStrategy(
     camera,
     vegFileBytes: source,
     vegetationRuntimeConfig: createBenchmarkConfig(renderTileSizeCells),
-    datasetCreationAdapter,
-    layerModules: strategy.layerModules,
+    pipelineSetup: createVegetationPipelineSetup({
+      runtimeProfiles: strategy.runtimeProfiles,
+    }),
   });
   try {
     for (let frameIndex = 0; frameIndex < WARMUP_FRAME_COUNT; frameIndex += 1) {
@@ -188,10 +185,11 @@ async function measureStrategy(
   }
 }
 
-function createFineBucketGrassModule(): WebGLVegetationLayerModule {
+function createFineBucketGrassProfile(): VegetationRuntimeProfile {
   const grassLightingMaterialFactory = createThreeWebGLGrassLightingMaterialFactory();
+  const grassRuntimeProfile = createWebGLGrassRuntimeProfile();
   return {
-    ...grassLayerPreparation,
+    ...grassRuntimeProfile,
     validateLayer: (layer) => requireGrassRuntimeLayer(layer),
     create(context) {
       const layer = requireGrassRuntimeLayer(context.layer);

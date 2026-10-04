@@ -1,4 +1,4 @@
-import { vegetationIdentityShader } from '../../../reusable-profile-features/deterministic-vegetation-identity/webgl/vegetationIdentityShader.js';
+import { vegetationIdentityShader } from '../../../layer-profiles/reusable-profile-features/deterministic-vegetation-identity/webgl/vegetationIdentityShader.js';
 
 export const grassChunkCellDebugFragmentShader = /* glsl */ `
   precision highp float;

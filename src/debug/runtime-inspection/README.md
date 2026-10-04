@@ -1,7 +1,7 @@
-# Debug visualization
+# Runtime inspection
 
-This module contains optional diagnostics that do not depend on a vegetation
-renderer profile:
+This debug module contains optional runtime diagnostics that do not depend on
+a vegetation renderer profile:
 
 - `CameraFrustumVisualization` displays a frozen culling camera;
 - `createStoredChunkCullingBoundsOutlines` displays shared stored-Chunk bounds;

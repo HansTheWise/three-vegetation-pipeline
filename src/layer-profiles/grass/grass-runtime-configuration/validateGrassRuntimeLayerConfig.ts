@@ -15,7 +15,7 @@ import type {
 
 const SIX_DIGIT_HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
-/** Validates values owned by the opt-in Grass layer module. */
+/** Validates values owned by the opt-in Grass runtime profile. */
 export function validateGrassRuntimeLayerConfig(
   config: VegetationRuntimeLayerConfig,
 ): void {

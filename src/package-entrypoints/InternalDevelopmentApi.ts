@@ -33,6 +33,7 @@ export * from '../runtime/chunk-visibility-management/frustum-visibility-evaluat
 export * from '../runtime/chunk-visibility-management/ChunkVisibilityManager.js';
 export * from '../runtime/vegetation-layer-management/WebGLVegetationLayerManager.js';
 export * from '../runtime/VegetationRuntimeManager.js';
+export * from '../runtime/VegetationPipelineSetup.js';
 
 export * from '../runtime/webgl-data-texture-layout/WebGLDataTextureLayout.js';
 export * from '../runtime/vegetation-layer-management/WebGLVegetationDatasetTextures.js';
@@ -62,7 +63,7 @@ export * from '../layer-profiles/reusable-profile-features/render-tile-density-s
 export * from '../layer-profiles/reusable-profile-features/vegetation-element-placement/VegetationPlacement.js';
 
 export * from '../layer-profiles/grass/index.js';
-export * from '../layer-profiles/grass/grass-webgl-rendering/WebGLGrassLayerModule.js';
+export * from '../layer-profiles/grass/grass-webgl-rendering/WebGLGrassRuntimeProfile.js';
 export * from '../layer-profiles/grass/grass-webgl-rendering/WebGLGrassLayerResources.js';
 export * from '../layer-profiles/grass/grass-webgl-rendering/WebGLGrassLayerRenderer.js';
 export * from '../layer-profiles/grass/grass-webgl-rendering/shaders/grassFragmentShader.js';

@@ -1,11 +1,8 @@
 import type { Camera, Object3D, Scene, WebGLRenderer } from 'three';
 
 import type { VegetationRuntimeConfig } from '../../dataset-preparation/configuration/VegetationRuntimeConfig.js';
-import type {
-  VegFileDatasetCreationAdapter,
-  VegetationRuntimeSource,
-} from '../../dataset-preparation/VegFileDatasetCreationContracts.js';
-import type { WebGLVegetationLayerModule } from '../../vegetation-layer-management/WebGLVegetationLayerManager.js';
+import type { VegetationRuntimeSource } from '../../dataset-preparation/VegFileDatasetCreationContracts.js';
+import type { VegetationPipelineSetup } from '../../VegetationPipelineSetup.js';
 import {
   createVegetationRuntimeManager,
   type VegetationRuntimeDiagnostics,
@@ -23,8 +20,7 @@ export type CreateThreeVegetationSceneBindingOptions = Readonly<{
   vegetationParent?: Object3D;
   vegFileBytes: VegetationRuntimeSource;
   vegetationRuntimeConfig: VegetationRuntimeConfig;
-  layerModules: readonly WebGLVegetationLayerModule[];
-  datasetCreationAdapter: VegFileDatasetCreationAdapter;
+  pipelineSetup: VegetationPipelineSetup;
   frameStateProvider?: ThreeVegetationFrameStateProvider;
   cancellationSignal?: AbortSignal;
 }>;
@@ -80,8 +76,8 @@ export async function createThreeVegetationSceneBinding(
     renderer: options.renderer,
     vegFileBytes: options.vegFileBytes,
     vegetationRuntimeConfig: options.vegetationRuntimeConfig,
-    layerModules: options.layerModules,
-    datasetCreationAdapter: options.datasetCreationAdapter,
+    layerRendererFactories: options.pipelineSetup.runtimeProfiles,
+    datasetCreationAdapter: options.pipelineSetup,
     ...(options.cancellationSignal
       ? { cancellationSignal: options.cancellationSignal }
       : {}),

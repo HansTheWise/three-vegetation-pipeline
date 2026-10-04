@@ -216,10 +216,12 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 - Inside the `runtime` directory, do not repeat `runtime` in internal folder, file, or data-stage names; retain it only where an exported boundary needs to distinguish runtime contracts from compiler contracts.
 - Place modules shared by runtime and pre-runtime directly under `src/shared`, keep their responsibilities in separate sibling directories, and allow dependencies only between the relevant shared modules.
 - Define small TypeScript contracts beside the manager or implementation that owns them; create a separate contract module only when it forms a stable boundary with multiple independent consumers.
-- Require an explicit dataset-creation adapter for every high-level runtime; provide the Worker adapter as the official integration and never hide CPU work behind an implicit main-thread fallback.
+- Pass built-in and external profiles through one explicit runtime-profile module contract; built-in profile modules own their Worker preparation and renderer defaults so normal consumers supply only layer config, external profile packages own the same internals, consumer projects do not create Worker entries or dataset adapters, and no path may fall back implicitly to main-thread preparation.
 - Place mutable WebGL resources with the manager that creates, updates, and disposes them; pass only explicit read dependencies to consumers.
 - Remove empty directories created by refactors, and document every remaining child module or reusable utility in its parent README.
 - Keep consumer-project hooks under `src/runtime/project-integration`: place profile-independent scene and camera integration in direct responsibility modules, and nest profile-specific lighting and material hooks under `layer-profile-integration/<profile>`.
+- In consumer projects, group renderer-profile setup under `vegetation/profiles/<profile>` and keep profile-specific adapters in that profile's setup module.
+- Keep all optional diagnostics under `src/debug`; production runtime and layer-profile modules must neither own nor import debug code, and diagnostics are exported only through `DebugApi`.
 - Name manager-owned runtime modules `<responsibility>-management`, and keep dataset-construction helpers with dataset preparation even when later managers consume their results.
 - Treat layer `enabled` as construction-time configuration; do not expose mutable runtime layer toggles without a real consumer.
 - Use `cancellationSignal` for project-facing cancellation and `destroy()` for completed runtime lifecycles; keep native `AbortController.abort()` and resource-level `dispose()` terminology.

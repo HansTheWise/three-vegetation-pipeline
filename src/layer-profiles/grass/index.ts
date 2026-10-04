@@ -11,4 +11,4 @@ export * from '../../runtime/project-integration/layer-profile-integration/grass
 export * from '../../runtime/project-integration/layer-profile-integration/grass/lighting-material/ThreeWebGLGrassLightingMaterialFactory.js';
 export * from '../../runtime/project-integration/layer-profile-integration/grass/ground-patch-material/WebGLGrassGroundPatchSurface.js';
 export * from '../../runtime/project-integration/layer-profile-integration/grass/ground-patch-material/ThreeGrassGroundPatchSurface.js';
-export * from './grass-webgl-rendering/WebGLGrassLayerModule.js';
+export * from './grass-webgl-rendering/WebGLGrassRuntimeProfile.js';

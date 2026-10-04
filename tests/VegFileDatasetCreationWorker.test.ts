@@ -94,6 +94,35 @@ describe('WorkerVegFileDatasetCreationAdapter', () => {
     ).preparedProfileData.activeCells.indices).toHaveLength(4);
   });
 
+  it('registers Grass preparation in the built-in profile Worker entry', async () => {
+    const postMessage = vi.fn();
+    const scope: VegFileDatasetCreationWorkerScope = {
+      onmessage: null,
+      postMessage,
+    };
+    vi.stubGlobal('self', scope);
+    await import(
+      '../src/layer-profiles/built-in-dataset-preparation/BuiltInVegFileDatasetCreation.worker.js'
+    );
+
+    scope.onmessage!({
+      data: {
+        vegFileBytes: createVegetationFileBytes(),
+        vegetationRuntimeConfig,
+      },
+    } as unknown as MessageEvent<VegFileDatasetCreationWorkerRequest>);
+
+    const [response, transfer] = postMessage.mock.calls[0]! as [
+      VegetationDatasetCreationResult,
+      ArrayBuffer[],
+    ];
+    const grassData = requireGrassRuntimeLayer(
+      response.dataset.preparedLayers[0]!,
+    ).preparedProfileData;
+    expect(transfer).toContain(grassData.activeCells.indices.buffer);
+    expect(grassData.activeCells.indices).toHaveLength(4);
+  });
+
   it('lets a custom profile own worker preparation and transferable buffers', () => {
     const postMessage = vi.fn();
     const scope: VegFileDatasetCreationWorkerScope = { onmessage: null, postMessage };

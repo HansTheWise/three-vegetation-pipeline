@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +16,11 @@ try {
   const packagedFiles = packResult[0].files.map((file) => file.path);
   if (packagedFiles.some((path) => /campus|i-caka/i.test(path))) {
     throw new Error('Package archive contains a project-specific file.');
+  }
+  const builtInWorkerPackagePath =
+    'dist/layer-profiles/built-in-dataset-preparation/BuiltInVegFileDatasetCreation.worker.js';
+  if (!packagedFiles.includes(builtInWorkerPackagePath)) {
+    throw new Error(`Package archive is missing ${builtInWorkerPackagePath}.`);
   }
   const packageArchive = join(temporaryRoot, packResult[0].filename);
   const threeArchive = packDependency('three');
@@ -38,6 +43,10 @@ try {
     join(repositoryRoot, 'node_modules', 'vite', 'bin', 'vite.js'),
     'build',
   ], consumerRoot);
+  const consumerBuildFiles = listRelativeFiles(join(consumerRoot, 'dist'));
+  if (!consumerBuildFiles.some((path) => path.includes('BuiltInVegFileDatasetCreation.worker'))) {
+    throw new Error('Consumer build did not emit the pipeline-owned dataset Worker.');
+  }
   runNode([
     join(consumerRoot, 'node_modules', 'three-vegetation-pipeline', 'tooling', 'veg-compile.mjs'),
     '--help',
@@ -78,4 +87,14 @@ function verifyTypeScriptConfigImport() {
   if (result.status !== 1 || !result.stderr.includes('Missing required argument "--input"')) {
     throw new Error(`CLI did not import an erasable TypeScript config:\n${result.stderr}`);
   }
+}
+
+function listRelativeFiles(root, directory = root) {
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    return entry.isDirectory()
+      ? listRelativeFiles(root, path)
+      : [path.slice(root.length + 1).replaceAll('\\', '/')];
+  });
 }

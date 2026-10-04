@@ -1,4 +1,5 @@
-import type { WebGLVegetationLayerModule } from '../../../runtime/vegetation-layer-management/WebGLVegetationLayerManager.js';
+import type { VegetationRuntimeProfile } from '../../../runtime/VegetationPipelineSetup.js';
+import { createBuiltInVegFileDatasetCreationWorker } from '../../built-in-dataset-preparation/BuiltInVegFileDatasetCreationWorker.js';
 import type { WebGLGrassGroundPatchSurface } from '../../../runtime/project-integration/layer-profile-integration/grass/ground-patch-material/WebGLGrassGroundPatchSurface.js';
 import { createThreeWebGLGrassLightingMaterialFactory } from '../../../runtime/project-integration/layer-profile-integration/grass/lighting-material/ThreeWebGLGrassLightingMaterialFactory.js';
 import type { WebGLGrassLightingMaterialFactory } from '../../../runtime/project-integration/layer-profile-integration/grass/lighting-material/WebGLGrassLightingMaterialFactory.js';
@@ -8,19 +9,20 @@ import {
 } from '../grass-layer-preparation/GrassLayerPreparation.js';
 import { WebGLGrassLayerRenderer } from './WebGLGrassLayerRenderer.js';
 
-export type WebGLGrassLayerModuleOptions = Readonly<{
+export type WebGLGrassRuntimeProfileOptions = Readonly<{
   grassLightingMaterialFactory?: WebGLGrassLightingMaterialFactory;
   groundPatchSurface?: WebGLGrassGroundPatchSurface;
 }>;
 
-/** Creates the complete opt-in Grass preparation and WebGL rendering module. */
-export function createWebGLGrassLayerModule(
-  options: WebGLGrassLayerModuleOptions = {},
-): WebGLVegetationLayerModule {
+/** Creates a complete Grass profile with Worker preparation and WebGL rendering. */
+export function createWebGLGrassRuntimeProfile(
+  options: WebGLGrassRuntimeProfileOptions = {},
+): VegetationRuntimeProfile {
   const grassLightingMaterialFactory = options.grassLightingMaterialFactory
     ?? createThreeWebGLGrassLightingMaterialFactory();
   return {
-    ...grassLayerPreparation,
+    profileType: grassLayerPreparation.profileType,
+    datasetCreationWorkerFactory: createBuiltInVegFileDatasetCreationWorker,
     validateLayer: requireGrassRuntimeLayer,
     create: ({
       renderer,

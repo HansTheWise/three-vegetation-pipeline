@@ -15,7 +15,7 @@ import {
   createValidatedWebGLVegetationLayerRendererRegistry,
   WebGLVegetationLayerManager,
   type VegetationLayerDiagnostics,
-  type WebGLVegetationLayerModule,
+  type WebGLVegetationLayerRendererFactory,
 } from './vegetation-layer-management/WebGLVegetationLayerManager.js';
 
 /**
@@ -25,7 +25,7 @@ import {
  *
  * 1. The required `VegFileDatasetCreationAdapter` converts VEGFILE bytes and
  *    runtime configuration into a renderer-independent dataset result.
- * 2. Layer modules are validated against the prepared dataset before any GPU
+ * 2. Runtime-profile renderer factories are validated before any GPU
  *    resource is allocated.
  * 3. `ChunkVisibilityManager` creates the stored-chunk bounds and owns the
  *    mutable visible-chunk texture.
@@ -63,11 +63,11 @@ export class VegetationRuntimeManager {
       );
     options.cancellationSignal?.throwIfAborted();
 
-    // Stage 2: prepared layers + modules -> validated renderer registry.
+    // Stage 2: prepared layers + renderer factories -> validated renderer registry.
     const vegetationDataset = vegetationDatasetCreationResult.dataset;
     const rendererRegistry = createValidatedWebGLVegetationLayerRendererRegistry(
       vegetationDataset,
-      options.layerModules,
+      options.layerRendererFactories,
     );
 
     // Stage 3: prepared dataset -> stored-chunk evaluator + visible-chunk texture.
@@ -159,7 +159,7 @@ export type CreateVegetationRuntimeManagerOptions = Readonly<{
   vegFileBytes: VegetationRuntimeSource;
   vegetationRuntimeConfig: VegetationRuntimeConfig;
   datasetCreationAdapter: VegFileDatasetCreationAdapter;
-  layerModules: readonly WebGLVegetationLayerModule[];
+  layerRendererFactories: readonly WebGLVegetationLayerRendererFactory[];
   cancellationSignal?: AbortSignal;
 }>;
 

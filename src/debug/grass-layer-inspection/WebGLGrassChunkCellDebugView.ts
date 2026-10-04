@@ -15,12 +15,12 @@ import {
   type WebGLRenderer,
 } from 'three';
 
-import type { ModelAxis } from '../../../shared/vegfile-format/VegetationFileTypes.js';
+import type { ModelAxis } from '../../shared/vegfile-format/VegetationFileTypes.js';
 import {
   calculateWebGLDataTextureLayout,
   padWebGLDataTextureArray,
-} from '../../../runtime/webgl-data-texture-layout/WebGLDataTextureLayout.js';
-import type { WebGLGrassLayerRenderer } from '../grass-webgl-rendering/WebGLGrassLayerRenderer.js';
+} from '../../runtime/webgl-data-texture-layout/WebGLDataTextureLayout.js';
+import type { WebGLGrassLayerRenderer } from '../../layer-profiles/grass/grass-webgl-rendering/WebGLGrassLayerRenderer.js';
 import { grassChunkCellDebugFragmentShader } from './shaders/grassChunkCellDebugFragmentShader.js';
 import { grassChunkCellDebugVertexShader } from './shaders/grassChunkCellDebugVertexShader.js';
 

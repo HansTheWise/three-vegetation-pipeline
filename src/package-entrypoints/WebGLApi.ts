@@ -1,5 +1,4 @@
 export type {
-  WebGLVegetationLayerModule,
   WebGLVegetationLayerRenderer,
   WebGLVegetationLayerRendererContext,
   WebGLVegetationLayerRendererDiagnostics,
@@ -13,7 +12,7 @@ export * from '../layer-profiles/reusable-profile-features/render-tile-density-s
 export * from '../layer-profiles/reusable-profile-features/render-tile-density-selection/webgl/WebGLActiveCellIndexTexture.js';
 export * from '../layer-profiles/reusable-profile-features/render-tile-density-selection/webgl/WebGLVisibleRenderTileTexture.js';
 export * from '../layer-profiles/reusable-profile-features/deterministic-vegetation-identity/webgl/vegetationIdentityShader.js';
-export * from '../layer-profiles/grass/grass-webgl-rendering/WebGLGrassLayerModule.js';
+export * from '../layer-profiles/grass/grass-webgl-rendering/WebGLGrassRuntimeProfile.js';
 export * from '../layer-profiles/grass/grass-webgl-rendering/WebGLGrassLayerResources.js';
 export * from '../layer-profiles/grass/grass-webgl-rendering/WebGLGrassLayerRenderer.js';
 export * from '../layer-profiles/grass/grass-webgl-rendering/shaders/grassFragmentShader.js';

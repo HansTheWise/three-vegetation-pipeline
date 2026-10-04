@@ -1,7 +1,9 @@
 import {
   createThreeVegetationSceneBinding,
+  createVegetationPipelineSetup,
+  createWebGLGrassRuntimeProfile,
   grassPreset,
-  type WebGLVegetationLayerModule,
+  type VegetationRuntimeProfile,
 } from 'three-vegetation-pipeline';
 import { WebGLGrassDebug } from 'three-vegetation-pipeline/debug';
 import {
@@ -12,10 +14,7 @@ import {
   parseVegFile,
   type VegetationFrameState,
 } from 'three-vegetation-pipeline/runtime';
-import {
-  createWebGLGrassLayerModule,
-  type WebGLVegetationLayerRenderer,
-} from 'three-vegetation-pipeline/webgl';
+import type { WebGLVegetationLayerRenderer } from 'three-vegetation-pipeline/webgl';
 
 const grass = grassPreset({
   vegetationLayerId: 0,
@@ -23,20 +22,23 @@ const grass = grassPreset({
   density: { renderTileSizeCells: 16 },
 });
 
-const customModule = null as WebGLVegetationLayerModule | null;
+const customProfile = null as VegetationRuntimeProfile | null;
 const frame = null as VegetationFrameState | null;
 const preparedGrass = null as GrassLayerPreparedData | null;
 const layerRenderer = null as WebGLVegetationLayerRenderer | null;
+const pipelineSetup = createVegetationPipelineSetup({
+  runtimeProfiles: [createWebGLGrassRuntimeProfile()],
+});
 
 document.querySelector('#app')!.textContent = [
   createThreeVegetationSceneBinding,
   grass.vegetationLayerKey,
-  customModule,
+  customProfile,
   frame,
   preparedGrass,
   layerRenderer,
   grassProfilePreset,
-  createWebGLGrassLayerModule,
+  pipelineSetup,
   parseVegFile,
   WebGLGrassDebug,
 ].join(':');

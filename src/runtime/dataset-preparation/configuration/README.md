@@ -1,7 +1,7 @@
 # Runtime configuration
 
 The generic runtime config contains only serializable data. Each layer requires
-`vegetationLayerId`, `key`, `enabled` and `renderProfile.type`; the selected layer module
+`vegetationLayerId`, `key`, `enabled` and `renderProfile.type`; the selected runtime profile
 owns every additional field and its validation.
 
 ```ts

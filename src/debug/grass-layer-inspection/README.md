@@ -1,4 +1,4 @@
-# Grass Debug Visualization
+# Grass layer inspection
 
 This optional module diagnoses the Grass profile without adding debug resources
 to the normal vegetation runtime.

@@ -8,7 +8,7 @@ export type VegetationRuntimeLayerConfigValidator = Readonly<{
   validateConfig?(config: VegetationRuntimeLayerConfig): void;
 }>;
 
-/** Validates profile-independent runtime values before modules consume them. */
+/** Validates profile-independent runtime values before profiles consume them. */
 export function validateVegetationRuntimeConfig(
   config: VegetationRuntimeConfig,
   validators: readonly VegetationRuntimeLayerConfigValidator[] = [],

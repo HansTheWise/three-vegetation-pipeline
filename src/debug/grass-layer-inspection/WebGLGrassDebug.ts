@@ -1,11 +1,11 @@
 import { PerspectiveCamera, Vector2, Vector3, type Object3D } from 'three';
 
-import { CameraFrustumVisualization } from '../../../runtime/debug-visualization/CameraFrustumVisualization.js';
-import { createStoredChunkCullingBoundsOutlines } from '../../../runtime/debug-visualization/createStoredChunkCullingBoundsOutlines.js';
-import { FirstPersonCameraController } from '../../../runtime/debug-visualization/FirstPersonCameraController.js';
-import { WebGLGpuFrameTimer } from '../../../runtime/debug-visualization/WebGLGpuFrameTimer.js';
-import { createDatasetStoredChunkCullingBounds } from '../../../runtime/chunk-visibility-management/chunk-culling-bounds/StoredChunkCullingBounds.js';
-import type { WebGLGrassLayerRenderer } from '../grass-webgl-rendering/WebGLGrassLayerRenderer.js';
+import { CameraFrustumVisualization } from '../runtime-inspection/CameraFrustumVisualization.js';
+import { createStoredChunkCullingBoundsOutlines } from '../runtime-inspection/createStoredChunkCullingBoundsOutlines.js';
+import { FirstPersonCameraController } from '../runtime-inspection/FirstPersonCameraController.js';
+import { WebGLGpuFrameTimer } from '../runtime-inspection/WebGLGpuFrameTimer.js';
+import { createDatasetStoredChunkCullingBounds } from '../../runtime/chunk-visibility-management/chunk-culling-bounds/StoredChunkCullingBounds.js';
+import type { WebGLGrassLayerRenderer } from '../../layer-profiles/grass/grass-webgl-rendering/WebGLGrassLayerRenderer.js';
 import { WebGLGrassChunkCellDebugView } from './WebGLGrassChunkCellDebugView.js';
 
 const MAXIMUM_CAMERA_UPDATE_DELTA_SECONDS = 0.1;

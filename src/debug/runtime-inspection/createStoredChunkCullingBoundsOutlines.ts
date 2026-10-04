@@ -5,7 +5,7 @@ import {
   LineSegments,
 } from 'three';
 
-import type { StoredChunkCullingBounds } from '../chunk-visibility-management/frustum-visibility-evaluation/StoredChunkVisibilityTypes.js';
+import type { StoredChunkCullingBounds } from '../../runtime/chunk-visibility-management/frustum-visibility-evaluation/StoredChunkVisibilityTypes.js';
 
 const BOX_EDGES = [
   0, 1, 1, 2, 2, 3, 3, 0,

@@ -14,5 +14,6 @@ export * from './chunk-visibility-management/WebGLVisibleStoredChunkTexture.js';
 export * from './vegetation-layer-management/WebGLVegetationLayerManager.js';
 export * from './vegetation-layer-management/WebGLVegetationDatasetTextures.js';
 export * from './VegetationRuntimeManager.js';
+export * from './VegetationPipelineSetup.js';
 export * from './project-integration/scene-binding/ThreeCameraFrameStateAdapter.js';
 export * from './project-integration/scene-binding/ThreeVegetationSceneBinding.js';

@@ -17,8 +17,8 @@ the consumer's original buffer remains usable. An optional `cancellationSignal`
 terminates an in-flight Worker when its result is no longer needed, for example
 after a scene unmount or when a changed setup request replaces the current one.
 
-The Worker entry must register the required profile preparations because module
-functions cannot cross the Worker boundary. Only shared arrays and buffers
-reported by prepared profiles are transferred back. There is no built-in
-main-thread fallback; a project that needs one must provide its own
-`VegFileDatasetCreationAdapter`.
+Each runtime-profile package owns its Worker entry and registers the required
+profile preparations because functions cannot cross the Worker boundary. Only
+shared arrays and buffers reported by prepared profiles are transferred back.
+Consumer projects select the profile through `VegetationPipelineSetup`; they do
+not create this entry themselves. There is no main-thread fallback.

@@ -2,17 +2,19 @@
 
 The runtime parses VEGFILE v2 data, prepares only configured and enabled
 layers, uploads shared GPU data and delegates profile-specific work to explicit
-layer modules.
+runtime profiles.
 
 ## Initialization flow
 
 ```text
-VEGFILE v2 bytes + runtime config + required dataset-creation adapter + layer modules
-  -> VegetationRuntimeManager calls VegFileDatasetCreationAdapter
+selected runtime profiles
+  -> VegetationPipelineSetup validates profile types and Worker compatibility
+VEGFILE v2 bytes + runtime config + pipeline setup
+  -> VegetationRuntimeManager calls the setup's Worker-backed dataset creation
      -> VegFileDatasetCreationManager
         -> VEGFILE v2 parsing
         -> vegetation dataset creation
-  -> validate layer renderer registry
+  -> validate runtime-profile renderer registry
   -> ChunkVisibilityManager
      -> visible stored-chunk texture
   -> WebGLVegetationLayerManager
@@ -33,13 +35,9 @@ VEGFILE v2 bytes + runtime config + required dataset-creation adapter + layer mo
 | 6 | [WebGL data-texture layout](./webgl-data-texture-layout/README.md) | Pack linear typed arrays into supported texture dimensions |
 | 7 | [Consumer project integration](./project-integration/README.md) | Bind scene and camera plus profile-specific project materials |
 
-Optional diagnostics are isolated from this production path:
-
-- [Debug visualization](./debug-visualization/README.md) contains
-  profile-independent camera, Chunk-bound and GPU-timing tools.
-- [Grass debug visualization](../layer-profiles/grass/grass-debug-visualization/README.md)
-  owns Grass masks, Cell/Pattern inspection and Grass counters.
-- Both are exposed only through `three-vegetation-pipeline/debug`.
+Optional diagnostics live outside this production module under
+[debug tools](../debug/README.md) and are exposed only through
+`three-vegetation-pipeline/debug`.
 
 ## Per-frame flow
 
@@ -60,5 +58,7 @@ ThreeCameraFrameStateAdapter
 - Config layers with `enabled: false` are not prepared or uploaded.
 - Static VEGFILE data and visible chunk indices are shared across profiles,
   but remain owned by their responsible manager.
-- No profile is registered by default; Grass uses
-  `createWebGLGrassLayerModule()` explicitly.
+- No profile is registered by default; consumers explicitly pass
+  `createWebGLGrassRuntimeProfile()` through `createVegetationPipelineSetup()`.
+- Runtime profiles own their dataset Worker boundary; consumer projects do not
+  create Worker entries or dataset adapters.

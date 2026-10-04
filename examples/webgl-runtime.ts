@@ -13,8 +13,8 @@ import {
 
 import {
   createThreeVegetationSceneBinding,
-  createWebGLGrassLayerModule,
-  WorkerVegFileDatasetCreationAdapter,
+  createVegetationPipelineSetup,
+  createWebGLGrassRuntimeProfile,
   writeVegFile,
   type VegetationDataset,
 } from '../src/package-entrypoints/InternalDevelopmentApi.js';
@@ -41,10 +41,9 @@ const ground = new Mesh(
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
 
-const datasetCreationAdapter = new WorkerVegFileDatasetCreationAdapter(() => new Worker(
-  new URL('./vegetationDatasetCreation.worker.ts', import.meta.url),
-  { type: 'module' },
-));
+const pipelineSetup = createVegetationPipelineSetup({
+  runtimeProfiles: [createWebGLGrassRuntimeProfile()],
+});
 
 const vegetation = await createThreeVegetationSceneBinding({
   renderer,
@@ -52,8 +51,7 @@ const vegetation = await createThreeVegetationSceneBinding({
   camera,
   vegFileBytes: createExampleVegetationBytes(),
   vegetationRuntimeConfig: vegetationExampleConfig,
-  datasetCreationAdapter,
-  layerModules: [createWebGLGrassLayerModule()],
+  pipelineSetup,
 });
 
 function render(): void {

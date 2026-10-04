@@ -5,7 +5,6 @@ import type {
   PreparedVegetationDataset,
   VegetationLayer,
 } from '../dataset-preparation/dataset-construction/PreparedVegetationDataset.js';
-import type { VegetationLayerPreparation } from '../dataset-preparation/layer-profile-preparation/VegetationLayerPreparation.js';
 import type { WebGLVisibleStoredChunkTexture } from '../chunk-visibility-management/WebGLVisibleStoredChunkTexture.js';
 import type { VegetationFrameState } from '../VegetationRuntimeManager.js';
 import { WebGLVegetationDatasetTextures } from './WebGLVegetationDatasetTextures.js';
@@ -81,9 +80,9 @@ export class WebGLVegetationLayerManager {
 /** Validates every configured layer before any WebGL resource is allocated. */
 export function createValidatedWebGLVegetationLayerRendererRegistry(
   vegetationDataset: PreparedVegetationDataset,
-  modules: readonly WebGLVegetationLayerModule[],
+  rendererFactories: readonly WebGLVegetationLayerRendererFactory[],
 ): WebGLVegetationLayerRendererRegistry {
-  const rendererRegistry = createLayerRendererRegistry(modules);
+  const rendererRegistry = createLayerRendererRegistry(rendererFactories);
   validateLayerRenderers(vegetationDataset, rendererRegistry);
   return rendererRegistry;
 }
@@ -119,19 +118,19 @@ function disposeManagedLayers(layers: readonly ManagedLayer[]): void {
 }
 
 function createLayerRendererRegistry(
-  modules: readonly WebGLVegetationLayerModule[],
+  rendererFactories: readonly WebGLVegetationLayerRendererFactory[],
 ): WebGLVegetationLayerRendererRegistry {
   const rendererRegistry = new Map<string, WebGLVegetationLayerRendererFactory>();
-  for (const module of modules) {
-    if (module.profileType.length === 0) {
+  for (const rendererFactory of rendererFactories) {
+    if (rendererFactory.profileType.length === 0) {
       throw new Error('WebGL vegetation layer renderer profileType must not be empty.');
     }
-    if (rendererRegistry.has(module.profileType)) {
+    if (rendererRegistry.has(rendererFactory.profileType)) {
       throw new Error(
-        `Duplicate WebGL vegetation layer module for profile "${module.profileType}".`,
+        `Duplicate WebGL vegetation layer renderer for profile "${rendererFactory.profileType}".`,
       );
     }
-    rendererRegistry.set(module.profileType, module);
+    rendererRegistry.set(rendererFactory.profileType, rendererFactory);
   }
   return rendererRegistry;
 }
@@ -193,10 +192,6 @@ export type WebGLVegetationLayerRendererRegistry = ReadonlyMap<
   WebGLVegetationLayerRendererFactory
 >;
 
-/** Complete executable contract for one WebGL vegetation render profile. */
-export interface WebGLVegetationLayerModule
-  extends VegetationLayerPreparation, WebGLVegetationLayerRendererFactory {}
-
 export type WebGLVegetationLayerRendererDiagnostics = Readonly<{
   visibleTileCount: number;
   visibleCandidateCount: number;
@@ -213,7 +208,7 @@ export type WebGLVegetationLayerRendererContext = Readonly<{
   layer: VegetationLayer;
 }>;
 
-/** Render-profile module attached to one prepared vegetation layer. */
+/** Renderer attached to one prepared vegetation layer. */
 export interface WebGLVegetationLayerRenderer {
   readonly object3d: Object3D;
   readonly diagnostics: WebGLVegetationLayerRendererDiagnostics;

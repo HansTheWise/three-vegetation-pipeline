@@ -72,10 +72,11 @@ scene-light collection and command submission to WebGL.
 ## Required configuration
 
 - `vegFileBytes` and `vegetationRuntimeConfig` select the data and configured layers.
-- `datasetCreationAdapter` is required and defines where dataset creation runs.
-- `layerModules` explicitly registers every used render profile.
+- `pipelineSetup` contains every explicitly selected runtime profile and its
+  Worker-backed dataset preparation.
 - `vegetationParent` controls the scene attachment point.
 - `frameStateProvider` is an optional replacement boundary.
 - `cancellationSignal` cancels runtime creation when the requesting scene lifecycle ends.
 
-No profile, including Grass, is registered automatically.
+No profile, including Grass, is registered automatically. Built-in and external
+profiles use the same setup contract.

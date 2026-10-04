@@ -1,8 +1,8 @@
 # Grass WebGL rendering
 
-`createWebGLGrassLayerModule()` is the explicit Grass integration. It combines
-Grass validation and preparation with `WebGLGrassLayerRenderer`; the generic runtime
-does not import or register it automatically.
+`createWebGLGrassRuntimeProfile()` is the explicit Grass integration. It combines
+the shared built-in dataset Worker, validation and
+`WebGLGrassLayerRenderer`; the generic runtime does not register it automatically.
 
 ## Frame work
 
